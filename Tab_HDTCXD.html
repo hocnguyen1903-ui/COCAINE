@@ -1,0 +1,187 @@
+<div class="form-container">
+    <div class="location-date-container">
+        <select id="locationDropdown-hd" class="location-dropdown"></select>
+        <span id="dateDisplay-hd" class="date-display"></span>
+    </div>
+
+    <form id="dataForm-hd">
+        <!-- Ô TÌM KIẾM CHÍNH: GÓI THẦU -->
+        <div class="dropdown-container">
+            <input type="text" name="field0-hd" id="field0-hd" placeholder="-- Search for Bidding Package --" 
+                   oninput="coreFilter('field0-hd', 'drop-field0-hd', 'pack')" 
+                   onkeydown="masterKeyboardNav(event, 'drop-field0-hd', 'div:not(.disable-hover)', 'field2-hd', (el) => el.onmousedown())"
+                   onclick="this.select(); coreFilter('field0-hd', 'drop-field0-hd', 'pack'); event.stopPropagation();" 
+                   style="border-radius: 35px" autocomplete="off">
+            <div id="drop-field0-hd" class="smooth-dropdown"></div>
+        </div>
+
+        <h1>SOẠN THẢO HỢP ĐỒNG</h1>
+
+        <!-- CATEGORY -->
+        <label>
+            <div>
+                <span><i class="bi bi-intersect"></i> Item Category </span>
+            </div>
+            <div id="cont-field1-hd" class="dropdown-container" style="display: none;">
+                <input type="text" name="field1-hd" id="field1-hd" placeholder="-- Tên hạng mục (Tự động) --">
+            </div>
+        </label>
+
+        <!-- PROJECT CODE -->
+        <label>
+            <div style="margin-bottom: 4px;">
+                <span><i class="bi bi-buildings-fill"></i> Project Code</span>
+            </div>
+            <div id="cont-field2-hd" class="dropdown-container" style="display: none;">
+                <input type="text" name="field2-hd" id="field2-hd" placeholder="-- Nhập mã hoặc tên dự án (VD: BCT, BBT, ...) --" 
+                       oninput="coreFilter('field2-hd', 'drop-field2-hd', 'project')" 
+                       onkeydown="masterKeyboardNav(event, 'drop-field2-hd', 'div:not(.disable-hover)', 'field3-hd', (el) => el.onmousedown())"
+                       onclick="this.select(); coreFilter('field2-hd', 'drop-field2-hd', 'project'); event.stopPropagation();" autocomplete="off">
+                <span class="dropdown-icon">⏷</span>
+                <div id="drop-field2-hd" class="smooth-dropdown"></div>
+            </div>
+        </label>
+
+        <!-- CONTRACTOR -->
+        <label>
+            <div style="margin-bottom: 4px;">
+                <span><i class="bi bi-people-fill"></i> Contractor</span>
+            </div>
+            <div id="cont-field3-hd" class="dropdown-container" style="display: none;">
+                <input type="text" name="field3-hd" id="field3-hd" placeholder="-- Nhập tên hoặc mã Nhà thầu --" 
+                       oninput="coreFilter('field3-hd', 'drop-field3-hd', 'contractor')" 
+                       onkeydown="masterKeyboardNav(event, 'drop-field3-hd', 'div:not(.disable-hover)', 'field4-hd', (el) => el.onmousedown())"
+                       onclick="this.select(); coreFilter('field3-hd', 'drop-field3-hd', 'contractor'); event.stopPropagation();" autocomplete="off">
+                <span class="dropdown-icon">⏷</span>
+                <div id="drop-field3-hd" class="smooth-dropdown"></div>
+            </div>
+        </label>
+
+        <!-- ==========================================================================
+             VÙNG KẾT HỢP 2 TRƯỜNG TRÊN 1 HÀNG (GIÁ TRỊ & TẠM ỨNG)
+             ========================================================================== -->
+        <!-- Đã đảo ngược logic: Chữ luôn hiện, chỉ ẩn ô nhập liệu bên trong -->
+        <div style="display: flex; gap: 15px; align-items: flex-start; width: 100%; position: relative; z-index: 900;">
+
+            <!-- 1. Ô GIÁ TRỊ HỢP ĐỒNG -->
+            <label style="flex: 7; margin-bottom: 0;">
+                <div style="margin-bottom: 4px;">
+                    <span><i class="bi bi-coin"></i> Contract Value</span>
+                </div>
+                <!-- Ẩn ở đây -->
+                <div id="cont-field4-hd" class="dropdown-container" style="display: none;">
+                    <input type="text" name="field4-hd" id="field4-hd" placeholder="-- Nhập giá trị hợp đồng --" 
+                           onclick="this.select()" oninput="formatInput_HD(this)" 
+                           onkeydown="if(event.key === 'Enter') { event.preventDefault(); document.getElementById('field5-hd').focus(); }" autocomplete="off">
+                </div>
+            </label>
+
+            <!-- 2. Ô TẠM ỨNG -->
+            <label style="flex: 3; margin-bottom: 0;">
+                <div style="margin-bottom: 4px;">
+                    <span><i class="bi bi-cash-coin"></i> Advance</span>
+                </div>
+                <!-- Ẩn ở đây -->
+                <div id="cont-field5-hd" class="dropdown-container" style="display: none;">
+                    <input type="text" id="field5-hd" placeholder="-- % --" 
+                           oninput="filterAdvance_HD(this)" 
+                           onkeydown="masterKeyboardNav(event, 'drop-field5-hd', 'div:not(.disable-hover)', 'field6-hd', (el) => el.onmousedown())"
+                           onclick="this.select(); filterAdvance_HD(this); event.stopPropagation();" 
+                           style="text-align: center !important;" autocomplete="off">
+                    <span class="dropdown-icon" style="right: 5px;">⏷</span>
+                    <div id="drop-field5-hd" class="smooth-dropdown"></div>
+                </div>
+            </label>
+
+        </div>
+        <!-- ========================================================================== -->
+
+        <!-- GUARANTEE -->
+        <div id="radio-guarantee-container-hd" style="display: none;">
+            <label style="margin-bottom: 4px;">Guarantee <i class="bi bi-shield-check"></i></label>
+            <div class="radio-container">
+                <label class="radio-label">
+                    <input type="radio" name="option-hd" value="BLTU" onclick="toggleRadio_HD(this)">
+                    <span class="custom-radio"></span><span class="radio-text">Bảo lãnh tạm ứng</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="option-hd" value="BLHD" onclick="toggleRadio_HD(this)">
+                    <span class="custom-radio"></span><span class="radio-text">Bảo lãnh hợp đồng</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- PAYMENT -->
+        <div id="radio-payment-container-hd" style="display: none;">
+            <label style="margin-bottom: 4px;">Payment <i class="bi bi-credit-card-2-back"></i></label>
+            <div class="radio-container">
+                <label class="radio-label">
+                    <input type="radio" name="option2-hd" value="TT85" onclick="toggleRadio_HD(this)">
+                    <span class="custom-radio"></span><span class="radio-text">Thanh toán đợt 85%</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="option2-hd" value="TT90" onclick="toggleRadio_HD(this)">
+                    <span class="custom-radio"></span><span class="radio-text">Thanh toán đến 90%</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- ==========================================================================
+             VÙNG KẾT HỢP 2 TRƯỜNG TRÊN 1 HÀNG (BẢO HÀNH & TIẾN ĐỘ) - TỶ LỆ 7:3
+             ========================================================================== -->
+        <div style="display: flex; gap: 15px; align-items: flex-start; width: 100%; position: relative; z-index: 800; margin-top: 5px;">
+
+            <!-- 1. Ô BẢO HÀNH (Chiếm 7 phần - Thẳng cột với Giá trị) -->
+            <label style="flex: 7; margin-bottom: 0;">
+                <div style="margin-bottom: 4px;">
+                    <span><i class="bi bi-tools"></i> Settlement / Warranty</span>
+                </div>
+                <div id="cont-field6-hd" class="dropdown-container" style="display: none;">
+                    <!-- Đã trả lại placeholder gốc, bỏ căn giữa -->
+                    <input type="text" name="field6-hd" id="field6-hd" placeholder="-- Hình thức bảo hành --" 
+                           oninput="coreFilter('field6-hd', 'drop-field6-hd', 'warranty')" 
+                           onkeydown="masterKeyboardNav(event, 'drop-field6-hd', 'div:not(.disable-hover)', 'field7-hd', (el) => el.onmousedown())"
+                           onclick="this.select(); coreFilter('field6-hd', 'drop-field6-hd', 'warranty'); event.stopPropagation();" autocomplete="off">
+                    <span class="dropdown-icon">⏷</span>
+                    <div id="drop-field6-hd" class="smooth-dropdown"></div>
+                </div>
+            </label>
+
+            <!-- 2. Ô TIẾN ĐỘ THI CÔNG (Chiếm 3 phần - Thẳng cột với Tạm ứng) -->
+            <label style="flex: 3; margin-bottom: 0;">
+                <div style="margin-bottom: 4px;">
+                    <span><i class="bi bi-hourglass-split"></i> Progress</span>
+                </div>
+                <div id="cont-field7-hd" class="dropdown-container" style="display: none;">
+                    <!-- Đã trả lại placeholder gốc, ép căn giữa giống ô Tạm ứng cho đẹp -->
+                    <input type="text" name="field7-hd" id="field7-hd" placeholder="-- Days --" 
+                           onclick="this.select()" oninput="formatInput_HD(this)" 
+                           style="text-align: center !important;" autocomplete="off">
+                </div>
+            </label>
+
+        </div>
+        <!-- ========================================================================== -->
+
+        <!-- CONTRACT NUMBER -->
+        <label>
+            <div style="margin-bottom: 4px;">
+                <i class="bi bi-view-list"></i> Contract Number
+            </div>
+            <input type="text" name="field8-hd" id="field8-hd" class="readonly-dark" style="border-radius: 35px; text-align: center;" placeholder="Difference in confidence" readonly>
+        </label>
+    </form>
+
+    <div class="button-container">
+        <div class="checkbox-container">
+            <input type="checkbox" id="draftContractCheckbox-hd" onchange="toggleHD_Draft(this)">
+            <label for="draftContractCheckbox-hd">Dự thảo</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="pl01Checkbox-hd">
+            <label for="pl01Checkbox-hd">PL01</label>
+        </div>
+        <button type="button" class="clear-button" onclick="clearForm_HD();">Cancel</button>
+        <button type="button" id="submitButton-hd" class="submit-button" onclick="submitData_HD()">Export File</button>
+    </div>
+</div>

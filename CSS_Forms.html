@@ -1,0 +1,356 @@
+<style>
+/* ==========================================================================
+   NHÓM 3: FORM ELEMENTS (BASE, INPUTS, LABELS, RADIO, CHECKBOX, FLATPICKR)
+   ========================================================================== */
+
+/* 1. Cấu trúc Form cơ bản */
+form { 
+    display: flex; 
+    flex-direction: column; 
+    gap: 3.5px; 
+}
+
+label { 
+    display: block; 
+    margin-bottom: 0px; 
+    font-size: 12.5px; 
+    line-height: 30px; 
+    color: #95A1AF; 
+    letter-spacing: 1px; 
+    transition: color 0.25s ease; 
+}
+
+label:hover { 
+    color: white; 
+    cursor: pointer; 
+}
+
+label:focus-within { 
+    color: #FFC000; 
+}
+
+input {
+    padding: 12px 20px; 
+    border-radius: 35px; 
+    font-size: 15px; 
+    outline: none; 
+    width: calc(100% - 40px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+    background: rgba(0, 0, 0, 0.3) !important; 
+    color: #E0E0E0 !important; 
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+input:hover { 
+    background: rgba(255, 255, 255, 0.05) !important; 
+    border-color: rgba(255, 192, 0, 0.3) !important; 
+}
+
+input:focus { 
+    background: rgba(0, 0, 0, 0.5) !important; 
+    border-color: #FFBA08 !important; 
+    box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 186, 8, 0.2); 
+    transform: translateY(-1px); 
+}
+
+input::placeholder { 
+    color: rgba(255, 255, 255, 0.45) !important; 
+    font-style: italic; 
+    font-size: 13.5px; 
+    letter-spacing: 0.5px; 
+    -webkit-font-smoothing: antialiased; 
+}
+
+input:focus::placeholder { 
+    color: rgba(255, 255, 255, 0.2) !important; 
+    transition: color 0.3s ease; 
+}
+
+input.readonly-dark { 
+    background: rgba(34, 40, 49, 0.6) !important; 
+    border: 1px dashed rgba(149, 161, 175, 0.3) !important; 
+    color: #95A1AF !important; 
+    cursor: default; 
+}
+
+/* 2. Căn giữa dữ liệu và Placeholder cho các trường đặc biệt */
+#field0-hd, #field0-pl, #field0-tb, #field8-hd, #field8-pl, #field6-tb { 
+    text-align: center !important; 
+}
+
+#field0-hd::placeholder, #field0-pl::placeholder, #field0-tb::placeholder, #field8-hd::placeholder, #field8-pl::placeholder, #field6-tb::placeholder { 
+    text-align: center !important; 
+    font-style: italic; 
+}
+
+/* 3. Radio & Checkbox System */
+.radio-container { 
+    display: flex; 
+    justify-content: space-between; 
+    width: 100%; 
+    max-width: 90%; 
+    margin-bottom: -5px; 
+}
+
+.radio-label { 
+    flex: 0 0 48%; 
+    display: flex; 
+    align-items: center; 
+    gap: 6px; 
+    cursor: pointer; 
+    font-size: 14px; 
+    color: white; 
+}
+
+.radio-label input[type="radio"] { 
+    display: none; 
+}
+
+.custom-radio { 
+    width: 14px; 
+    height: 14px; 
+    border: 1px solid #999; 
+    border-radius: 50%; 
+    position: relative; 
+    display: inline-block;
+}
+
+.radio-label input[type="radio"]:checked + .custom-radio::after { 
+    content: ""; 
+    width: 8px; 
+    height: 8px; 
+    background: #FFC000; 
+    border-radius: 50%; 
+    position: absolute; 
+    top: 50%; 
+    left: 50%; 
+    transform: translate(-50%, -50%); 
+}
+
+.radio-label input[type="radio"]:checked + .custom-radio + .radio-text, 
+.radio-label input[type="radio"]:checked + .custom-radio { 
+    color: #FFC000; 
+    border-color: #FFC000;
+}
+
+.radio-label:hover { 
+    color: #FFC000; 
+} 
+
+.radio-label:hover .custom-radio { 
+    border-color: #FFC000; 
+}
+
+.checkbox-container { 
+    display: flex; 
+    align-items: center; 
+    gap: 5px; 
+    margin-right: 10px; 
+}
+
+.checkbox-container label { 
+    font-size: 15px; 
+    color: #DBDBDB; 
+    margin: 0;
+}
+
+.checkbox-container input:checked ~ label { 
+    color: white; 
+}
+
+.checkbox-container input[type="checkbox"] { 
+    width: 15px; 
+    height: 15px; 
+    cursor: pointer; 
+    accent-color: #FFC000; 
+}
+
+/* 4. LUXURY ELITE CALENDAR (FLATPICKR OVERRIDE) */
+/* --- Date Display & Location Dropdown Elements --- */
+.date-display { 
+    font-size: 15px; 
+    font-weight: 500; 
+    display: flex; 
+    align-items: center; 
+    color: #E0E0E0; 
+    position: absolute;
+    right: 20px;
+    opacity: 0; 
+    transition: opacity 0.8s ease-out 0.5s; 
+    transform: none !important; 
+    pointer-events: auto; 
+    cursor: pointer;      
+    z-index: 10;          
+    white-space: nowrap;
+}
+
+/* Hiệu ứng hiện hình khi có class active-intro */
+.active-intro .date-display { 
+    opacity: 1; 
+    transform: none !important; 
+}
+
+.date-display:hover, 
+.date-display.text-open { 
+    color: #FFC000 !important; 
+}
+
+.date-display.different-date { 
+    color: #2ECC71 !important; 
+    text-shadow: 0 0 8px rgba(46, 204, 113, 0.4); 
+}
+
+.location-dropdown {
+    -webkit-appearance: none; 
+    appearance: none; 
+    background: #031c35; 
+    color: #FFC000; 
+    width: 85px; 
+    padding: 4px 0; 
+    font-size: 15px; 
+    border-radius: 20px; 
+    text-align: center; 
+    cursor: pointer; 
+    font-weight: bold; 
+    border: 1px solid #7A828E; 
+    transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.3s ease;
+    will-change: transform, opacity; 
+    outline: none; 
+    flex-shrink: 0;
+}
+
+/* ==========================================================================
+   MODULE: LUXURY FLAT CALENDAR (FLATPICKR OVERRIDE)
+   - Style: Minimalist Flat + Bcons Gold Accent (No Glow/No Shadow)
+   ========================================================================== */
+
+/* 1. KHUNG TỔNG THỂ: Kính mờ và Viền vàng (Bỏ bóng đổ) */
+.flatpickr-calendar {
+    background: rgba(3, 28, 53, 0.98) !important; /* Tăng độ đậm nền */
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(255, 186, 8, 0.5) !important; /* Viền vàng rõ nét hơn */
+    border-radius: 15px !important;
+    font-family: 'Poppins', sans-serif !important;
+    width: 315px !important;
+    margin-top: 10px !important;
+    box-shadow: none !important; /* TRIỆT TIÊU BÓNG */
+}
+
+/* 2. HEADER: Tháng và Năm */
+.flatpickr-months { 
+    padding: 10px 0 !important; 
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05); 
+}
+
+.flatpickr-month { 
+    color: #FFBA08 !important; 
+    fill: #FFBA08 !important; 
+}
+
+.flatpickr-current-month { 
+    font-size: 110% !important; 
+    font-weight: 700 !important; 
+    text-transform: uppercase; 
+    letter-spacing: 1px; 
+}
+
+/* 3. MŨI TÊN ĐIỀU HƯỚNG */
+.flatpickr-prev-month, .flatpickr-next-month {
+    fill: #FFBA08 !important;
+    padding: 10px !important;
+    transition: all 0.3s ease !important;
+}
+
+.flatpickr-prev-month:hover, 
+.flatpickr-next-month:hover { 
+    background: rgba(255, 186, 8, 0.1) !important; 
+    border-radius: 8px; 
+}
+
+/* 4. TÊN THỨ TRONG TUẦN */
+span.flatpickr-weekday { 
+    color: rgba(255, 255, 255, 0.4) !important; 
+    font-weight: 600 !important; 
+    font-size: 11px !important; 
+}
+
+/* 5. CÁC NGÀY TRONG THÁNG (THE DAYS) */
+.flatpickr-day {
+    color: #E0E0E0 !important;
+    border-radius: 8px !important;
+    border: none !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    font-weight: 500 !important;
+    margin: 2px !important;
+}
+
+/* Hover vào ngày (Bỏ Glow) */
+.flatpickr-day:hover { 
+    background: rgba(255, 255, 255, 0.1) !important; 
+    color: #FFFFFF !important; 
+    box-shadow: none !important; /* TRIỆT TIÊU GLOW */
+}
+
+/* Ngày hôm nay (Today) */
+.flatpickr-day.today { 
+    border: 1px solid #FFBA08 !important; 
+    color: #FFBA08 !important; 
+    background: transparent !important; 
+}
+
+/* Ngày được chọn (Selected) - Bỏ Neon Glow */
+.flatpickr-day.selected, 
+.flatpickr-day.selected:hover {
+    background: #FFBA08 !important;
+    color: #031c35 !important;
+    font-weight: 800 !important;
+    box-shadow: none !important; /* TRIỆT TIÊU GLOW */
+}
+
+.flatpickr-day.prevMonthDay, 
+.flatpickr-day.nextMonthDay { 
+    color: rgba(255, 255, 255, 0.1) !important; 
+}
+
+/* 6. MŨI TÊN NHỌN CỦA LỊCH */
+.flatpickr-calendar.arrowTop:before, 
+.flatpickr-calendar.arrowTop:after { 
+    border-bottom-color: rgba(255, 186, 8, 0.5) !important; 
+}
+
+/* 7. HIỆU ỨNG XUẤT HIỆN */
+.flatpickr-calendar.open { 
+    animation: luxuryCalendarFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards; 
+}
+
+/* --- NÚT RESET TRONG LỊCH (Bỏ Glow chữ) --- */
+.flatpickr-calendar .flatpickr-clear-btn {
+    background: rgba(255, 255, 255, 0.03);
+    color: #95A1AF;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 10px 0;
+    text-align: center;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+    border-radius: 0 0 15px 15px;
+}
+
+.flatpickr-calendar .flatpickr-clear-btn:hover { 
+    background: rgba(255, 186, 8, 0.1); 
+    color: #FFBA08; 
+    text-shadow: none !important; /* TRIỆT TIÊU GLOW CHỮ */
+}
+
+/* Keyframes Animation */
+@keyframes luxuryCalendarFadeIn {
+    from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+</style>

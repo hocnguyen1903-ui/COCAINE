@@ -1,0 +1,213 @@
+<div class="form-container">
+    <div class="location-date-container"> 
+        <select id="locationDropdown-pl" class="location-dropdown"></select>
+        <span id="dateDisplay-pl" class="date-display"></span>
+    </div>
+
+    <form id="dataForm-pl">
+        <div id="main-search-container-pl" class="dropdown-container" style="position: relative; z-index: 1000;">
+            <input type="text" name="field0-pl" id="field0-pl" placeholder="-- Search Contract Number --" 
+       onkeydown="masterKeyboardNav(event, 'dropdown-field0-pl', '.hoc-tooltip', 'field5-pl', (el) => selectField0_PL(el.getAttribute('data-display')))" 
+       style="border-radius: 35px" autocomplete="off">
+            
+            <h1>SOẠN THẢO PHỤ LỤC HỢP ĐỒNG</h1>
+
+            <div id="dropdown-field0-pl" class="smooth-dropdown"></div>
+        
+            <div id="edit-panel-pl" style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); width: 700px; height: 360px; background: #031c35; border: 1px solid #FFBA08; border-radius: 12px; z-index: 1001; display: none; flex-direction: column; box-shadow: 0 0 10px rgba(0,0,0,0.5); overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);">
+                    <div id="ep-header-title" style="line-height: 1.3;"></div>
+                    <i class="bi bi-x-lg" onclick="closeEditPanel_PL()" style="cursor:pointer; color:#95A1AF; margin-top: 5px; font-size: 14px;"></i>
+                </div>
+                
+                <div id="ep-view-selector" style="display: flex; flex-direction: column; gap: 8px; padding: 12px 15px;">
+                    <div class="ep-opt-card" onclick="selectEditCategory_PL('CONTRACT_NO', 'Mã số Hợp đồng / Phụ lục')" style="padding: 11px 12px;"><i class="bi bi-code-slash"></i> Mã số Hợp đồng / Phụ lục</div>
+                    <div class="ep-opt-card" onclick="selectEditCategory_PL('DATE', 'Ngày ký')" style="padding: 11px 12px;"><i class="bi bi-calendar-check"></i> Ngày ký</div>
+                    <div class="ep-opt-card" onclick="selectEditCategory_PL('PACKAGE', 'Tên gói thầu')" style="padding: 11px 12px;"><i class="bi bi-box-seam"></i> Tên gói thầu</div>
+                    <div class="ep-opt-card" onclick="selectEditCategory_PL('VALUE', 'Giá trị')" style="padding: 11px 12px;"><i class="bi bi-currency-dollar"></i> Giá trị</div>
+                    <!-- Bỏ style border-top và padding thủ công, để nó tự thừa kế từ ep-opt-card -->
+<div class="ep-opt-card ep-delete-card" onclick="deleteContractRow_PL()">
+    <i class="bi bi-trash3-fill"></i> 
+    <span style="font-weight: 700; letter-spacing: 1px;">DELETE DATA</span>
+</div>
+                </div>
+
+                <div id="ep-view-editor" style="display: none; flex-direction: column; gap: 10px; padding: 15px 20px;">
+    <!-- Vùng nhập liệu -->
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+        <label id="ep-editor-label" style="font-size: 11px; color: #95A1AF;"></label>
+        <input type="text" id="ep-input-val" style="background: #000; border: 1.5px solid #FFBA08; color: #2ECC71; padding: 10px; border-radius: 8px; font-size: 15px; font-weight: bold; outline: none; width: 100%; box-sizing: border-box;">
+    </div>
+
+    <!-- Footer: Chỉ giữ lại 1 tầng nút bấm duy nhất -->
+    <div id="ep-footer-normal" style="display: flex; gap: 10px; margin-top: 15px;">
+        <button type="button" class="btn-secondary-luxury" style="flex:1; padding: 10px; border-radius: 6px; font-size: 11px;" onclick="backToSelector_PL()">BACK</button>
+        
+        <!-- THAY ĐỔI: Bấm là thực thi submitEdit_PL() luôn, không chờ confirm nữa -->
+        <button type="button" class="btn-primary-luxury" style="flex:1; padding: 10px; border-radius: 6px; font-size: 11px;" onclick="submitEdit_PL()">UPDATE</button>
+    </div>
+</div>
+            </div>
+
+            <div id="transfer-panel-pl" style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); width: 700px; background: #031c35; border: 1px solid #FFBA08; border-radius: 12px; z-index: 1001; display: none; flex-direction: column; box-shadow: 0 0 10px rgba(0,0,0,0.5); overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);">
+                    <div id="tp-header-title" style="line-height: 1.4;"></div>
+                    <i class="bi bi-x-lg" onclick="closeChecklist_PL()" style="cursor:pointer; color:#95A1AF; margin-top: 5px;"></i>
+                </div>
+                
+                <div style="padding: 15px; display: flex; flex-direction: column; gap: 6px;" id="checklistOptions-pl">
+                    <label class="check-row"><input type="checkbox" value="HĐ"><span>Hợp đồng TCXD</span><i class="bi bi-file-earmark-text"></i></label>
+                    <label class="check-row"><input type="checkbox" value="PLHĐ"><span>Phụ lục hợp đồng</span><i class="bi bi-file-earmark-plus"></i></label>
+                    <label class="check-row"><input type="checkbox" value="PDG"><span>Phê duyệt giá</span><i class="bi bi-file-earmark-check"></i></label>
+                    <label class="check-row"><input type="checkbox" value="DNTU"><span>Đề nghị tạm ứng</span><i class="bi bi-cash-stack"></i></label>
+                    <label class="check-row"><input type="checkbox" value="BLTU"><span>Bảo lãnh tạm ứng</span><i class="bi bi-shield-shaded"></i></label>
+                    <label class="check-row"><input type="checkbox" value="BLHĐ"><span>Bảo lãnh hợp đồng</span><i class="bi bi-shield-check"></i></label>
+                    <label class="check-row"><input type="checkbox" value="KHÁC"><span>Khác...</span><i class="bi bi-three-dots"></i></label>
+                </div>
+
+                <div style="padding: 12px 15px; display: flex; gap: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
+    <button type="button" class="btn-secondary-luxury" style="flex:1; padding: 10px; border-radius: 6px; font-size: 11px;" onclick="closeChecklist_PL()">CANCEL</button>
+    <button type="button" class="btn-primary-luxury" style="flex:1; padding: 10px; border-radius: 6px; font-size: 11px;" onclick="finalSubmitTransfer_PL()">CONFIRM</button>
+</div>
+            </div>
+            <div id="scan-panel-pl" style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); width: 700px; background: #031c35; border: 1px solid #FFBA08; border-radius: 12px; z-index: 1002; display: none; flex-direction: column; box-shadow: 0 0 10px rgba(0,0,0,0.5); overflow: hidden;">
+                
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);">
+                    <div id="sp-header-title" style="line-height: 1.4;"></div>
+                    <i class="bi bi-x-lg" onclick="closeScanPanel_PL()" style="cursor:pointer; color:#95A1AF; margin-top: 5px;"></i>
+                </div>
+                
+                <div style="padding: 15px 20px;">
+    <!-- Sửa accept để nhận cả Excel -->
+    <input type="file" id="scan-file-input" accept=".pdf, .xls, .xlsx" style="display: none;" multiple>
+    
+    <div id="scan-drop-zone" class="scan-drop-zone">
+        <div id="scan-state-empty" style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
+            <i class="bi bi-cloud-arrow-up" style="font-size: 36px; color: #FFBA08; margin-bottom: 8px;"></i>
+            <!-- Đổi chữ thông báo -->
+            <div style="color: #E0E0E0; font-size: 13.5px; font-weight: 600;">Drag & drop PDF / EXCEL here</div>
+            <div style="color: #95A1AF; font-size: 11px; margin-top: 5px;">Or click to browse from computer</div>
+        </div>
+
+        <div id="scan-state-file" style="display: none; width: 100%; flex-direction: column; align-items: center;">
+            <i class="bi bi-file-earmark-check-fill" style="font-size: 40px; color: #2ECC71; margin-bottom: 5px;"></i>
+            <div id="scan-file-name" style="color: #FFBA08; font-size: 13px; font-weight: bold; text-align: center; word-break: break-all; max-width: 95%; margin-bottom: 2px;">hd_test.pdf</div>
+            <div id="scan-file-size" style="color: #95A1AF; font-size: 11px; margin-bottom: 12px; font-style: italic;">0 MB</div>
+            
+            <button type="button" class="btn-danger-luxury" onclick="removeScanFile_PL(event)" style="padding: 5px 12px; font-size: 11px; border-radius: 20px; box-shadow: none;">
+                <i class="bi bi-trash3"></i> Remove file
+            </button>
+        </div>
+    </div>
+                        <div id="scan-current-file-info" style="display: none; margin-top: 10px;"></div>
+                        
+                    <div id="scan-progress-container" style="display: none; margin-top: 15px; padding: 0 5px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span id="scan-status-text" style="color: #FFBA08; font-size: 10px; font-weight: bold; text-transform: uppercase;">Đang xử lý...</span>
+                        <span id="scan-percent-text" style="color: #E0E0E0; font-size: 10px;">0%</span>
+                    </div>
+                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
+                    <div id="scan-progress-bar" style="width: 0%; height: 100%; background: #FFBA08; box-shadow: 0 0 10px #FFBA08; transition: width 0.2s ease;"></div>
+                    </div>
+                </div>
+
+                </div>
+
+                <div style="padding: 12px 15px; display: flex; gap: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
+                    <button type="button" class="btn-secondary-luxury" style="flex:1; padding: 10px; border-radius: 6px; font-size: 11px;" onclick="closeScanPanel_PL()">CANCEL</button>
+                    <button type="button" id="btn-upload-scan" class="btn-primary-luxury" style="flex:1; padding: 10px; border-radius: 6px; font-size: 11px;" disabled onclick="startUploadScan_PL()">
+                        <i class="bi bi-cloud-upload-fill"></i> UPLOAD
+                    </button>
+                </div>               
+            </div>            
+        </div> 
+        <label style="margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 7px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span><i class="bi bi-sliders"></i> Adjustment Details</span>
+                <span style="font-size: 11px; color: #505966; font-style: italic;">Select options below</span>
+            </div>
+            <div class="dropdown-container">
+                <input type="text" readonly name="field5-pl" id="field5-pl" 
+           placeholder="-- Chọn thông tin điều chỉnh --" 
+           onclick="showDropdown_PL5(); event.stopPropagation();"
+           style="cursor: pointer;"> 
+                <span class="dropdown-icon" onclick="toggleDropdown_PL5()" style="cursor: pointer;">⏷</span>
+                <div id="dropdown-field5-pl" class="smooth-dropdown"></div>
+            </div>
+        </label>
+
+        <label id="label-field2-pl" style="display: none;"><i class="bi bi-cash-coin"></i> Additional value
+            <input type="text" name="field2-pl" id="field2-pl" placeholder="-- Nhập giá trị phát sinh --" onclick="this.select()" oninput="formatInput_PL(this)">
+        </label>
+
+        <label id="label-field9-pl" style="display: none;"><i class="bi bi-calendar-event"></i> Extend the schedule
+            <div class="dropdown-container">
+                <input type="text" name="field9-pl" id="field9-pl" placeholder="-- Chọn thời gian gia hạn --" onclick="this.select()" readonly>
+                <span class="calendar-icon"><i class="bi bi-calendar2-week"></i></span>
+            </div>
+        </label>
+
+        <label><i class="bi bi-view-list"></i> Appendix Number
+            <input type="text" name="field8-pl" id="field8-pl" class="readonly-dark" style="border-radius: 35px" placeholder="Difference in confidence!" readonly>
+        </label>
+    </form>
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 60px;">
+        <!-- GÓC TRÁI: INFO + EXPORT DATA -->
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <button type="button" class="btn-info-luxury" onclick="showSearchGuide_PL()">
+            <i class="bi bi-info-circle"></i>
+        </button>
+
+        <button type="button" class="submit-button" onclick="exportFilteredToNewSheet_PL()" style="min-width: 120px;">
+            <i class="bi bi-file-earmark-spreadsheet"></i> Export Data
+        </button>
+    </div>
+
+    <!-- GÓC PHẢI: CANCEL + EXPORT FILE -->
+        <div class="button-container" style="margin-top: 0;">
+            <div class="checkbox-container" id="pl01-wrapper" style="opacity: 0.4; cursor: pointer;">
+                <input type="checkbox" id="pl01Checkbox-pl" name="pl01-pl" onchange="updateContractNo_PL()" disabled style="cursor: pointer;">
+                <label for="pl01Checkbox-pl" style="cursor: pointer;">PL01</label>
+            </div>
+            <button type="button" class="clear-button" onclick="clearForm_PL();">Cancel</button>
+            <button type="button" id="submitButton-pl" class="submit-button" onclick="submitData_PL()">Export File</button>
+        </div>
+    </div>
+    
+</div>
+
+<!-- Modal xác nhận xóa dữ liệu HĐ/PLHĐ (Luxury Confirm) -->
+<div id="data-delete-confirm-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); z-index: 9999999; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s ease;">
+    <div class="scan-delete-dialog" style="border: 2px solid #ff4d4d; width: 320px; box-shadow: 0 0 30px rgba(255, 77, 77, 0.4); background: #031c35; border-radius: 12px; padding: 25px; text-align: center; display: flex; flex-direction: column; align-items: center;">
+        <i class="bi bi-exclamation-triangle-fill icon-alert-luxury" style="color: #ff4d4d; font-size: 50px; margin-bottom: 18px; filter: drop-shadow(0 0 12px rgba(255, 77, 77, 0.6));"></i>
+        <div style="color: white; font-size: 16px; font-weight: 800; letter-spacing: 1px; margin-bottom: 8px;">CONFIRM DATA DELETION!</div>
+        <div id="delete-data-mahd" style="color: #FFBA08; font-family: 'Courier New', Courier, monospace; font-weight: bold; background: rgba(0,0,0,0.3); padding: 5px 10px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; border: 1px solid rgba(255,186,8,0.2);"></div>
+        <div style="color: #95A1AF; font-size: 11px; line-height: 1.5; margin-bottom: 25px;">
+            Hành động này sẽ xóa vĩnh viễn dữ liệu trên <b style="color: #eee;">Sheet theo dõi</b> và các <b style="color: #eee;">File Scan</b> liên quan. <b style="color: #fff;">Không thể khôi phục!</b>
+        </div>
+        <div style="display: flex; width: 100%; gap: 15px;">
+            <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 40px; border-radius: 8px;" onclick="closeDataDeleteModal()">CANCEL</button>
+            <button type="button" class="btn-danger-luxury" style="flex: 1; height: 40px; background: #ff4d4d !important; border-radius: 8px; color: white; font-weight: bold;" onclick="executeActualDeleteData_PL()">CONFIRM</button>
+        </div>
+    </div>
+</div>
+<!-- Modal xác nhận xóa FILE SCAN (Full Screen Luxury) -->
+<div id="scan-delete-confirm-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 20000000; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
+    <div class="scan-delete-dialog" style="border: 2.5px solid #ff4d4d; width: 340px; box-shadow: 0 0 40px rgba(255, 77, 77, 0.5); background: #031c35; border-radius: 15px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; transform: scale(0.9); transition: transform 0.3s ease;">
+        <i class="bi bi-file-earmark-x-fill icon-alert-luxury" style="color: #ff4d4d; font-size: 50px; margin-bottom: 18px; filter: drop-shadow(0 0 12px rgba(255, 77, 77, 0.6));"></i>
+        <div style="color: white; font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase;">Confirm File Deletion!</div>
+        
+        <!-- Khung tên file Luxury -->
+        <div id="delete-scan-filename" style="color: #FFBA08; font-family: 'Courier New', Courier, monospace; font-weight: bold; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 20px; font-size: 12px; border: 1px solid rgba(255,186,8,0.3); word-break: break-all; width: 100%; box-sizing: border-box; line-height: 1.4;"></div>
+        
+        <div style="color: #95A1AF; font-size: 11.5px; line-height: 1.6; margin-bottom: 30px; padding: 0 10px;">
+            File scan này sẽ bị xóa <b style="color: #fff;">Vĩnh Viễn</b> khỏi hệ thống. <br><b style="color: #fff;">Không thể khôi phục!</b>
+        </div>
+        
+        <div style="display: flex; width: 100%; gap: 15px;">
+            <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 45px; border-radius: 10px; font-size: 13px; font-weight: bold;" onclick="cancelDeleteScan_PL()">CANCEL</button>
+            <button type="button" class="btn-danger-luxury" style="flex: 1; height: 45px; background: #ff4d4d !important; border-radius: 10px; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);" onclick="executeActualDelete_PL()">CONFIRM</button>
+        </div>
+    </div>
+</div>

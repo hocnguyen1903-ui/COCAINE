@@ -1,0 +1,153 @@
+<style>
+/* ==========================================================================
+   NHÓM 2: HEADER & NAVIGATION
+   ========================================================================== */
+.header {
+    background: rgba(22, 27, 34, 0.85) !important; 
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    
+    display: flex; 
+    align-items: center; 
+    
+    /* 🔥 SỬA TẠI ĐÂY: Đổi từ space-between thành flex-end để ép menu qua phải */
+    justify-content: flex-end; 
+    
+    position: fixed; 
+    top: 0; 
+    width: 100%; 
+    height: 65px; 
+    
+    /* Chỉnh padding cho cân đối khi không còn logo */
+    padding: 0 40px; 
+    
+    z-index: 1000000;
+    box-sizing: border-box; 
+    box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+}
+
+.logo:hover { 
+    transform: translateY(-2px); 
+    box-shadow: 0 4px 10px rgba(255, 255, 255, 0.25); 
+    filter: brightness(1.02); 
+}
+
+.logo img { 
+    height: 100%; 
+    width: auto; 
+}
+
+.menu { 
+    display: flex; 
+    align-items: center; 
+    gap: 35px; 
+    height: 100%; 
+}
+
+.menu a {
+    color: rgba(255, 255, 255, 0.75); 
+    font-weight: 600; 
+    font-size: 14px; 
+    text-decoration: none; 
+    position: relative; 
+    padding: 7px 0; 
+    text-transform: uppercase; 
+    letter-spacing: 1.1px; 
+    
+    text-indent: 1.1px; 
+    
+    transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.3s ease;
+    will-change: transform, opacity;
+    display: inline-block; /* Đảm bảo căn chỉnh chuẩn xác */
+}
+
+.menu a::after {
+    content: ''; 
+    position: absolute; 
+    bottom: 0px;
+    left: 50%;
+    width: 0%; 
+    height: 2.5px; 
+    background-color: #FFBA08;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateX(-50%); 
+    box-shadow: 0 0 12px rgba(255, 186, 8, 0.8); 
+    border-radius: 2px;
+}
+
+.menu a:hover { 
+    color: #ffffff; 
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.6); 
+}
+
+.menu a:hover::after, 
+.menu a.active::after { 
+    width: 90%; 
+}
+
+.menu a.active { 
+    color: #FFBA08; 
+    font-weight: 700; 
+    text-shadow: 0 0 15px rgba(255, 186, 8, 0.4); 
+}
+
+/* ==========================================================================
+   DROPDOWN RESOURCE SYSTEM
+   ========================================================================== */
+.header-dropdown {
+    position: relative;
+    display: inline-block;
+    height: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.dropdown-menu-content {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    right: auto;
+    min-width: 80px;
+    background: rgba(22, 27, 34, 0.95);
+    border: 1px solid rgba(255, 186, 8, 0.3);
+    border-top: 2px solid #FFBA08;
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+    
+    display: flex;
+    flex-direction: column;
+    padding: 10px 0;
+    
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-50%) translateY(15px);
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    z-index: 1000001;
+}
+
+.header-dropdown:hover .dropdown-menu-content {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+.dropdown-menu-content a {
+    padding: 12px 20px !important;
+    font-size: 10px !important;
+    letter-spacing: 2px !important;
+    color: rgba(255, 255, 255, 0.7) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    transition: all 0.3s ease !important;
+    text-align: center !important;
+    white-space: nowrap;
+}
+
+.dropdown-menu-content a::after {
+    display: none !important; /* Xóa gạch chân menu chính cho menu con */
+}
+
+.dropdown-menu-content a:last-child {
+    border-bottom: none;
+}
+</style>

@@ -1,0 +1,99 @@
+<div class="form-container">
+    <div class="location-date-container">
+        <select id="locationDropdown-tb" class="location-dropdown"></select>
+        <span id="dateDisplay-tb" class="date-display"></span>
+    </div>
+
+    <form id="dataForm-tb">
+        <!-- CHỈ ĐỂ INPUT VÀ DROPDOWN TRONG NÀY -->
+        <div class="dropdown-container" style="position: relative; z-index: 1000;">
+            <input type="text" name="field0-tb" id="field0-tb" placeholder="-- Search for Bidding Package --" 
+                   oninput="coreFilter('field0-tb', 'drop-field0-tb', 'pack')" 
+                   onkeydown="masterKeyboardNav(event, 'drop-field0-tb', 'div:not(.disable-hover)', 'field1-tb', (el) => el.onmousedown())"
+                   onclick="this.select(); coreFilter('field0-tb', 'drop-field0-tb', 'pack'); event.stopPropagation();" 
+                   style="border-radius: 35px; text-align: center; font-size: 18px;" autocomplete="off">
+
+            <!-- Dropdown giờ sẽ bám sát đít input vì container giờ chỉ cao bằng cái input -->
+            <div id="drop-field0-tb" class="smooth-dropdown"></div>
+        </div>
+
+        <h1>THÔNG BÁO KẾT QUẢ GÓI THẦU</h1>
+        <!-- FIELD MỚI: ITEM CATEGORY (FULL NAME) -->
+<label>
+    <div>
+        <span><i class="bi bi-intersect"></i> Item Category </span>
+    </div>
+    <div id="cont-pkg-name-tb" class="dropdown-container" style="display: none;">
+        <input type="text" name="field-pkg-name-tb" id="field-pkg-name-tb" 
+               placeholder="-- Tên hạng mục (Tự động/Chỉnh sửa) --">
+    </div>
+</label>
+
+        <label>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span><i class="bi bi-globe-americas"></i> Project Code 1</span>
+            </div>
+            <div id="cont-field1-tb" class="dropdown-container" style="display: none;">
+                <input type="text" id="field1-tb" placeholder="-- Nhập mã dự án 1 --" 
+                       oninput="coreFilter('field1-tb', 'drop-field1-tb', 'project')" 
+                       onkeydown="masterKeyboardNav(event, 'drop-field1-tb', 'div:not(.disable-hover)', 'field2-tb', (el) => el.onmousedown())"
+                       onclick="this.select(); coreFilter('field1-tb', 'drop-field1-tb', 'project');" autocomplete="off">
+                <div id="drop-field1-tb" class="smooth-dropdown"></div>
+            </div>
+        </label>
+
+        <label>
+            <div style="margin-bottom: 4px;"><i class="bi bi-globe-asia-australia"></i> Project Code 2</div>
+            <div id="cont-field2-tb" class="dropdown-container" style="display: none;">
+                <input type="text" id="field2-tb" placeholder="-- Nhập mã dự án 2 --" 
+                       oninput="coreFilter('field2-tb', 'drop-field2-tb', 'project')" 
+                       onkeydown="masterKeyboardNav(event, 'drop-field2-tb', 'div:not(.disable-hover)', 'field3-tb', (el) => el.onmousedown())"
+                       onclick="this.select(); coreFilter('field2-tb', 'drop-field2-tb', 'project');" autocomplete="off">
+                <div id="drop-field2-tb" class="smooth-dropdown"></div>
+            </div>
+        </label>
+
+        <label>
+            <div style="margin-bottom: 4px;"><i class="bi bi-globe-central-south-asia"></i> Project Code 3</div>
+            <div id="cont-field3-tb" class="dropdown-container" style="display: none;">
+                <input type="text" id="field3-tb" placeholder="-- Nhập mã dự án 3 --" 
+                       oninput="coreFilter('field3-tb', 'drop-field3-tb', 'project')" 
+                       onkeydown="masterKeyboardNav(event, 'drop-field3-tb', 'div:not(.disable-hover)', 'field4-tb', (el) => el.onmousedown())"
+                       onclick="this.select(); coreFilter('field3-tb', 'drop-field3-tb', 'project');" autocomplete="off">
+                <div id="drop-field3-tb" class="smooth-dropdown"></div>
+            </div>
+        </label>
+
+        <label> 
+            <div style="margin-bottom: 4px;"><i class="bi bi-person-fill"></i> Contractor 1</div>
+            <div id="cont-field4-tb" class="dropdown-container" style="display: none;">
+                <input type="text" id="field4-tb" placeholder="-- Nhập tên Nhà thầu chính --" 
+                       oninput="coreFilter('field4-tb', 'drop-field4-tb', 'contractor')" 
+                       onkeydown="masterKeyboardNav(event, 'drop-field4-tb', 'div:not(.disable-hover)', 'field5-tb', (el) => el.onmousedown())"
+                       onclick="this.select(); coreFilter('field4-tb', 'drop-field4-tb', 'contractor');" autocomplete="off">
+                <div id="drop-field4-tb" class="smooth-dropdown"></div>
+            </div>
+        </label>
+
+        <label>
+            <div style="margin-bottom: 4px;"><i class="bi bi-person-plus-fill"></i> Contractor 2</div>
+            <div id="cont-field5-tb" class="dropdown-container" style="display: none;">
+                <input type="text" id="field5-tb" placeholder="-- Nhập tên Nhà thầu phụ --" 
+                       oninput="coreFilter('field5-tb', 'drop-field5-tb', 'contractor')" 
+                       onkeydown="masterKeyboardNav(event, 'drop-field5-tb', 'div:not(.disable-hover)', 'submitButton-tb', (el) => el.onmousedown())"
+                       onclick="this.select(); coreFilter('field5-tb', 'drop-field5-tb', 'contractor');" autocomplete="off">
+                <div id="drop-field5-tb" class="smooth-dropdown"></div>
+            </div>
+        </label>
+
+        <label>
+            <div style="margin-bottom: 4px;"><i class="bi bi-view-list"></i> Notification Number</div>
+            <input type="text" id="field6-tb" class="readonly-dark" placeholder="Difference in confidence" readonly>
+        </label>
+    </form>
+
+    <div class="button-container">
+        <button type="button" class="clear-button" onclick="clearForm_TB();">Cancel</button>
+        <button type="button" id="submitButton-tb" class="submit-button" onclick="submitData_TB()">Export File</button>
+    </div>
+</div>

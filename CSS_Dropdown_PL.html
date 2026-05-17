@@ -1,0 +1,256 @@
+<style>
+/* ==========================================================================
+   4.3. DASHBOARD PL (FIELD 0 PL) - ULTRA-SHARP & ECO-PERFORMANCE
+   ========================================================================== */
+#dropdown-field0-pl {
+    display: block !important; 
+    opacity: 1 !important; 
+    visibility: visible !important;
+    position: relative !important; 
+    width: 100% !important; 
+    height: 332px !important; 
+    max-height: 332px !important; 
+    margin-top: 12px !important; 
+    background: #031c35 !important; 
+    border: 1.5px solid rgba(255, 186, 8, 0.7) !important; 
+    border-radius: 8px;
+    padding: 0 !important; 
+    z-index: 100 !important; 
+    overflow-y: auto !important; 
+    
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility !important;
+    filter: blur(0) !important; 
+    transform: translate3d(0, 0, 0); 
+    backface-visibility: hidden;
+    perspective: 1000px;
+
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5) !important;
+    
+    scrollbar-width: none; 
+    -ms-overflow-style: none;
+}
+
+#dropdown-field0-pl::-webkit-scrollbar { display: none !important; }
+
+/* 3. THANH TỔNG (HEADER) - GIỮ NGUYÊN MÀU VÀNG CỦA MÀY */
+#dropdown-field0-pl section.disable-hover { 
+    position: sticky !important; 
+    top: 0; left: 0; z-index: 20; 
+    width: 100% !important; 
+    margin: 0 !important; 
+    
+    background: rgba(255, 186, 8) !important; 
+    border-bottom: 1.5px solid rgba(255, 186, 8, 0.6) !important; 
+    
+    box-sizing: border-box; 
+    padding: 8px 15px !important; 
+    backdrop-filter: blur(10px);
+    transform: translate3d(0, 0, 0);
+}
+
+/* 4. DÒNG DỮ LIỆU */
+.hoc-tooltip {
+    position: relative !important; 
+    display: flex !important; 
+    width: 100% !important; 
+    box-sizing: border-box; 
+    padding: 0 15px !important; 
+    height: 37px; 
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important; 
+    cursor: pointer; 
+    align-items: center !important; 
+    color: rgba(255, 255, 255, 0.5); 
+    background: transparent !important;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    transform: translate3d(0, 0, 0);
+}
+
+.hoc-tooltip::before { 
+    display: none !important; 
+}
+
+#dropdown-field0-pl .hoc-tooltip:hover, 
+#dropdown-field0-pl .hoc-tooltip.active,
+#dropdown-field0-pl .hoc-tooltip.is-selected-row {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+#dropdown-field0-pl .hoc-tooltip:not(.row-untransferred):hover { 
+    color: #2ECC71 !important; 
+}
+#dropdown-field0-pl .hoc-tooltip.row-untransferred:hover { 
+    color: #FFC000 !important; 
+}
+#dropdown-field0-pl .hoc-tooltip.has-scan-file:hover { 
+    color: #00BCD4 !important; 
+}
+
+#dropdown-field0-pl .hoc-tooltip i, 
+#dropdown-field0-pl .hoc-tooltip div { 
+    font-size: 10.5px !important; 
+    font-weight: 500 !important; 
+    -webkit-font-smoothing: subpixel-antialiased;
+}
+
+.money-column-container { flex-shrink: 0; white-space: nowrap; text-align: right; }
+.money-column-container span { 
+    font-size: 11.5px !important; 
+    font-weight: 700 !important;
+    letter-spacing: 0.2px; 
+    transform: translate3d(0, 0, 0);
+}
+
+.list-dashboard-locked { 
+    filter: grayscale(0.75) !important; 
+    pointer-events: none !important; 
+    opacity: 0.15 !important; 
+    transition: all 0.3s ease;
+}
+
+/* ==========================================================================
+   ADJUSTMENT DETAILS DROPDOWN (FIELD 5 PL)
+   ========================================================================== */
+
+#dropdown-field5-pl { 
+    display: block !important; 
+    position: absolute; 
+    background: #031c35; 
+    z-index: 99999; 
+    top: 100%; 
+    left: -0.5px; 
+    width: calc(100.5% - 2px); 
+    border-radius: 8px;    
+    border: 1.5px solid transparent; 
+    max-height: 0; 
+    opacity: 0; 
+    visibility: hidden; 
+    overflow: hidden !important; 
+    pointer-events: none; 
+
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility !important;
+    filter: blur(0) !important; 
+
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+    transform: translate3d(0, -5px, 0);
+    
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), 
+                opacity 0.3s ease, 
+                transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.3s ease,
+                visibility 0s linear 0.35s !important;
+}
+
+#dropdown-field5-pl.open-smooth { 
+    max-height: 164px !important; 
+    opacity: 1; 
+    visibility: visible !important; 
+    border-color: rgba(255, 186, 8, 0.4); 
+    transform: translate3d(0, 8px, 0) !important; 
+    
+    pointer-events: auto !important; 
+    overflow-y: auto !important; 
+    overscroll-behavior: contain !important; 
+    
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), 
+                opacity 0.3s ease, 
+                transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.3s ease,
+                visibility 0s linear 0s !important; 
+}
+
+/* THANH CUỘN: GIỮ NGUYÊN MÀU VÀNG CỦA MÀY */
+#dropdown-field5-pl::-webkit-scrollbar { width: 6px !important; display: block !important; }
+#dropdown-field5-pl::-webkit-scrollbar-track { background: transparent; }
+#dropdown-field5-pl::-webkit-scrollbar-thumb {
+    background: rgba(255, 186, 8) !important;
+    border-radius: 8px;
+}
+#dropdown-field5-pl::-webkit-scrollbar-thumb:hover { background: #FFBA08 !important; }
+
+.adjustment-item {
+    position: relative !important;
+    padding: 0 15px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    height: 33px !important;
+    box-sizing: border-box;
+    background-color: transparent !important;
+    transition: background-color 0.2s ease;
+}
+
+.adjustment-item:hover {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.adjustment-item span {
+    font-size: 12px !important;
+    color: rgba(255, 255, 255, 0.5) !important; 
+    transition: color 0.2s ease;
+    white-space: nowrap;
+    transform: translateZ(0); 
+}
+
+.adjustment-item:hover span {
+    color: #ffffff !important;
+}
+
+.adjustment-item.selected-item span {
+    color: #FFBA08 !important;
+    font-weight: 600;
+}
+
+.custom-circle-check {
+    width: 11px;
+    height: 11px;
+    border: 1.5px solid #7A828E;
+    border-radius: 50%;
+    margin-right: 12px;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.2s ease;
+}
+
+.adjustment-item:hover .custom-circle-check {
+    border-color: #ffffff !important;
+}
+
+.adjustment-item.selected-item .custom-circle-check {
+    border-color: #FFBA08 !important;
+}
+
+.custom-circle-check::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    background: #FFBA08;
+    border-radius: 50%;
+    transform: scale(0);
+    opacity: 0;
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.adjustment-item.selected-item .custom-circle-check::after {
+    transform: scale(1);
+    opacity: 1;
+}
+
+/* ==========================================================================
+   5. CROSS-PLATFORM SELECTION LOCK (MOBILE ONLY)
+   ========================================================================== */
+@media (hover: none) and (pointer: coarse) {
+    #dropdown-field0-pl, 
+    #dropdown-field0-pl * {
+        -webkit-user-select: none !important; /* Khóa bôi đen trên Safari/WebKit */
+        user-select: none !important;
+        -webkit-touch-callout: none !important; /* Chặn popup menu (Copy/Look Up) của iOS */
+    }
+}
+</style>
