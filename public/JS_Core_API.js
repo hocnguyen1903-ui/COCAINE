@@ -124,33 +124,47 @@ function updateAppScrollState() {
  */
 async function loadSystemData(isSilent = false) {
     const loading = document.getElementById("loadingSystem");
-    if (loading && !isSilent) loading.style.display = "flex";
+    if (loading && !isSilent) {
+        loading.style.display = "flex";
+        loading.style.opacity = "1"; 
+    }
 
     try {
-        const sysData = await serverCall('getSystemData');
+        // Đã đổi sang hàm chuẩn callBackend được định nghĩa ở index.html
+        const sysData = await callBackend('getSystemData');
 
         if (sysData) {
             SYSTEM_DATA = sysData;
             PRECOMPUTED_PL_DATA = null;
 
-            // Đảm bảo các Tab được khởi tạo theo đúng thứ tự
-            if (typeof initTabHD === 'function') initTabHD();
-            if (typeof initTabPL === 'function') initTabPL();
-            if (typeof initTabTB === 'function') initTabTB();
+            // Bọc try-catch độc lập: Một tab lỗi không làm chết cả hệ thống
+            try { if (typeof initTabHD === 'function') initTabHD(); } catch(e) { console.error("Lỗi init HD:", e); }
+            try { if (typeof initTabPL === 'function') initTabPL(); } catch(e) { console.error("Lỗi init PL:", e); }
+            try { if (typeof initTabTB === 'function') initTabTB(); } catch(e) { console.error("Lỗi init TB:", e); }
             
             // Build DOM Dashboard sau khi đã có dữ liệu
-            if (typeof executeFilter_PL === 'function') executeFilter_PL(false);
+            try { if (typeof executeFilter_PL === 'function') executeFilter_PL(false); } catch(e) { console.error("Lỗi build DOM PL:", e); }
         }
 
-        if (loading) {
-            // Hiệu ứng tắt Loader mượt mà
+        if (loading && !isSilent) {
+            // Ép transition bằng JS để đảm bảo hiệu ứng fade mượt mà 100%
+            loading.style.transition = "opacity 0.5s ease";
             loading.style.opacity = "0";
             setTimeout(() => { loading.style.display = "none"; }, 500);
         }
     } catch (error) {
-        if (loading) loading.style.display = "none";
+        if (loading) {
+            loading.style.display = "none";
+            loading.style.opacity = "1";
+        }
         console.error("Lỗi khởi tạo hệ thống:", error);
-        showToast_PL("⚠️ Lỗi kết nối dữ liệu!", "error");
+        
+        // Fallback an toàn cho Toast
+        if (typeof showToast_PL === 'function') {
+            showToast_PL("⚠️ Lỗi kết nối dữ liệu!", "error");
+        } else {
+            alert("⚠️ Lỗi kết nối dữ liệu!");
+        }
     }
 }
 
