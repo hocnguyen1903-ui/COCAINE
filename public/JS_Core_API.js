@@ -163,31 +163,30 @@ async function loadSystemData(isSilent = false) {
     if (loading && !isSilent) loading.style.display = "flex";
 
     try {
-        // Tối ưu hóa API: Chuyển sang Single-Request, chỉ tải SystemData cốt lõi
-        const [sysData] = await Promise.all([
-            serverCall('getSystemData')
-        ]);
+        const sysData = await serverCall('getSystemData');
 
-        // 1. Phân bổ dữ liệu JSON thô vào State
         if (sysData) {
             SYSTEM_DATA = sysData;
             PRECOMPUTED_PL_DATA = null;
+
+            // Đảm bảo các Tab được khởi tạo theo đúng thứ tự
+            if (typeof initTabHD === 'function') initTabHD();
+            if (typeof initTabPL === 'function') initTabPL();
+            if (typeof initTabTB === 'function') initTabTB();
+            
+            // Build DOM Dashboard sau khi đã có dữ liệu
+            if (typeof executeFilter_PL === 'function') executeFilter_PL(false);
         }
 
-        // 2. Khởi tạo Giao diện (Render DOM)
-        if (!isSilent) {
-            initTabHD();
-            initTabPL();
-            initTabTB();
-            if (typeof executeFilter_PL === 'function') executeFilter_PL(false); // Build DOM PL
+        if (loading) {
+            // Hiệu ứng tắt Loader mượt mà
+            loading.style.opacity = "0";
+            setTimeout(() => { loading.style.display = "none"; }, 500);
         }
-
-        if (loading) loading.style.display = "none";
-        console.log("🚀 CSR: Toàn bộ dữ liệu JSON đã tải và Render xong!");
-
     } catch (error) {
         if (loading) loading.style.display = "none";
-        alert("Lỗi tải dữ liệu hệ thống: " + error.message);
+        console.error("Lỗi khởi tạo hệ thống:", error);
+        showToast_PL("⚠️ Lỗi kết nối dữ liệu!", "error");
     }
 }
 
