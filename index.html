@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no">
     <title>The Contract Hub_V2</title>
-    
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -16,6 +15,7 @@
     <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
     <script src="https://cytoscape.org/cytoscape.js-dagre/cytoscape-dagre.js"></script>
 
+    <!-- THỨ TỰ NẠP CSS BẮT BUỘC (CASCADING) -->
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="CSS_Header.css">
     <link rel="stylesheet" href="CSS_Forms.css">
@@ -29,6 +29,7 @@
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
 </head>
 <body>
+    <!-- 1. LOADERS -->
     <div id="loadingSystem" class="luxury-loader">
         <div class="loader-content">
             <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">
@@ -36,14 +37,9 @@
             <p class="loader-text">SYSTEM INITIALIZING</p>
         </div>
     </div>
-    <div id="contractLoading" class="luxury-loader" style="display: none;">
-        <div class="loader-content">
-            <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">
-            <div class="shimmer-bar"></div>
-            <p class="loader-text">CRAFTING DOCUMENT</p>
-        </div>
-    </div>
+    <div id="contractLoading" class="luxury-loader" style="display: none;"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">CRAFTING DOCUMENT</p></div></div>
 
+    <!-- 2. HEADER -->
     <div class="header">
         <div class="menu">
             <a href="javascript:void(0)" id="btn-about" onclick="openTab('tab-about')" class="active"><b>ABOUT</b></a>
@@ -54,46 +50,30 @@
         </div>
     </div>
 
+    <!-- 3. TABS -->
     <div id="tab-about" class="tab-content">
         <div class="form-container" style="text-align: center; color: white; margin-top: 150px; background: transparent; box-shadow: none; backdrop-filter: none;">
             <h1 style="font-size: 40px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">NICE TO SEE YOU, BRO!</h1>
             <p>Hệ thống quản lý hợp đồng đã sẵn sàng.</p>
         </div>
     </div>
+    <div id="tab-hdtcxd" class="tab-content" style="display: none;"></div>
+    <div id="tab-plhd" class="tab-content" style="display: none;"></div>
+    <div id="tab-tbkq" class="tab-content" style="display: none;"></div>
+    <div id="tab-drawing" class="tab-content" style="display: none;"></div>
 
-    <div id="tab-hdtcxd" class="tab-content" style="display: none;">
-        </div>
-
-    <div id="tab-plhd" class="tab-content" style="display: none;">
-        </div>
-
-    <div id="tab-tbkq" class="tab-content" style="display: none;">
-        </div>
-
-    <div id="tab-drawing" class="tab-content" style="display: none;">
-        </div>
-
+    <!-- 4. GLOBAL ELEMENTS (BẮT BUỘC Ở ĐÂY) -->
     <div id="customContextMenu-pl"></div>
     <div id="toastContainer"></div>
     <div id="infoModal-pl" class="info-modal-overlay" onclick="closeSearchGuide_PL()"></div>
 
     <script>
         const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzG7aVeSXeXm0KgIIouCYXM1h4JXtUbV2TmT2qPdvDd7o7cuE0by0GzHIVG7cyD1ZFM/exec";
-        
         async function callBackend(action, data = {}) {
-            try {
-                const resp = await fetch(GAS_API_URL, { 
-                    method: 'POST', 
-                    mode: 'cors', 
-                    body: JSON.stringify({ action, data }) 
-                });
-                const res = await resp.json();
-                if (res.status === "error") throw new Error(res.message);
-                return res.data;
-            } catch (err) {
-                console.error(`API Error [${action}]:`, err);
-                throw err;
-            }
+            const resp = await fetch(GAS_API_URL, { method: 'POST', mode: 'cors', body: JSON.stringify({ action, data }) });
+            const res = await resp.json();
+            if (res.status === "error") throw new Error(res.message);
+            return res.data;
         }
     </script>
     <script src="JS_Variables.js"></script>
@@ -105,6 +85,5 @@
     <script src="JS_Tab_PL_Files.js"></script>
     <script src="JS_Tab_TB.js"></script>
     <script src="JS_Drawing.js"></script>
-    <script src="JS_Main.js"></script>
 </body>
 </html>
