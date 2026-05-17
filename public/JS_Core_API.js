@@ -15,74 +15,40 @@ const serverCall = async (serverMethodName, ...args) => {
 /**
  * Điều hướng Tab (Slide Transition & Intro Animation)
  */
-function openTab(tabId, triggerIntro = true) {
+async function openTab(tabId, triggerIntro = true) {
     if (tabId === activeTabId && !isInitialLoad) return;
-
-    // LƯU TAB VÀO MÁY CỤC BỘ
     localStorage.setItem('bcons_hub_last_tab', tabId);
-
-    if (tabId === 'tab-tbkq' && !isTBKQInitialized) {
-        if (typeof updateContractNo_TB === "function") {
-            updateContractNo_TB();
-            isTBKQInitialized = true; 
-        }
-    }
-
-    if (tabId === 'tab-plhd' && typeof clearForm_PL === "function") clearForm_PL(); 
-    if (tabId === 'tab-drawing' && typeof loadDrawingModule === "function") loadDrawingModule(); 
-
     const targetTab = document.getElementById(tabId);
-    const currentTab = document.getElementById(activeTabId);
     if (!targetTab) return;
 
-    if (tabTimeout) { clearTimeout(tabTimeout); tabTimeout = null; }
-
-    const newTabOrder = TAB_MAP[tabId];
-    const isForward = newTabOrder >= currentTabOrder;
-    
-    document.querySelectorAll('.location-date-container').forEach(c => c.classList.remove('active-intro'));
-
-    document.querySelectorAll('.tab-content').forEach(t => {
-        if (t.id !== tabId && t.id !== activeTabId) {
-            t.style.display = 'none';
-            t.style.zIndex = '1';
-        }
-        t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
-    });
-
-    if (isInitialLoad) {
-        targetTab.style.display = 'flex';
-        targetTab.classList.add('instant-fade');
-    } else {
-        if (currentTab) {
-            currentTab.style.zIndex = '1';
-            currentTab.classList.add(isForward ? 'slide-out-left' : 'slide-out-right');
-        }
-        targetTab.style.display = 'flex';
-        targetTab.style.zIndex = '2';
-        targetTab.classList.add(isForward ? 'slide-in-right' : 'slide-in-left');
-
-        const oldTabId = activeTabId;
-        tabTimeout = setTimeout(() => {
-            const oldTab = document.getElementById(oldTabId);
-            if (oldTab && oldTabId !== activeTabId) oldTab.style.display = 'none';
-            tabTimeout = null;
-        }, 850);
+    // Chỉ nạp HTML nếu Tab rỗng và không phải là tab-about
+    if (targetTab.innerHTML.trim() === "" && tabId !== 'tab-about') {
+        const fileMap = {
+            'tab-hdtcxd': 'Tab_HDTCXD.html',
+            'tab-plhd': 'Tab_PLHD.html',
+            'tab-tbkq': 'Tab_TBKQ.html',
+            'tab-drawing': 'Tab_Drawing.html'
+        };
+        try {
+            const resp = await fetch('./' + fileMap[tabId]);
+            if (resp.ok) {
+                targetTab.innerHTML = await resp.text();
+                // Kích hoạt logic riêng của từng Tab
+                if (tabId === 'tab-hdtcxd') initTabHD();
+                if (tabId === 'tab-plhd') initTabPL();
+                if (tabId === 'tab-tbkq') initTabTB();
+                if (tabId === 'tab-drawing') loadDrawingModule();
+            }
+        } catch (e) { console.error("Lỗi nạp Tab:", e); }
     }
 
-    if (tabId !== 'tab-about' && triggerIntro) {
-        const container = targetTab.querySelector(".location-date-container");
-        if (container) {
-            setTimeout(() => { container.classList.add("active-intro"); }, 200); 
-        }
-    }
-
+    document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+    targetTab.style.display = 'flex';
     activeTabId = tabId;
-    currentTabOrder = newTabOrder;
+    
     document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
     const btnId = tabId === 'tab-hdtcxd' ? 'btn-hd' : tabId === 'tab-plhd' ? 'btn-pl' : tabId === 'tab-tbkq' ? 'btn-tbkq' : tabId === 'tab-drawing' ? 'btn-drawing' : 'btn-about';
     document.getElementById(btnId)?.classList.add('active');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
     if (isInitialLoad) isInitialLoad = false;
 }
 

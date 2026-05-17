@@ -1,5 +1,5 @@
 === BẮT ĐẦU DUMP DỮ LIỆU DỰ ÁN ===
-Thời gian tạo: Sun May 17 22:24:08 +07 2026
+Thời gian tạo: Sun May 17 22:34:11 +07 2026
 ==================================
 
 
@@ -924,7 +924,116 @@ function optimizeDocSections(body, validSections) {
 
 
 ==================================================
-FILE [4]: ./CSS_UI_Elements.css
+FILE [4]: ./index.html
+==================================================
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no">
+    <title>The Contract Hub_V2</title>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/vi.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+    <script src="https://cytoscape.org/cytoscape.js-dagre/cytoscape-dagre.js"></script>
+
+    <!-- NẠP CSS NỘI BỘ -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="CSS_Header.css">
+    <link rel="stylesheet" href="CSS_Forms.css">
+    <link rel="stylesheet" href="CSS_UI_Elements.css">
+    <link rel="stylesheet" href="CSS_Dropdown_General.css">
+    <link rel="stylesheet" href="CSS_Dropdown_PL.css">
+    <link rel="stylesheet" href="CSS_Modals.css">
+    <link rel="stylesheet" href="CSS_System.css">
+    <link rel="stylesheet" href="Tab_Drawing.css">
+
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
+</head>
+
+<body>
+    <div id="loadingSystem" class="luxury-loader">
+        <div class="loader-content">
+            <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">
+            <div class="shimmer-bar"></div>
+            <p class="loader-text">SYSTEM INITIALIZING</p>
+        </div>
+    </div>
+    <div id="contractLoading" class="luxury-loader" style="display: none;"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">CRAFTING DOCUMENT</p></div></div>
+
+    <div class="header">
+        <div class="menu">
+            <a href="javascript:void(0)" id="btn-about" onclick="openTab('tab-about')" class="active"><b>ABOUT</b></a>
+            <a href="javascript:void(0)" id="btn-hd" onclick="openTab('tab-hdtcxd')">CONTRACT</a>
+            <a href="javascript:void(0)" id="btn-pl" onclick="openTab('tab-plhd')">EXTENSIONS</a>
+            <a href="javascript:void(0)" id="btn-tbkq" onclick="openTab('tab-tbkq')">NOTICES</a>
+            <a href="javascript:void(0)" id="btn-drawing" onclick="openTab('tab-drawing')">DRAWING</a>
+            <div class="header-dropdown">
+                <a href="javascript:void(0)" id="btn-resource">RESOURCE</a>
+                <div class="dropdown-menu-content">
+                    <a href="https://docs.google.com/spreadsheets/d/1_whNLrEL5x1Kk3Fheq8-AgTE425LnWkvbGVmhXMlL1I/edit" target="_blank">SHEETDATA</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-about" class="tab-content">
+        <div class="form-container" style="text-align: center; color: white; margin-top: 150px; background: transparent; box-shadow: none; backdrop-filter: none;">
+            <h1 style="font-size: 40px;">NICE TO SEE YOU, BRO!</h1>
+            <p>Hệ thống quản lý hợp đồng đã sẵn sàng.</p>
+        </div>
+    </div>
+    <!-- CÁC KHUNG TAB TRỐNG ĐỂ JS NẠP VÀO -->
+    <div id="tab-hdtcxd" class="tab-content" style="display: none;"></div>
+    <div id="tab-plhd" class="tab-content" style="display: none;"></div>
+    <div id="tab-tbkq" class="tab-content" style="display: none;"></div>
+    <div id="tab-drawing" class="tab-content" style="display: none;"></div>
+
+    <div id="customContextMenu-pl"></div>
+    <div id="toastContainer"></div>
+
+    <script>
+        const GAS_API_URL = "DÁN_LINK_WEB_APP_GOOGLE_CỦA_MÀY_VÀO_ĐÂY";
+        
+        async function callBackend(action, data = {}) {
+            try {
+                const response = await fetch(GAS_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: action, data: data })
+                });
+                const result = await response.json();
+                if (result.status === "error") throw new Error(result.message);
+                return result.data;
+            } catch (error) {
+                console.error("Lỗi gọi API:", error);
+                return null;
+            }
+        }
+    </script>
+    <script src="JS_Variables.js"></script>
+    <script src="JS_Utils.js"></script>
+    <script src="JS_Core_API.js"></script>
+    <script src="JS_Tab_HD.js"></script>
+    <script src="JS_Tab_PL_Core.js"></script>
+    <script src="JS_Tab_PL_Actions.js"></script>
+    <script src="JS_Tab_PL_Files.js"></script>
+    <script src="JS_Tab_TB.js"></script>
+    <script src="JS_Drawing.js"></script>
+</body>
+</html>
+
+
+==================================================
+FILE [5]: ./CSS_UI_Elements.css
 ==================================================
    NHÓM 4: UI COMPONENTS (BUTTONS, DROPDOWNS, DASHBOARD, FILE MANAGEMENT)
    ========================================================================== */
@@ -1034,7 +1143,7 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
 
 
 ==================================================
-FILE [5]: ./CSS_System.css
+FILE [6]: ./CSS_System.css
 ==================================================
    NHÓM 6: SYSTEM & FEEDBACK (LOADERS, PROGRESS BARS & DROP ZONES)
    ========================================================================== */
@@ -1163,7 +1272,7 @@ FILE [5]: ./CSS_System.css
 
 
 ==================================================
-FILE [6]: ./API_HopDong.js
+FILE [7]: ./API_HopDong.js
 ==================================================
 // 3. LOGIC XUẤT FILE HỢP ĐỒNG GỐC (HDTCXD)
 // =========================================================================
@@ -1421,7 +1530,7 @@ function writeToSheetAndExportDoc_TB(data) {
 
 
 ==================================================
-FILE [7]: ./Tab_TBKQ.html
+FILE [8]: ./Tab_TBKQ.html
 ==================================================
 <div class="form-container">
     <div class="location-date-container">
@@ -1525,7 +1634,7 @@ FILE [7]: ./Tab_TBKQ.html
 
 
 ==================================================
-FILE [8]: ./Code.js
+FILE [9]: ./Code.js
 ==================================================
 const SHEET_ID = "1_whNLrEL5x1Kk3Fheq8-AgTE425LnWkvbGVmhXMlL1I";
 const SHEET_NAME_TBKQ = "TBKQTT";
@@ -1747,7 +1856,7 @@ function apiDispatcher(payload) {
 
 
 ==================================================
-FILE [9]: ./appsscript.json
+FILE [10]: ./appsscript.json
 ==================================================
 {
   "timeZone": "Asia/Ho_Chi_Minh",
@@ -1770,7 +1879,7 @@ FILE [9]: ./appsscript.json
 
 
 ==================================================
-FILE [10]: ./CSS_Modals.css
+FILE [11]: ./CSS_Modals.css
 ==================================================
    5.1. ACTION PANELS (EDIT, TRANSFER, SCAN) - FIX MÀU CHỮ & ĐỒNG BỘ
    ========================================================================== */
@@ -2094,7 +2203,7 @@ FILE [10]: ./CSS_Modals.css
 
 
 ==================================================
-FILE [11]: ./Tab_HDTCXD.html
+FILE [12]: ./Tab_HDTCXD.html
 ==================================================
 <div class="form-container">
     <div class="location-date-container">
@@ -2286,7 +2395,7 @@ FILE [11]: ./Tab_HDTCXD.html
 
 
 ==================================================
-FILE [12]: ./CSS_Forms.css
+FILE [13]: ./CSS_Forms.css
 ==================================================
 /* ==========================================================================
    NHÓM 3: FORM ELEMENTS (BASE, INPUTS, LABELS, RADIO, CHECKBOX, FLATPICKR)
@@ -2644,7 +2753,7 @@ span.flatpickr-weekday {
 
 
 ==================================================
-FILE [13]: ./Tab_PLHD.html
+FILE [14]: ./Tab_PLHD.html
 ==================================================
 <div class="form-container">
     <div class="location-date-container"> 
@@ -2863,7 +2972,7 @@ FILE [13]: ./Tab_PLHD.html
 
 
 ==================================================
-FILE [14]: ./public/JS_Tab_HD.js
+FILE [15]: ./public/JS_Tab_HD.js
 ==================================================
 // ==========================================================================
 // MODULE: TAB HỢP ĐỒNG (HDTCXD)
@@ -3080,7 +3189,7 @@ function coreSelect(inputId, dropId, value, extraValue) {
 
 
 ==================================================
-FILE [15]: ./public/JS_Tab_TB.js
+FILE [16]: ./public/JS_Tab_TB.js
 ==================================================
 
 // ==========================================================================
@@ -3132,115 +3241,6 @@ function clearForm_TB() {
  * để xử lý giao tiếp với Server.
  */
 
-
-
-==================================================
-FILE [16]: ./public/index.html
-==================================================
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no">
-    <title>The Contract Hub_V2</title>
-    
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://npmcdn.com/flatpickr/dist/l10n/vi.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
-    <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
-    <script src="https://cytoscape.org/cytoscape.js-dagre/cytoscape-dagre.js"></script>
-
-    <!-- NẠP CSS NỘI BỘ -->
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="CSS_Header.css">
-    <link rel="stylesheet" href="CSS_Forms.css">
-    <link rel="stylesheet" href="CSS_UI_Elements.css">
-    <link rel="stylesheet" href="CSS_Dropdown_General.css">
-    <link rel="stylesheet" href="CSS_Dropdown_PL.css">
-    <link rel="stylesheet" href="CSS_Modals.css">
-    <link rel="stylesheet" href="CSS_System.css">
-    <link rel="stylesheet" href="Tab_Drawing.css">
-
-    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
-</head>
-
-<body>
-    <div id="loadingSystem" class="luxury-loader">
-        <div class="loader-content">
-            <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">
-            <div class="shimmer-bar"></div>
-            <p class="loader-text">SYSTEM INITIALIZING</p>
-        </div>
-    </div>
-    <div id="contractLoading" class="luxury-loader" style="display: none;"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">CRAFTING DOCUMENT</p></div></div>
-
-    <div class="header">
-        <div class="menu">
-            <a href="javascript:void(0)" id="btn-about" onclick="openTab('tab-about')" class="active"><b>ABOUT</b></a>
-            <a href="javascript:void(0)" id="btn-hd" onclick="openTab('tab-hdtcxd')">CONTRACT</a>
-            <a href="javascript:void(0)" id="btn-pl" onclick="openTab('tab-plhd')">EXTENSIONS</a>
-            <a href="javascript:void(0)" id="btn-tbkq" onclick="openTab('tab-tbkq')">NOTICES</a>
-            <a href="javascript:void(0)" id="btn-drawing" onclick="openTab('tab-drawing')">DRAWING</a>
-            <div class="header-dropdown">
-                <a href="javascript:void(0)" id="btn-resource">RESOURCE</a>
-                <div class="dropdown-menu-content">
-                    <a href="https://docs.google.com/spreadsheets/d/1_whNLrEL5x1Kk3Fheq8-AgTE425LnWkvbGVmhXMlL1I/edit" target="_blank">SHEETDATA</a>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="tab-about" class="tab-content">
-        <div class="form-container" style="text-align: center; color: white; margin-top: 150px; background: transparent; box-shadow: none; backdrop-filter: none;">
-            <h1 style="font-size: 40px;">NICE TO SEE YOU, BRO!</h1>
-            <p>Hệ thống quản lý hợp đồng đã sẵn sàng.</p>
-        </div>
-    </div>
-    <!-- CÁC KHUNG TAB TRỐNG ĐỂ JS NẠP VÀO -->
-    <div id="tab-hdtcxd" class="tab-content" style="display: none;"></div>
-    <div id="tab-plhd" class="tab-content" style="display: none;"></div>
-    <div id="tab-tbkq" class="tab-content" style="display: none;"></div>
-    <div id="tab-drawing" class="tab-content" style="display: none;"></div>
-
-    <div id="customContextMenu-pl"></div>
-    <div id="toastContainer"></div>
-
-    <script>
-        const GAS_API_URL = "DÁN_LINK_WEB_APP_GOOGLE_CỦA_MÀY_VÀO_ĐÂY";
-        
-        async function callBackend(action, data = {}) {
-            try {
-                const response = await fetch(GAS_API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action: action, data: data })
-                });
-                const result = await response.json();
-                if (result.status === "error") throw new Error(result.message);
-                return result.data;
-            } catch (error) {
-                console.error("Lỗi gọi API:", error);
-                return null;
-            }
-        }
-    </script>
-    <script src="JS_Variables.js"></script>
-    <script src="JS_Utils.js"></script>
-    <script src="JS_Core_API.js"></script>
-    <script src="JS_Tab_HD.js"></script>
-    <script src="JS_Tab_PL_Core.js"></script>
-    <script src="JS_Tab_PL_Actions.js"></script>
-    <script src="JS_Tab_PL_Files.js"></script>
-    <script src="JS_Tab_TB.js"></script>
-    <script src="JS_Drawing.js"></script>
-</body>
-</html>
 
 
 ==================================================

@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no">
     <title>The Contract Hub_V2</title>
-    
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://npmcdn.com/flatpickr/dist/l10n/vi.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -17,7 +15,6 @@
     <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
     <script src="https://cytoscape.org/cytoscape.js-dagre/cytoscape-dagre.js"></script>
 
-    <!-- NẠP CSS NỘI BỘ -->
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="CSS_Header.css">
     <link rel="stylesheet" href="CSS_Forms.css">
@@ -27,18 +24,10 @@
     <link rel="stylesheet" href="CSS_Modals.css">
     <link rel="stylesheet" href="CSS_System.css">
     <link rel="stylesheet" href="Tab_Drawing.css">
-
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
 </head>
-
 <body>
-    <div id="loadingSystem" class="luxury-loader">
-        <div class="loader-content">
-            <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">
-            <div class="shimmer-bar"></div>
-            <p class="loader-text">SYSTEM INITIALIZING</p>
-        </div>
-    </div>
+    <div id="loadingSystem" class="luxury-loader"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">SYSTEM INITIALIZING</p></div></div>
     <div id="contractLoading" class="luxury-loader" style="display: none;"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">CRAFTING DOCUMENT</p></div></div>
 
     <div class="header">
@@ -48,12 +37,6 @@
             <a href="javascript:void(0)" id="btn-pl" onclick="openTab('tab-plhd')">EXTENSIONS</a>
             <a href="javascript:void(0)" id="btn-tbkq" onclick="openTab('tab-tbkq')">NOTICES</a>
             <a href="javascript:void(0)" id="btn-drawing" onclick="openTab('tab-drawing')">DRAWING</a>
-            <div class="header-dropdown">
-                <a href="javascript:void(0)" id="btn-resource">RESOURCE</a>
-                <div class="dropdown-menu-content">
-                    <a href="https://docs.google.com/spreadsheets/d/1_whNLrEL5x1Kk3Fheq8-AgTE425LnWkvbGVmhXMlL1I/edit" target="_blank">SHEETDATA</a>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -63,7 +46,6 @@
             <p>Hệ thống quản lý hợp đồng đã sẵn sàng.</p>
         </div>
     </div>
-    <!-- CÁC KHUNG TAB TRỐNG ĐỂ JS NẠP VÀO -->
     <div id="tab-hdtcxd" class="tab-content" style="display: none;"></div>
     <div id="tab-plhd" class="tab-content" style="display: none;"></div>
     <div id="tab-tbkq" class="tab-content" style="display: none;"></div>
@@ -73,20 +55,20 @@
     <div id="toastContainer"></div>
 
     <script>
-        const GAS_API_URL = "DÁN_LINK_WEB_APP_GOOGLE_CỦA_MÀY_VÀO_ĐÂY";
+        // DÁN LINK GOOGLE WEB APP CỦA MÀY VÀO ĐÂY
+        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzG7aVeSXeXm0KgIIouCYXM1h4JXtUbV2TmT2qPdvDd7o7cuE0by0GzHIVG7cyD1ZFM/exec";
         
         async function callBackend(action, data = {}) {
             try {
                 const response = await fetch(GAS_API_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({ action: action, data: data })
                 });
                 const result = await response.json();
                 if (result.status === "error") throw new Error(result.message);
                 return result.data;
             } catch (error) {
-                console.error("Lỗi gọi API:", error);
+                console.error("Lỗi API:", error);
                 return null;
             }
         }

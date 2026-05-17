@@ -252,4 +252,4 @@ function getActiveProjectFolders_Backend() {
     let names = [];
     while (folders.hasNext()) names.push(folders.next().getName().toUpperCase());
     return names;
-  } catch (e) { return []; }
+  } catch (e) { return []; } }

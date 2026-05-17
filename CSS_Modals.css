@@ -316,3 +316,4 @@
 .form-container.dim-overlay-active.show-overlay::after {
     opacity: 1;
     visibility: visible;
+}
