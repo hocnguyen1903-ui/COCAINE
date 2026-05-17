@@ -7,18 +7,6 @@
  */
 function initTabHD() {
     setupLocation("locationDropdown-hd", updateContractNo_HD);
-    
-    // Bơm trực tiếp text ngày hôm nay vào DOM để chống lỗi ẩn của Flatpickr
-    const displayEl = document.getElementById("dateDisplay-hd");
-    if (displayEl) {
-        const today = new Date();
-        const dd = String(today.getDate()).padStart(2, '0');
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const yyyy = today.getFullYear();
-        displayEl.textContent = `Ngày ${dd} tháng ${mm} năm ${yyyy}`;
-    }
-    
-    // Sau đó mới gọi thư viện Lịch ghi đè lên
     setupLuxuryCalendar("#dateDisplay-hd", "dateDisplay-hd", () => updateContractNo_HD());
 }
 
