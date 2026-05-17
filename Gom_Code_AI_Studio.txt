@@ -1,5 +1,5 @@
 === BẮT ĐẦU DUMP DỮ LIỆU DỰ ÁN ===
-Thời gian tạo: Sun May 17 22:34:11 +07 2026
+Thời gian tạo: Sun May 17 23:06:29 +07 2026
 ==================================
 
 
@@ -261,7 +261,7 @@ function getActiveProjectFolders_Backend() {
     let names = [];
     while (folders.hasNext()) names.push(folders.next().getName().toUpperCase());
     return names;
-  } catch (e) { return []; }
+  } catch (e) { return []; } }
 
 
 
@@ -920,7 +920,7 @@ function optimizeDocSections(body, validSections) {
 
     body.replaceText("\\{", "");
     body.replaceText("\\}\\s*\\d+", "");
-
+  }
 
 
 ==================================================
@@ -932,10 +932,8 @@ FILE [4]: ./index.html
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no">
     <title>The Contract Hub_V2</title>
-    
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://npmcdn.com/flatpickr/dist/l10n/vi.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -945,7 +943,6 @@ FILE [4]: ./index.html
     <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
     <script src="https://cytoscape.org/cytoscape.js-dagre/cytoscape-dagre.js"></script>
 
-    <!-- NẠP CSS NỘI BỘ -->
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="CSS_Header.css">
     <link rel="stylesheet" href="CSS_Forms.css">
@@ -955,18 +952,10 @@ FILE [4]: ./index.html
     <link rel="stylesheet" href="CSS_Modals.css">
     <link rel="stylesheet" href="CSS_System.css">
     <link rel="stylesheet" href="Tab_Drawing.css">
-
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
 </head>
-
 <body>
-    <div id="loadingSystem" class="luxury-loader">
-        <div class="loader-content">
-            <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">
-            <div class="shimmer-bar"></div>
-            <p class="loader-text">SYSTEM INITIALIZING</p>
-        </div>
-    </div>
+    <div id="loadingSystem" class="luxury-loader"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">SYSTEM INITIALIZING</p></div></div>
     <div id="contractLoading" class="luxury-loader" style="display: none;"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">CRAFTING DOCUMENT</p></div></div>
 
     <div class="header">
@@ -976,12 +965,6 @@ FILE [4]: ./index.html
             <a href="javascript:void(0)" id="btn-pl" onclick="openTab('tab-plhd')">EXTENSIONS</a>
             <a href="javascript:void(0)" id="btn-tbkq" onclick="openTab('tab-tbkq')">NOTICES</a>
             <a href="javascript:void(0)" id="btn-drawing" onclick="openTab('tab-drawing')">DRAWING</a>
-            <div class="header-dropdown">
-                <a href="javascript:void(0)" id="btn-resource">RESOURCE</a>
-                <div class="dropdown-menu-content">
-                    <a href="https://docs.google.com/spreadsheets/d/1_whNLrEL5x1Kk3Fheq8-AgTE425LnWkvbGVmhXMlL1I/edit" target="_blank">SHEETDATA</a>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -991,7 +974,6 @@ FILE [4]: ./index.html
             <p>Hệ thống quản lý hợp đồng đã sẵn sàng.</p>
         </div>
     </div>
-    <!-- CÁC KHUNG TAB TRỐNG ĐỂ JS NẠP VÀO -->
     <div id="tab-hdtcxd" class="tab-content" style="display: none;"></div>
     <div id="tab-plhd" class="tab-content" style="display: none;"></div>
     <div id="tab-tbkq" class="tab-content" style="display: none;"></div>
@@ -1001,20 +983,20 @@ FILE [4]: ./index.html
     <div id="toastContainer"></div>
 
     <script>
-        const GAS_API_URL = "DÁN_LINK_WEB_APP_GOOGLE_CỦA_MÀY_VÀO_ĐÂY";
+        // DÁN LINK GOOGLE WEB APP CỦA MÀY VÀO ĐÂY
+        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzG7aVeSXeXm0KgIIouCYXM1h4JXtUbV2TmT2qPdvDd7o7cuE0by0GzHIVG7cyD1ZFM/exec";
         
         async function callBackend(action, data = {}) {
             try {
                 const response = await fetch(GAS_API_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({ action: action, data: data })
                 });
                 const result = await response.json();
                 if (result.status === "error") throw new Error(result.message);
                 return result.data;
             } catch (error) {
-                console.error("Lỗi gọi API:", error);
+                console.error("Lỗi API:", error);
                 return null;
             }
         }
@@ -1035,9 +1017,6 @@ FILE [4]: ./index.html
 ==================================================
 FILE [5]: ./CSS_UI_Elements.css
 ==================================================
-   NHÓM 4: UI COMPONENTS (BUTTONS, DROPDOWNS, DASHBOARD, FILE MANAGEMENT)
-   ========================================================================== */
-
 /* --- 4.1. HỆ THỐNG MASTER BUTTONS (YES/NO/LUXURY) --- */
 .submit-button, .clear-button, 
 .btn-primary-luxury, .btn-secondary-luxury, .btn-danger-luxury, 
@@ -1145,9 +1124,6 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
 ==================================================
 FILE [6]: ./CSS_System.css
 ==================================================
-   NHÓM 6: SYSTEM & FEEDBACK (LOADERS, PROGRESS BARS & DROP ZONES)
-   ========================================================================== */
-
 /* --- 6.1. LUXURY ZEN LOADERS (V4.6 - SOFT GLOW & PEAK SYNC) --- */
 :root {
     --metallic-gold: #D1A054;  /* Vàng đồng lỳ */
@@ -1268,7 +1244,7 @@ FILE [6]: ./CSS_System.css
 .icon-alert-luxury {
     display: inline-block;
     filter: drop-shadow(0 0 12px rgba(255, 77, 77, 0.6));
-
+}
 
 
 ==================================================
@@ -1526,6 +1502,7 @@ function writeToSheetAndExportDoc_TB(data) {
   } catch (e) { 
     throw new Error("Lỗi Backend TBKQ: " + e.message); 
   }
+}
 
 
 
@@ -1881,9 +1858,6 @@ FILE [10]: ./appsscript.json
 ==================================================
 FILE [11]: ./CSS_Modals.css
 ==================================================
-   5.1. ACTION PANELS (EDIT, TRANSFER, SCAN) - FIX MÀU CHỮ & ĐỒNG BỘ
-   ========================================================================== */
-
 /* 1. KHUNG PANEL TỔNG */
 #edit-panel-pl, #transfer-panel-pl, #scan-panel-pl {
     display: flex !important; 
@@ -2199,7 +2173,7 @@ FILE [11]: ./CSS_Modals.css
 .form-container.dim-overlay-active.show-overlay::after {
     opacity: 1;
     visibility: visible;
-
+}
 
 
 ==================================================
@@ -2749,7 +2723,7 @@ span.flatpickr-weekday {
 @keyframes luxuryCalendarFadeIn {
     from { opacity: 0; transform: translateY(-10px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
-
+}
 
 
 ==================================================
@@ -4941,74 +4915,40 @@ const serverCall = async (serverMethodName, ...args) => {
 /**
  * Điều hướng Tab (Slide Transition & Intro Animation)
  */
-function openTab(tabId, triggerIntro = true) {
+async function openTab(tabId, triggerIntro = true) {
     if (tabId === activeTabId && !isInitialLoad) return;
-
-    // LƯU TAB VÀO MÁY CỤC BỘ
     localStorage.setItem('bcons_hub_last_tab', tabId);
-
-    if (tabId === 'tab-tbkq' && !isTBKQInitialized) {
-        if (typeof updateContractNo_TB === "function") {
-            updateContractNo_TB();
-            isTBKQInitialized = true; 
-        }
-    }
-
-    if (tabId === 'tab-plhd' && typeof clearForm_PL === "function") clearForm_PL(); 
-    if (tabId === 'tab-drawing' && typeof loadDrawingModule === "function") loadDrawingModule(); 
-
     const targetTab = document.getElementById(tabId);
-    const currentTab = document.getElementById(activeTabId);
     if (!targetTab) return;
 
-    if (tabTimeout) { clearTimeout(tabTimeout); tabTimeout = null; }
-
-    const newTabOrder = TAB_MAP[tabId];
-    const isForward = newTabOrder >= currentTabOrder;
-    
-    document.querySelectorAll('.location-date-container').forEach(c => c.classList.remove('active-intro'));
-
-    document.querySelectorAll('.tab-content').forEach(t => {
-        if (t.id !== tabId && t.id !== activeTabId) {
-            t.style.display = 'none';
-            t.style.zIndex = '1';
-        }
-        t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
-    });
-
-    if (isInitialLoad) {
-        targetTab.style.display = 'flex';
-        targetTab.classList.add('instant-fade');
-    } else {
-        if (currentTab) {
-            currentTab.style.zIndex = '1';
-            currentTab.classList.add(isForward ? 'slide-out-left' : 'slide-out-right');
-        }
-        targetTab.style.display = 'flex';
-        targetTab.style.zIndex = '2';
-        targetTab.classList.add(isForward ? 'slide-in-right' : 'slide-in-left');
-
-        const oldTabId = activeTabId;
-        tabTimeout = setTimeout(() => {
-            const oldTab = document.getElementById(oldTabId);
-            if (oldTab && oldTabId !== activeTabId) oldTab.style.display = 'none';
-            tabTimeout = null;
-        }, 850);
+    // Chỉ nạp HTML nếu Tab rỗng và không phải là tab-about
+    if (targetTab.innerHTML.trim() === "" && tabId !== 'tab-about') {
+        const fileMap = {
+            'tab-hdtcxd': 'Tab_HDTCXD.html',
+            'tab-plhd': 'Tab_PLHD.html',
+            'tab-tbkq': 'Tab_TBKQ.html',
+            'tab-drawing': 'Tab_Drawing.html'
+        };
+        try {
+            const resp = await fetch('./' + fileMap[tabId]);
+            if (resp.ok) {
+                targetTab.innerHTML = await resp.text();
+                // Kích hoạt logic riêng của từng Tab
+                if (tabId === 'tab-hdtcxd') initTabHD();
+                if (tabId === 'tab-plhd') initTabPL();
+                if (tabId === 'tab-tbkq') initTabTB();
+                if (tabId === 'tab-drawing') loadDrawingModule();
+            }
+        } catch (e) { console.error("Lỗi nạp Tab:", e); }
     }
 
-    if (tabId !== 'tab-about' && triggerIntro) {
-        const container = targetTab.querySelector(".location-date-container");
-        if (container) {
-            setTimeout(() => { container.classList.add("active-intro"); }, 200); 
-        }
-    }
-
+    document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+    targetTab.style.display = 'flex';
     activeTabId = tabId;
-    currentTabOrder = newTabOrder;
+    
     document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
     const btnId = tabId === 'tab-hdtcxd' ? 'btn-hd' : tabId === 'tab-plhd' ? 'btn-pl' : tabId === 'tab-tbkq' ? 'btn-tbkq' : tabId === 'tab-drawing' ? 'btn-drawing' : 'btn-about';
     document.getElementById(btnId)?.classList.add('active');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
     if (isInitialLoad) isInitialLoad = false;
 }
 
@@ -6589,9 +6529,7 @@ FILE [26]: ./.clasp.json
 ==================================================
 FILE [27]: ./CSS_Dropdown_General.css
 ==================================================
-   4.2. DROPDOWN MENU SYSTEM (FIX ICON, HEIGHT 172PX & ECO-SHADOW)
-   - Áp dụng cho: Tab HĐTCXD, Drawing, TBKQ
-   ========================================================================== */
+
 .dropdown-container { 
     position: relative; 
     width: 100%; 
@@ -6697,14 +6635,13 @@ FILE [27]: ./CSS_Dropdown_General.css
     overflow: hidden; 
     text-overflow: ellipsis; 
     white-space: nowrap; 
-
+}
 
 
 ==================================================
 FILE [28]: ./CSS_Dropdown_PL.css
 ==================================================
-   4.3. DASHBOARD PL (FIELD 0 PL) - ULTRA-SHARP & ECO-PERFORMANCE
-   ========================================================================== */
+
 #dropdown-field0-pl {
     display: block !important; 
     opacity: 1 !important; 
@@ -6955,14 +6892,12 @@ FILE [28]: ./CSS_Dropdown_PL.css
         user-select: none !important;
         -webkit-touch-callout: none !important; /* Chặn popup menu (Copy/Look Up) của iOS */
     }
-
+}
 
 
 ==================================================
 FILE [29]: ./CSS_Header.css
 ==================================================
-   NHÓM 2: HEADER & NAVIGATION
-   ========================================================================== */
 .header {
     background: rgba(22, 27, 34, 0.85) !important; 
     backdrop-filter: blur(20px) saturate(160%);
@@ -7110,6 +7045,6 @@ FILE [29]: ./CSS_Header.css
 
 .dropdown-menu-content a:last-child {
     border-bottom: none;
-
+}
 
 === KẾT THÚC DUMP DỮ LIỆU ===
