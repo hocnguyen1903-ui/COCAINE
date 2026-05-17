@@ -1,5 +1,5 @@
 === BẮT ĐẦU DUMP DỮ LIỆU DỰ ÁN ===
-Thời gian tạo: Sun May 17 23:06:29 +07 2026
+Thời gian tạo: Sun May 17 23:30:56 +07 2026
 ==================================
 
 
@@ -943,6 +943,7 @@ FILE [4]: ./index.html
     <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
     <script src="https://cytoscape.org/cytoscape.js-dagre/cytoscape-dagre.js"></script>
 
+    <!-- THỨ TỰ NẠP CSS BẮT BUỘC (CASCADING) -->
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="CSS_Header.css">
     <link rel="stylesheet" href="CSS_Forms.css">
@@ -952,12 +953,21 @@ FILE [4]: ./index.html
     <link rel="stylesheet" href="CSS_Modals.css">
     <link rel="stylesheet" href="CSS_System.css">
     <link rel="stylesheet" href="Tab_Drawing.css">
+
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
 </head>
 <body>
-    <div id="loadingSystem" class="luxury-loader"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">SYSTEM INITIALIZING</p></div></div>
+    <!-- 1. LOADERS -->
+    <div id="loadingSystem" class="luxury-loader">
+        <div class="loader-content">
+            <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">
+            <div class="shimmer-bar"></div>
+            <p class="loader-text">SYSTEM INITIALIZING</p>
+        </div>
+    </div>
     <div id="contractLoading" class="luxury-loader" style="display: none;"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">CRAFTING DOCUMENT</p></div></div>
 
+    <!-- 2. HEADER -->
     <div class="header">
         <div class="menu">
             <a href="javascript:void(0)" id="btn-about" onclick="openTab('tab-about')" class="active"><b>ABOUT</b></a>
@@ -968,9 +978,10 @@ FILE [4]: ./index.html
         </div>
     </div>
 
+    <!-- 3. TABS -->
     <div id="tab-about" class="tab-content">
         <div class="form-container" style="text-align: center; color: white; margin-top: 150px; background: transparent; box-shadow: none; backdrop-filter: none;">
-            <h1 style="font-size: 40px;">NICE TO SEE YOU, BRO!</h1>
+            <h1 style="font-size: 40px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">NICE TO SEE YOU, BRO!</h1>
             <p>Hệ thống quản lý hợp đồng đã sẵn sàng.</p>
         </div>
     </div>
@@ -979,26 +990,18 @@ FILE [4]: ./index.html
     <div id="tab-tbkq" class="tab-content" style="display: none;"></div>
     <div id="tab-drawing" class="tab-content" style="display: none;"></div>
 
+    <!-- 4. GLOBAL ELEMENTS (BẮT BUỘC Ở ĐÂY) -->
     <div id="customContextMenu-pl"></div>
     <div id="toastContainer"></div>
+    <div id="infoModal-pl" class="info-modal-overlay" onclick="closeSearchGuide_PL()"></div>
 
     <script>
-        // DÁN LINK GOOGLE WEB APP CỦA MÀY VÀO ĐÂY
-        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzG7aVeSXeXm0KgIIouCYXM1h4JXtUbV2TmT2qPdvDd7o7cuE0by0GzHIVG7cyD1ZFM/exec";
-        
+        const GAS_API_URL = "DÁN_LINK_WEB_APP_GOOGLE_CỦA_MÀY_VÀO_ĐÂY";
         async function callBackend(action, data = {}) {
-            try {
-                const response = await fetch(GAS_API_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ action: action, data: data })
-                });
-                const result = await response.json();
-                if (result.status === "error") throw new Error(result.message);
-                return result.data;
-            } catch (error) {
-                console.error("Lỗi API:", error);
-                return null;
-            }
+            const resp = await fetch(GAS_API_URL, { method: 'POST', mode: 'cors', body: JSON.stringify({ action, data }) });
+            const res = await resp.json();
+            if (res.status === "error") throw new Error(res.message);
+            return res.data;
         }
     </script>
     <script src="JS_Variables.js"></script>
