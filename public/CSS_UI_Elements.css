@@ -1,3 +1,7 @@
+/* ==========================================================================
+   NHÓM 4: UI COMPONENTS (BUTTONS, DROPDOWNS, DASHBOARD, FILE MANAGEMENT)
+   ========================================================================== */
+
 /* --- 4.1. HỆ THỐNG MASTER BUTTONS (YES/NO/LUXURY) --- */
 .submit-button, .clear-button, 
 .btn-primary-luxury, .btn-secondary-luxury, .btn-danger-luxury, 
@@ -99,3 +103,4 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
 .btn-trash-red i { color: #ff4d4d !important; font-size: 14px !important; transition: all 0.15s ease; }
 .btn-trash-red:hover i { filter: drop-shadow(0 0 8px rgba(255, 77, 77, 0.9)) !important; transform: scale(1.1); }
 
+.btn-trash-simple { background: none !important; border: none !important; padding: 0 !important; cursor: pointer !important; display: flex !important; align-items: center; justify-content: center; outline: none !important; }

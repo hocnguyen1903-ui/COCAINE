@@ -1,3 +1,7 @@
+/* ==========================================================================
+   5.1. ACTION PANELS (EDIT, TRANSFER, SCAN) - FIX MÀU CHỮ & ĐỒNG BỘ
+   ========================================================================== */
+
 /* 1. KHUNG PANEL TỔNG */
 #edit-panel-pl, #transfer-panel-pl, #scan-panel-pl {
     display: flex !important; 
