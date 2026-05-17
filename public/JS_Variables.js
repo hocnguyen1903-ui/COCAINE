@@ -82,7 +82,9 @@ let tooltipTimeout;
 document.addEventListener("DOMContentLoaded", () => {
     // Đọc Tab đã lưu từ máy, mặc định là 'tab-about'
     const lastTab = localStorage.getItem('bcons_hub_last_tab') || 'tab-about';
-    openTab(lastTab, false); 
+    
+    // THAY ĐỔI TẠI ĐÂY: Đổi false thành true để kích hoạt bung ngày tháng ngay khi load
+    openTab(lastTab, true); 
     
     loadSystemData();
 

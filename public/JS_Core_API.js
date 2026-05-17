@@ -22,13 +22,14 @@ function openTab(tabId, triggerIntro = true) {
     const targetTab = document.getElementById(tabId);
     if (!targetTab) return;
 
-    // Ẩn tất cả các tab
+    // 1. Reset trạng thái intro và ẩn các tab khác
+    document.querySelectorAll('.location-date-container').forEach(c => c.classList.remove('active-intro'));
     document.querySelectorAll('.tab-content').forEach(t => {
         t.style.display = 'none';
         t.classList.remove('slide-in-right', 'slide-in-left');
     });
 
-    // Hiện tab được chọn
+    // 2. Hiển thị tab mục tiêu
     const newTabOrder = TAB_MAP[tabId];
     const isForward = newTabOrder >= currentTabOrder;
     targetTab.style.display = 'flex';
@@ -37,16 +38,20 @@ function openTab(tabId, triggerIntro = true) {
     activeTabId = tabId;
     currentTabOrder = newTabOrder;
 
-    // Update Menu UI
+    // 3. Kích hoạt hiệu ứng bung ngày tháng (Intro Animation)
+    if (tabId !== 'tab-about' && triggerIntro) {
+        const container = targetTab.querySelector(".location-date-container");
+        if (container) {
+            setTimeout(() => { container.classList.add("active-intro"); }, 150); 
+        }
+    }
+
+    // 4. Update Menu UI
     document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
     const btnMap = {'tab-hdtcxd':'btn-hd','tab-plhd':'btn-pl','tab-tbkq':'btn-tbkq','tab-drawing':'btn-drawing','tab-about':'btn-about'};
     document.getElementById(btnMap[tabId])?.classList.add('active');
 
-    // Khởi tạo logic đặc thù cho tab Drawing khi mở
-    if (tabId === 'tab-drawing' && typeof loadDrawingModule === 'function') {
-        loadDrawingModule();
-    }
-    
+    if (tabId === 'tab-drawing' && typeof loadDrawingModule === 'function') loadDrawingModule();
     if (isInitialLoad) isInitialLoad = false;
 }
 
