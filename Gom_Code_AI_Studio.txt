@@ -1,5 +1,5 @@
 === BẮT ĐẦU DUMP DỮ LIỆU DỰ ÁN ===
-Thời gian tạo: Mon May 18 00:47:08 +07 2026
+Thời gian tạo: Mon May 18 21:11:30 +07 2026
 ==================================
 
 
@@ -2295,6 +2295,7 @@ function clearForm_TB() {
 ==================================================
 FILE [9]: ./public/Drawing.css
 ==================================================
+/* 1. Khung chính Drawing (Inner) - Fix trùng ID */
     #drawing-inner-container { 
         background: transparent !important; 
         box-shadow: none !important; 
@@ -2468,7 +2469,7 @@ FILE [9]: ./public/Drawing.css
         .guide-icon { width: 36px; height: 36px; background: rgba(255, 186, 8, 0.1); border: 1px solid rgba(255, 186, 8, 0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #FFBA08; font-size: 18px; flex-shrink: 0; }
     }
     .guide-step { display: flex; align-items: flex-start; gap: 15px; text-align: left; }
-
+    .guide-icon { width: 36px; height: 36px; background: rgba(255, 186, 8, 0.1); border: 1px solid rgba(255, 186, 8, 0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #FFBA08; font-size: 18px; flex-shrink: 0; }
 
 
 ==================================================
@@ -2558,7 +2559,9 @@ let tooltipTimeout;
 document.addEventListener("DOMContentLoaded", () => {
     // Đọc Tab đã lưu từ máy, mặc định là 'tab-about'
     const lastTab = localStorage.getItem('bcons_hub_last_tab') || 'tab-about';
-    openTab(lastTab, false); 
+    
+    // THAY ĐỔI TẠI ĐÂY: Đổi false thành true để kích hoạt bung ngày tháng ngay khi load
+    openTab(lastTab, true); 
     
     loadSystemData();
 
@@ -5101,13 +5104,14 @@ function openTab(tabId, triggerIntro = true) {
     const targetTab = document.getElementById(tabId);
     if (!targetTab) return;
 
-    // Ẩn tất cả các tab
+    // 1. Reset trạng thái intro và ẩn các tab khác
+    document.querySelectorAll('.location-date-container').forEach(c => c.classList.remove('active-intro'));
     document.querySelectorAll('.tab-content').forEach(t => {
         t.style.display = 'none';
         t.classList.remove('slide-in-right', 'slide-in-left');
     });
 
-    // Hiện tab được chọn
+    // 2. Hiển thị tab mục tiêu
     const newTabOrder = TAB_MAP[tabId];
     const isForward = newTabOrder >= currentTabOrder;
     targetTab.style.display = 'flex';
@@ -5116,16 +5120,20 @@ function openTab(tabId, triggerIntro = true) {
     activeTabId = tabId;
     currentTabOrder = newTabOrder;
 
-    // Update Menu UI
+    // 3. Kích hoạt hiệu ứng bung ngày tháng (Intro Animation)
+    if (tabId !== 'tab-about' && triggerIntro) {
+        const container = targetTab.querySelector(".location-date-container");
+        if (container) {
+            setTimeout(() => { container.classList.add("active-intro"); }, 150); 
+        }
+    }
+
+    // 4. Update Menu UI
     document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
     const btnMap = {'tab-hdtcxd':'btn-hd','tab-plhd':'btn-pl','tab-tbkq':'btn-tbkq','tab-drawing':'btn-drawing','tab-about':'btn-about'};
     document.getElementById(btnMap[tabId])?.classList.add('active');
 
-    // Khởi tạo logic đặc thù cho tab Drawing khi mở
-    if (tabId === 'tab-drawing' && typeof loadDrawingModule === 'function') {
-        loadDrawingModule();
-    }
-    
+    if (tabId === 'tab-drawing' && typeof loadDrawingModule === 'function') loadDrawingModule();
     if (isInitialLoad) isInitialLoad = false;
 }
 
@@ -5203,33 +5211,47 @@ function updateAppScrollState() {
  */
 async function loadSystemData(isSilent = false) {
     const loading = document.getElementById("loadingSystem");
-    if (loading && !isSilent) loading.style.display = "flex";
+    if (loading && !isSilent) {
+        loading.style.display = "flex";
+        loading.style.opacity = "1"; 
+    }
 
     try {
-        const sysData = await serverCall('getSystemData');
+        // Đã đổi sang hàm chuẩn callBackend được định nghĩa ở index.html
+        const sysData = await callBackend('getSystemData');
 
         if (sysData) {
             SYSTEM_DATA = sysData;
             PRECOMPUTED_PL_DATA = null;
 
-            // Đảm bảo các Tab được khởi tạo theo đúng thứ tự
-            if (typeof initTabHD === 'function') initTabHD();
-            if (typeof initTabPL === 'function') initTabPL();
-            if (typeof initTabTB === 'function') initTabTB();
+            // Bọc try-catch độc lập: Một tab lỗi không làm chết cả hệ thống
+            try { if (typeof initTabHD === 'function') initTabHD(); } catch(e) { console.error("Lỗi init HD:", e); }
+            try { if (typeof initTabPL === 'function') initTabPL(); } catch(e) { console.error("Lỗi init PL:", e); }
+            try { if (typeof initTabTB === 'function') initTabTB(); } catch(e) { console.error("Lỗi init TB:", e); }
             
             // Build DOM Dashboard sau khi đã có dữ liệu
-            if (typeof executeFilter_PL === 'function') executeFilter_PL(false);
+            try { if (typeof executeFilter_PL === 'function') executeFilter_PL(false); } catch(e) { console.error("Lỗi build DOM PL:", e); }
         }
 
-        if (loading) {
-            // Hiệu ứng tắt Loader mượt mà
+        if (loading && !isSilent) {
+            // Ép transition bằng JS để đảm bảo hiệu ứng fade mượt mà 100%
+            loading.style.transition = "opacity 0.5s ease";
             loading.style.opacity = "0";
             setTimeout(() => { loading.style.display = "none"; }, 500);
         }
     } catch (error) {
-        if (loading) loading.style.display = "none";
+        if (loading) {
+            loading.style.display = "none";
+            loading.style.opacity = "1";
+        }
         console.error("Lỗi khởi tạo hệ thống:", error);
-        showToast_PL("⚠️ Lỗi kết nối dữ liệu!", "error");
+        
+        // Fallback an toàn cho Toast
+        if (typeof showToast_PL === 'function') {
+            showToast_PL("⚠️ Lỗi kết nối dữ liệu!", "error");
+        } else {
+            alert("⚠️ Lỗi kết nối dữ liệu!");
+        }
     }
 }
 

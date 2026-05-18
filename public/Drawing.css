@@ -1,3 +1,4 @@
+/* 1. Khung chính Drawing (Inner) - Fix trùng ID */
     #drawing-inner-container { 
         background: transparent !important; 
         box-shadow: none !important; 
@@ -171,3 +172,4 @@
         .guide-icon { width: 36px; height: 36px; background: rgba(255, 186, 8, 0.1); border: 1px solid rgba(255, 186, 8, 0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #FFBA08; font-size: 18px; flex-shrink: 0; }
     }
     .guide-step { display: flex; align-items: flex-start; gap: 15px; text-align: left; }
+    .guide-icon { width: 36px; height: 36px; background: rgba(255, 186, 8, 0.1); border: 1px solid rgba(255, 186, 8, 0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #FFBA08; font-size: 18px; flex-shrink: 0; }
