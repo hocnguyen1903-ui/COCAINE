@@ -237,65 +237,69 @@ function getMetadataSync() {
     const lastRow = configSheet.getLastRow();
     if (lastRow < 2) return { metadata: [], sources: {} };
 
-    // Lấy đúng 12 cột (A-L) tương ứng Index 0-11
     const data = configSheet.getRange(2, 1, lastRow - 1, 12).getValues();
+    
     const metadata = data.map(r => ({
-      id: r[3],           // Cột D: Field_ID
-      label: r[1],        // Cột B: Label
-      placeholder: r[2],  // Cột C: Placeholder
-      type: r[4],         // Cột E: Input_Type
-      row: r[5],          // Cột F: Row
-      width: r[6],        // Cột G: Width
-      source: r[7],       // Cột H: Source_Data
-      dependsOn: r[8],    // Cột I: Depends_On
-      lookupCol: r[9],    // Cột J: Lookup_Col
-      targetS: r[10],     // Cột K: Target_Sheet
-      targetC: r[11]      // Cột L: Target_Cell
-    })).filter(x => x.id); // Bỏ qua dòng trống không có Field_ID
+      id: r[1] ? String(r[1]) : "",           
+      label: r[2] ? String(r[2]) : "",        
+      placeholder: r[3] ? String(r[3]) : "",  
+      type: r[4] ? String(r[4]) : "",         
+      row: r[5] ? Number(r[5]) : 1,           
+      width: r[6] ? Number(r[6]) : 12,        
+      source: r[7] ? String(r[7]) : "",       
+      dependsOn: r[8] ? String(r[8]) : "",    
+      lookupCol: r[9] ? Number(r[9]) : 0,     
+      targetS: r[10] ? String(r[10]) : "",    
+      targetC: r[11] ? String(r[11]) : ""     
+    })).filter(x => x.id !== ""); 
 
-    // Logic lấy Source Data (Giữ nguyên thuật toán $O(K)$)
     const sources = {};
     metadata.forEach(f => {
-      if (f.source && f.source.toString().includes("!")) {
+      if (f.source.includes("!")) {
         try {
           const range = ss.getRange(f.source);
           sources[f.id] = range.getValues().filter(r => r[0] !== "" && r[0] !== null);
-        } catch (e) { 
-          console.warn("Lỗi Range: " + f.source);
-          sources[f.id] = []; 
-        }
-      } else if (f.source && f.source.toString().startsWith("[")) {
+        } catch (e) { sources[f.id] = []; }
+      } else if (f.source.startsWith("[")) {
         try {
           sources[f.id] = JSON.parse(f.source).map(x => [x]);
         } catch (e) { sources[f.id] = []; }
       }
     });
 
+    // Fix lỗi lấy Timestamp của Google Drive API
+    const fileTimestamp = DriveApp.getFileById(SHEET_ID).getLastUpdated().getTime();
+
     return { 
-      version: ss.getLastUpdated() ? ss.getLastUpdated().getTime() : new Date().getTime(), 
-      metadata, 
-      sources 
+      version: fileTimestamp, 
+      metadata: metadata, 
+      sources: sources 
     };
   } catch (err) {
-    throw new Error("Backend Error: " + err.message);
+    throw new Error(err.stack || err.message);
   }
 }
 
 function processInjection(payload) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
-  // Đồng bộ Range A2:L để giữ index chuẩn từ 0-11
   const config = ss.getSheetByName(CONFIG_SHEET_NAME).getRange("A2:L").getValues();
   const mapping = {};
   
-  // r[3] = Field_ID, r[10] = Target_Sheet, r[11] = Target_Cell
   config.forEach(r => { 
-    if(r[3] && r[10] && r[11]) mapping[r[3]] = { s: r[10], c: r[11] }; 
+    const id = r[1] ? String(r[1]) : "";
+    const sheet = r[10] ? String(r[10]) : "";
+    const cell = r[11] ? String(r[11]) : "";
+    if(id && sheet && cell) mapping[id] = { s: sheet, c: cell }; 
   });
 
   Object.keys(payload).forEach(id => {
     if (mapping[id]) {
       const target = mapping[id];
-      ss.getSheetByName(target.s).getRange(target.c).setValue(payload[id]);
+      const targetSheet = ss.getSheetByName(target.s);
+      // Validate Sheet tồn tại trước khi ghi
+      if (targetSheet) {
+         targetSheet.getRange(target.c).setValue(payload[id]);
+      }
     }
   });
   return { success: true };
