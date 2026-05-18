@@ -249,5 +249,4 @@ function writeToSheetAndExportDoc_TB(data) {
 
   } catch (e) { 
     throw new Error("Lỗi Backend TBKQ: " + e.message); 
-  }
-}
+  }}

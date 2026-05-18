@@ -157,7 +157,8 @@ async function loadSystemData(isSilent = false) {
             loading.style.opacity = "0";
             setTimeout(() => { loading.style.display = "none"; }, 500);
         }
-    } catch (error) {
+        await initMetadataEngine();
+        } catch (error) {
         if (loading) {
             loading.style.display = "none";
             loading.style.opacity = "1";
