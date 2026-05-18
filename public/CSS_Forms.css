@@ -351,3 +351,42 @@ span.flatpickr-weekday {
     from { opacity: 0; transform: translateY(-10px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* VS Code - File: public/CSS_Forms.css */
+
+.metadata-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+
+.m-row {
+    display: flex;
+    flex-wrap: wrap; /* Tự xuống hàng trên Mobile */
+    gap: 15px;
+    width: 100%;
+    margin-bottom: 5px;
+}
+
+.m-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 250px; /* Đảm bảo trên Mobile không bị quá bé */
+    flex-grow: 1;    /* Lấp đầy khoảng trống */
+}
+
+/* Style cho label và input của Metadata */
+.m-label {
+    font-size: 11.5px !important;
+    color: #95A1AF !important;
+    margin-bottom: 4px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+}
+
+.metadata-grid input, 
+.metadata-grid select {
+    width: 100% !important;
+    box-sizing: border-box;
+}

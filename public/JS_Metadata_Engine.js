@@ -2,16 +2,29 @@
 let METADATA_STORE = null;
 
 async function initMetadataEngine() {
-    const res = await callBackend("getMetadataSync");
-    // Cache vào localStorage theo yêu cầu Architect
-    localStorage.setItem("METADATA_CACHE", JSON.stringify(res));
-    METADATA_STORE = res;
-    renderForm("dataForm-hd", "_hd"); // Lọc các field có đuôi _hd
+    try {
+        const res = await callBackend("getMetadataSync");
+        if (!res || !res.metadata) {
+            console.error("Metadata rỗng!");
+            return;
+        }
+        METADATA_STORE = res;
+        localStorage.setItem("METADATA_CACHE", JSON.stringify(res));
+        
+        // Render Form cho HDTCXD
+        renderForm("dataForm-hd", "_hd");
+        console.log("✅ Metadata Engine Ready");
+    } catch (e) {
+        console.error("Lỗi khởi tạo Metadata:", e);
+        // Hiển thị lỗi ra màn hình cho dễ debug
+        document.getElementById("dataForm-hd").innerHTML = `<p style="color:red">Lỗi cấu hình: ${e.message}</p>`;
+    }
 }
 
 function renderForm(formId, suffix) {
     const form = document.getElementById(formId);
-    const fields = METADATA_STORE.metadata.filter(f => f.id.endsWith(suffix));
+    // Thay dòng cũ bằng dòng này để an toàn hơn
+    const fields = METADATA_STORE.metadata.filter(f => f.id.toLowerCase().endsWith(suffix.toLowerCase()));
     const rows = fields.reduce((acc, f) => { (acc[f.row] = acc[f.row] || []).push(f); return acc; }, {});
 
     form.innerHTML = Object.keys(rows).sort((a,b) => a-b).map(r => `

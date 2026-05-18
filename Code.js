@@ -2,6 +2,7 @@ const SHEET_ID = "1_whNLrEL5x1Kk3Fheq8-AgTE425LnWkvbGVmhXMlL1I";
 const SHEET_NAME_TBKQ = "TBKQTT";
 const SHEET_NAME_SO_TB = "SO THONG BAO";
 const MASTER_FOLDER_ID = '1zStGfH5eitVgbxHF-bhrQGE4NWoKlCpw';
+const CONFIG_SHEET_NAME = "WEB_CONFIG";
 
 // --- KHU VỰC CẤU HÌNH HỆ THỐNG ---
 const STAFF_CONFIG = {
@@ -21,6 +22,10 @@ function getCurrentStaffName() {
 // 1. TẠO KHUNG WEB APP (SINGLE PAGE APPLICATION)
 // =========================================================================
 // Thay thế đoạn code cũ bằng API Router này
+/**
+ * GAS - File: Code.js
+ * Cập nhật hàm doPost để đăng ký API Metadata
+ */
 function doPost(e) {
   if (!e || !e.postData) return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "No post data" })).setMimeType(ContentService.MimeType.JSON);
   
@@ -65,13 +70,17 @@ function doPost(e) {
     "extractDataOnly": () => extractDataOnly(payload[0], payload[1], payload[2]),
     "batchAddTasksBackend": () => batchAddTasksBackend(payload[0], payload[1], payload[2], payload[3]),
 
+    // 🔥 API METADATA MỚI CỦA MÀY ĐÂY 🔥
     "getMetadataSync": () => getMetadataSync(),
     "processInjection": () => processInjection(payload)
   };
 
   try {
     if (!routes[action]) throw new Error("Action '" + action + "' not found in Backend Routing.");
+    
+    // Thực thi hàm tương ứng dựa trên action
     const result = routes[action]();
+    
     return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
@@ -220,32 +229,68 @@ function apiDispatcher(payload) {
 }
 
 function getMetadataSync() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const configSheet = ss.getSheetByName("WEB_CONFIG");
-  const data = configSheet.getRange("A2:L" + configSheet.getLastRow()).getValues();
-  
-  const metadata = data.map(r => ({
-    id: r[1], label: r[2], placeholder: r[3], type: r[4],
-    row: r[5], width: r[6], source: r[7]
-  })).filter(x => x.id);
+  try {
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const configSheet = ss.getSheetByName(CONFIG_SHEET_NAME);
+    if (!configSheet) throw new Error("Thiếu sheet WEB_CONFIG");
 
-  const sources = {};
-  metadata.forEach(f => {
-    if (f.source && f.source.includes("!")) {
-      try { sources[f.id] = ss.getRange(f.source).getValues().filter(r => r[0] !== ""); } catch(e) {}
-    } else if (f.source && f.source.startsWith("[")) {
-      sources[f.id] = JSON.parse(f.source).map(x => [x]);
-    }
-  });
+    const lastRow = configSheet.getLastRow();
+    if (lastRow < 2) return { metadata: [], sources: {} };
 
-  return { version: new Date().getTime(), metadata, sources };
+    // Lấy đúng 12 cột (A-L) tương ứng Index 0-11
+    const data = configSheet.getRange(2, 1, lastRow - 1, 12).getValues();
+    const metadata = data.map(r => ({
+      id: r[3],           // Cột D: Field_ID
+      label: r[1],        // Cột B: Label
+      placeholder: r[2],  // Cột C: Placeholder
+      type: r[4],         // Cột E: Input_Type
+      row: r[5],          // Cột F: Row
+      width: r[6],        // Cột G: Width
+      source: r[7],       // Cột H: Source_Data
+      dependsOn: r[8],    // Cột I: Depends_On
+      lookupCol: r[9],    // Cột J: Lookup_Col
+      targetS: r[10],     // Cột K: Target_Sheet
+      targetC: r[11]      // Cột L: Target_Cell
+    })).filter(x => x.id); // Bỏ qua dòng trống không có Field_ID
+
+    // Logic lấy Source Data (Giữ nguyên thuật toán $O(K)$)
+    const sources = {};
+    metadata.forEach(f => {
+      if (f.source && f.source.toString().includes("!")) {
+        try {
+          const range = ss.getRange(f.source);
+          sources[f.id] = range.getValues().filter(r => r[0] !== "" && r[0] !== null);
+        } catch (e) { 
+          console.warn("Lỗi Range: " + f.source);
+          sources[f.id] = []; 
+        }
+      } else if (f.source && f.source.toString().startsWith("[")) {
+        try {
+          sources[f.id] = JSON.parse(f.source).map(x => [x]);
+        } catch (e) { sources[f.id] = []; }
+      }
+    });
+
+    return { 
+      version: ss.getLastUpdated() ? ss.getLastUpdated().getTime() : new Date().getTime(), 
+      metadata, 
+      sources 
+    };
+  } catch (err) {
+    throw new Error("Backend Error: " + err.message);
+  }
 }
 
 function processInjection(payload) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
-  const config = ss.getSheetByName("WEB_CONFIG").getRange("B2:L").getValues();
+  // Đồng bộ Range A2:L để giữ index chuẩn từ 0-11
+  const config = ss.getSheetByName(CONFIG_SHEET_NAME).getRange("A2:L").getValues();
   const mapping = {};
-  config.forEach(r => { if(r[0] && r[9] && r[10]) mapping[r[0]] = { s: r[9], c: r[10] }; });
+  
+  // r[3] = Field_ID, r[10] = Target_Sheet, r[11] = Target_Cell
+  config.forEach(r => { 
+    if(r[3] && r[10] && r[11]) mapping[r[3]] = { s: r[10], c: r[11] }; 
+  });
 
   Object.keys(payload).forEach(id => {
     if (mapping[id]) {
