@@ -30,24 +30,46 @@ function loadDrawingModule() {
     }
 }
 
-function fetchActiveProjectsForDrawing() {
-    if (isDrawingListLoaded && activeDrawingProjects.length > 0) return;
-    
-    const syncBtnIcon = document.querySelector("#btn-sync-drawing i");
-    if (syncBtnIcon && syncBtnIcon.classList.contains('spinning')) return;
+/* --- public/JS_Drawing.js --- */
+
+/* --- public/JS_Drawing.js --- */
+
+function fetchActiveProjectsForDrawing(forceRefresh = false) {
+    // 1. Chỉ chạy quét nếu chưa tải lần nào, hoặc khi người dùng chủ động nhấn nút Sync (forceRefresh = true)
+    if (!forceRefresh && isDrawingListLoaded && activeDrawingProjects.length > 0) return;
 
     const input = document.getElementById("drawing-project-search");
-    if (input) input.placeholder = "Loading...";
+    const syncBtnIcon = document.querySelector("#btn-sync-drawing i");
+
+    // Ngăn chặn việc bấm Sync liên tục khi tiến trình đang chạy
+    if (syncBtnIcon && syncBtnIcon.classList.contains('spinning')) return;
+
+    // Hiển thị trạng thái tải cho người dùng thấy rõ
+    if (input) {
+        input.disabled = true;
+        input.placeholder = "Loading projects from Drive...";
+    }
     if (syncBtnIcon) syncBtnIcon.classList.add('spinning');
-    
+
+    // 2. Gọi Backend quét trực tiếp tên các thư mục dự án trên Google Drive
     callBackend("getActiveProjectFolders_Backend").then(folderNames => {
-        activeDrawingProjects = folderNames || []; 
+        activeDrawingProjects = folderNames || [];
         isDrawingListLoaded = true;
-        if (input) { input.disabled = false; input.placeholder = "Project"; }
+        
+        // Trả lại trạng thái sẵn sàng cho ô nhập liệu
+        if (input) {
+            input.disabled = false;
+            input.placeholder = "Project";
+        }
         if (syncBtnIcon) syncBtnIcon.classList.remove('spinning');
     }).catch(err => {
+        console.error("Lỗi tải danh sách thư mục từ Drive:", err);
+        isDrawingListLoaded = false; // Cho phép thử lại lần sau
+        if (input) {
+            input.disabled = false;
+            input.placeholder = "Failed to load projects";
+        }
         if (syncBtnIcon) syncBtnIcon.classList.remove('spinning');
-        console.error("Lỗi tải danh sách dự án:", err);
     });
 }
 
@@ -558,7 +580,19 @@ function resetAIZoneUI() {
  * 8. CORE UTILS
  */
 
-function syncManual() { if (!selectedProjectDrawing) return; document.getElementById("drawing-local-loader").style.display = "flex"; drawingTaskCache = {}; currentlyRenderedProject = ""; renderMindmap(selectedProjectDrawing); }
+function syncManual() {
+    // 1. Buộc quét lại danh sách dự án mới nhất từ Drive (Force Refresh)
+    fetchActiveProjectsForDrawing(true);
+    
+    // 2. Đồng bộ và vẽ lại Mindmap của dự án hiện tại đang chọn
+    if (selectedProjectDrawing) {
+        const localLoader = document.getElementById("drawing-local-loader");
+        if (localLoader) localLoader.style.display = "flex";
+        drawingTaskCache = {};
+        currentlyRenderedProject = "";
+        renderMindmap(selectedProjectDrawing);
+    }
+}
 
 function resetMindmapView() { if (cyInstance) cyInstance.animate({ fit: { padding: 20 }, duration: 400 }); }
 

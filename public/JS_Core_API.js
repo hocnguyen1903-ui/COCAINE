@@ -12,17 +12,19 @@ const serverCall = async (serverMethodName, ...args) => {
         throw error;
     }
 };
-/**
- * Điều hướng Tab (Slide Transition & Intro Animation)
- */
+/* --- public/JS_Core_API.js --- */
+
 async function openTab(tabId, triggerIntro = true) {
     if (tabId === activeTabId && !isInitialLoad) return;
     localStorage.setItem('bcons_hub_last_tab', tabId);
     const targetTab = document.getElementById(tabId);
     if (!targetTab) return;
 
-    // Chỉ nạp HTML nếu Tab rỗng và không phải là tab-about
+    let isTabJustFetched = false; // Cờ kiểm soát chống gọi trùng lặp (Race Condition)
+
+    // 1. Chỉ nạp HTML nếu Tab rỗng và không phải là tab-about
     if (targetTab.innerHTML.trim() === "" && tabId !== 'tab-about') {
+        isTabJustFetched = true; // Đánh dấu tab này đang được tải bất đồng bộ lần đầu
         const fileMap = {
             'tab-hdtcxd': 'Tab_HDTCXD.html',
             'tab-plhd': 'Tab_PLHD.html',
@@ -33,23 +35,92 @@ async function openTab(tabId, triggerIntro = true) {
             const resp = await fetch('./' + fileMap[tabId]);
             if (resp.ok) {
                 targetTab.innerHTML = await resp.text();
-                // Kích hoạt logic riêng của từng Tab
+                // Kích hoạt logic khởi tạo riêng của từng Tab
                 if (tabId === 'tab-hdtcxd') initTabHD();
                 if (tabId === 'tab-plhd') initTabPL();
                 if (tabId === 'tab-tbkq') initTabTB();
+                
+                // CHỈ gọi loadDrawingModule sau khi HTML đã được ghi đè hoàn tất vào DOM
                 if (tabId === 'tab-drawing') loadDrawingModule();
             }
-        } catch (e) { console.error("Lỗi nạp Tab:", e); }
+        } catch (e) { 
+            console.error("Lỗi nạp Tab:", e); 
+        }
     }
 
-    document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
-    targetTab.style.display = 'flex';
+    const allTabs = document.querySelectorAll('.tab-content');
+    const currentTab = document.getElementById(activeTabId);
+
+    // 2. Xử lý Hoạt ảnh Chuyển Tab (Transitions) dựa vào vị trí trong TAB_MAP
+    if (currentTab && !isInitialLoad) {
+        const currentIndex = TAB_MAP[activeTabId] || 0;
+        const targetIndex = TAB_MAP[tabId] || 0;
+
+        allTabs.forEach(t => {
+            t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
+        });
+
+        if (currentIndex < targetIndex) {
+            currentTab.classList.add('slide-out-left');
+            targetTab.classList.add('slide-in-right');
+        } else {
+            currentTab.classList.add('slide-out-right');
+            targetTab.classList.add('slide-in-left');
+        }
+
+        targetTab.style.display = 'flex';
+
+        setTimeout(() => {
+            allTabs.forEach(t => {
+                if (t.id !== tabId) {
+                    t.style.display = 'none';
+                    t.classList.remove('slide-out-left', 'slide-out-right');
+                }
+            });
+        }, 400);
+
+    } else {
+        allTabs.forEach(t => {
+            t.style.display = 'none';
+            t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
+        });
+        targetTab.classList.add('instant-fade');
+        targetTab.style.display = 'flex';
+    }
+
     activeTabId = tabId;
     
+    // 3. Đồng bộ trạng thái Menu Navigation
     document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
     const btnId = tabId === 'tab-hdtcxd' ? 'btn-hd' : tabId === 'tab-plhd' ? 'btn-pl' : tabId === 'tab-tbkq' ? 'btn-tbkq' : tabId === 'tab-drawing' ? 'btn-drawing' : 'btn-about';
-    document.getElementById(btnId)?.classList.add('active');
+    const menuBtn = document.getElementById(btnId);
+    if (menuBtn) menuBtn.classList.add('active');
+
     if (isInitialLoad) isInitialLoad = false;
+
+    // 4. LOGIC BUNG NGÀY THÁNG TỰ ĐỘNG
+    allTabs.forEach(t => {
+        if (t.id !== tabId) {
+            const otherContainer = t.querySelector('.location-date-container');
+            if (otherContainer) otherContainer.classList.remove('active-intro');
+        }
+    });
+    const currentLocDateContainer = targetTab.querySelector('.location-date-container');
+    if (currentLocDateContainer) {
+        setTimeout(() => { currentLocDateContainer.classList.add('active-intro'); }, 150);
+    }
+
+    // 5. KÍCH HOẠT MÔ-ĐUN DRAWING KHI CHUYỂN TAB ĐÃ ĐƯỢC TẢI SẴN (CÓ KIỂM SOÁT)
+    // Chỉ gọi ở đây nếu tab này KHÔNG phải là tab vừa được fetch mới (isTabJustFetched === false)
+    // Điều này triệt tiêu hoàn toàn lỗi gọi trùng lặp (Double-trigger) khi load trang
+    if (!isTabJustFetched && tabId === 'tab-drawing' && typeof loadDrawingModule === 'function') {
+        loadDrawingModule();
+    }
+
+    // 6. Cập nhật thanh cuộn của trình duyệt
+    if (typeof updateAppScrollState === 'function') {
+        updateAppScrollState();
+    }
 }
 
 function showFieldSmoothly(id) {
@@ -124,6 +195,8 @@ function updateAppScrollState() {
 /**
  * 2. TẢI DỮ LIỆU BẤT ĐỒNG BỘ SONG SONG (PARALLEL FETCH)
  */
+/* --- public/JS_Core_API.js --- */
+
 async function loadSystemData(isSilent = false) {
     const loading = document.getElementById("loadingSystem");
     if (loading && !isSilent) loading.style.display = "flex";
@@ -140,12 +213,13 @@ async function loadSystemData(isSilent = false) {
             if (typeof initTabPL === 'function') initTabPL();
             if (typeof initTabTB === 'function') initTabTB();
             
+            // --- XÓA dòng fetchActiveProjectsForDrawing() đã thêm ở bước trước ---
+
             // Build DOM Dashboard sau khi đã có dữ liệu
             if (typeof executeFilter_PL === 'function') executeFilter_PL(false);
         }
 
         if (loading) {
-            // Hiệu ứng tắt Loader mượt mà
             loading.style.opacity = "0";
             setTimeout(() => { loading.style.display = "none"; }, 500);
         }
