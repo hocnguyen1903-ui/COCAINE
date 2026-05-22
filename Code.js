@@ -20,11 +20,10 @@ function getCurrentStaffName() {
 // =========================================================================
 // 1. TẠO KHUNG WEB APP (SINGLE PAGE APPLICATION)
 // =========================================================================
-// Thay thế đoạn code cũ bằng API Router này
 function doPost(e) {
   if (!e || !e.postData) return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "No post data" })).setMimeType(ContentService.MimeType.JSON);
   
-  var request;
+  let request;
   try {
     request = JSON.parse(e.postData.contents);
   } catch (err) {
@@ -33,8 +32,11 @@ function doPost(e) {
 
   const { action, data: payload } = request;
 
-  // BẢNG ĐỊNH TUYẾN CHUẨN (Khớp 100% với các file API_*.gs của mày)
+  // BẢNG ĐỊNH TUYẾN CHUẨN (Time Complexity: O(1) Lookup)
   const routes = {
+    // --- BATCH PROCESSING (Đã bổ sung) ---
+    "batchRequest": () => apiDispatcher(payload),
+
     // --- CORE & SYSTEM ---
     "getSystemData": () => getSystemData(),
     "getActiveProjectFolders_Backend": () => getActiveProjectFolders_Backend(),
@@ -47,31 +49,34 @@ function doPost(e) {
 
     // --- PHỤ LỤC & BÀN GIAO (PLHD) ---
     "writeToSheetAndExportDoc_PL": () => writeToSheetAndExportDoc_PL(payload),
-    "updateContractData_PL": () => updateContractData_PL(payload[0], payload[1], payload[2]),
-    "updateTransferStatus_PL": () => updateTransferStatus_PL(payload[0], payload[1], payload[2]),
+    // Sử dụng Optional Chaining (?.) để chống crash nếu payload null/undefined
+    "updateContractData_PL": () => updateContractData_PL(payload?.[0], payload?.[1], payload?.[2]),
+    "updateTransferStatus_PL": () => updateTransferStatus_PL(payload?.[0], payload?.[1], payload?.[2]),
     "exportToNewSpreadsheet_PL": () => exportToNewSpreadsheet_PL(payload),
     "deleteContractRow_Backend": () => deleteContractRow_Backend(payload),
-    "uploadScanToDrive": () => uploadScanToDrive(payload[0], payload[1], payload[2]),
-    "deleteScanFilePermanently": () => deleteScanFilePermanently(payload[0], payload[1]),
+    "uploadScanToDrive": () => uploadScanToDrive(payload?.[0], payload?.[1], payload?.[2]),
+    "deleteScanFilePermanently": () => deleteScanFilePermanently(payload?.[0], payload?.[1]),
 
     // --- DRAWING & MINDMAP ---
     "getMindmapData": () => getMindmapData(payload),
     "getTasksByFileId": () => getTasksByFileId(payload),
     "getAllTasksByProject": () => getAllTasksByProject(payload),
-    "updateTasksOrderBackend": () => updateTasksOrderBackend(payload[0], payload[1], payload[2]),
+    "updateTasksOrderBackend": () => updateTasksOrderBackend(payload?.[0], payload?.[1], payload?.[2]),
 
     // --- AI EXTRACTION ---
     "getFileBase64ForAI": () => getFileBase64ForAI(payload),
-    "extractDataOnly": () => extractDataOnly(payload[0], payload[1], payload[2]),
-    "batchAddTasksBackend": () => batchAddTasksBackend(payload[0], payload[1], payload[2], payload[3])
+    "extractDataOnly": () => extractDataOnly(payload?.[0], payload?.[1], payload?.[2]),
+    "batchAddTasksBackend": () => batchAddTasksBackend(payload?.[0], payload?.[1], payload?.[2], payload?.[3])
   };
 
   try {
-    if (!routes[action]) throw new Error("Action '" + action + "' not found in Backend Routing.");
+    if (!routes[action]) throw new Error(`Action '${action}' not found in Backend Routing.`);
     const result = routes[action]();
     return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
+    // Ghi log lỗi Server-side trước khi trả về Client
+    console.error(`[API ERROR] Action: ${action} | Msg: ${error.message} | Stack: ${error.stack}`);
     return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }

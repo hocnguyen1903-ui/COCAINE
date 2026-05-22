@@ -1,0 +1,10 @@
+# .claspignore
+# Chan toan bo file giao dien va thu muc client-side
+**/*.html
+public/**
+.git/**
+.vscode/**
+node_modules/**
+package.json
+package-lock.json
+README.md

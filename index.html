@@ -665,7 +665,7 @@
     <div id="infoModal-pl" class="info-modal-overlay" onclick="closeSearchGuide_PL()"></div>
 
     <script>
-        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxSRjJ-GD_RBTjfJxipI7Mp31XX6CdDeyItZt_a17JacNo_RSi7USS7zJlytWzaDqc/exec";
+        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0kGCpcGHAX2WgC9qQ6Mdh6eCXA4hwzbHCfhkmphOf-uxYKg0/exec";
         async function callBackend(action, data = {}) {
             const resp = await fetch(GAS_API_URL, { method: 'POST', mode: 'cors', body: JSON.stringify({ action, data }) });
             const res = await resp.json();
