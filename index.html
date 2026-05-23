@@ -30,12 +30,33 @@
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
 </head>
 <body>
-    <!-- 1. LOADERS -->
+    <!-- 1. LOADERS & LOGIN OVERLAY -->
     <div id="loadingSystem" class="luxury-loader">
         <div class="loader-content">
             <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">
             <div class="shimmer-bar"></div>
             <p class="loader-text">SYSTEM INITIALIZING</p>
+        </div>
+    </div>
+
+    <!-- KHUNG ĐĂNG NHẬP THIẾT BỊ (GLASSMORPHISM) -->
+    <div id="loginOverlay" class="luxury-loader" style="display: none; background: rgba(3, 28, 53, 0.95) !important;">
+        <div class="form-container" style="width: 320px; text-align: center; transform: none; animation: popIn_PL 0.4s ease-out; background: rgba(34, 56, 68, 0.4); border: 1.5px solid rgba(255, 186, 8, 0.4); padding: 30px;">
+            <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" style="width: 90px; margin-bottom: 20px;">
+            <h2 style="color: #FFBA08; font-size: 15px; font-weight: 800; letter-spacing: 2px; margin-bottom: 25px; text-transform: uppercase;">MEMBER SIGN IN</h2>
+            
+            <div style="display: flex; flex-direction: column; gap: 15px; text-align: left; margin-bottom: 25px;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <label style="line-height: 1; font-size: 11px;"><i class="bi bi-envelope-fill"></i> Email</label>
+                    <input type="email" id="loginEmail" placeholder="example@gmail.com" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: center;" required>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <label style="line-height: 1; font-size: 11px;"><i class="bi bi-lock-fill"></i> Password</label>
+                    <input type="password" id="loginPassword" placeholder="••••" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: center;" required>
+                </div>
+            </div>
+            
+            <button type="button" class="submit-button" onclick="performLogin()" style="width: 100%; height: 40px; border-radius: 8px !important;">SIGN IN</button>
         </div>
     </div>
     <div id="contractLoading" class="luxury-loader" style="display: none;"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">CRAFTING DOCUMENT</p></div></div>
@@ -671,16 +692,6 @@
     <div id="customContextMenu-pl"></div>
     <div id="toastContainer"></div>
     <div id="infoModal-pl" class="info-modal-overlay" onclick="closeSearchGuide_PL()"></div>
-
-    <script>
-        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0kGCpcGHAX2WgC9qQ6Mdh6eCXA4hwzbHCfhkmphOf-uxYKg0/exec";
-        async function callBackend(action, data = {}) {
-            const resp = await fetch(GAS_API_URL, { method: 'POST', mode: 'cors', body: JSON.stringify({ action, data }) });
-            const res = await resp.json();
-            if (res.status === "error") throw new Error(res.message);
-            return res.data;
-        }
-    </script>
     <script src="public/JS_Variables.js"></script>
     <script src="public/JS_Utils.js"></script>
     <script src="public/JS_Core_API.js"></script>

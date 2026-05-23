@@ -197,28 +197,120 @@ function updateAppScrollState() {
  */
 /* --- public/JS_Core_API.js --- */
 
+// --- CẤU HÌNH LIÊN KẾT BACKEND API ---
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0kGCpcGHAX2WgC9qQ6Mdh6eCXA4hwzbHCfhkmphOf-uxYKg0/exec";
+
+/**
+ * Thực thi gọi API đính kèm bảo mật Token
+ */
+/**
+ * Thực thi gọi API đính kèm bảo mật Token
+ */
+async function callBackend(action, data = {}) {
+    const token = localStorage.getItem('bcons_session_token');
+    
+    // Ngăn chặn gọi API nếu chưa đăng nhập và không phải hành động login
+    if (!token && action !== "loginUser") {
+        showLoginUI();
+        throw new Error("UNAUTHORIZED: Yêu cầu đăng nhập!");
+    }
+
+    const resp = await fetch(GAS_API_URL, { 
+        method: 'POST', 
+        mode: 'cors', 
+        body: JSON.stringify({ action, data, token }) 
+    });
+    const res = await resp.json();
+    
+    if (res.status === "error") {
+        if (res.message.includes("UNAUTHORIZED")) {
+            localStorage.removeItem('bcons_session_token');
+            localStorage.removeItem('bcons_staff_identity');
+            showLoginUI();
+        }
+        throw new Error(res.message);
+    }
+    return res.data;
+}
+
+/**
+ * Hiển thị khung đăng nhập chặn tương tác
+ */
+function showLoginUI() {
+    const overlay = document.getElementById('loginOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        // Khắc phục xung đột CSS mặc định opacity: 0 của lớp .form-container
+        const formContainer = overlay.querySelector('.form-container');
+        if (formContainer) {
+            formContainer.style.setProperty('opacity', '1', 'important');
+        }
+        // Tắt loading hệ thống nếu có để nhường không gian tương tác
+        const loader = document.getElementById('loadingSystem');
+        if (loader) loader.style.display = 'none';
+    }
+}
+
+/**
+ * Xử lý sự kiện nhấn nút SIGN IN
+ */
+async function performLogin() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value.trim();
+    
+    if (!mail || !password) {
+        alert("Sếp vui lòng điền đầy đủ thông tin đăng nhập!");
+        return;
+    }
+
+    const loginBtn = document.querySelector('#loginOverlay .submit-button');
+    loginBtn.disabled = true;
+    loginBtn.textContent = "VERIFYING...";
+
+    try {
+        const res = await callBackend("loginUser", { mail, password });
+        if (res && res.token) {
+            localStorage.setItem('bcons_session_token', res.token);
+            localStorage.setItem('bcons_staff_identity', res.name);
+            
+            document.getElementById('loginOverlay').style.display = 'none';
+            showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
+            
+            // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
+            loadSystemData();
+        }
+    } catch (err) {
+        alert(err.message || "Xác thực thất bại!");
+    } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "SIGN IN";
+    }
+}
+
+/**
+ * Khởi tạo dữ liệu hệ thống có kiểm tra phiên làm việc
+ */
 async function loadSystemData(isSilent = false) {
+    const token = localStorage.getItem('bcons_session_token');
+    if (!token) {
+        showLoginUI();
+        return;
+    }
+
     const loading = document.getElementById("loadingSystem");
     if (loading && !isSilent) loading.style.display = "flex";
 
     try {
-        const sysData = await serverCall('getSystemData');
-
+        const sysData = await callBackend('getSystemData');
         if (sysData) {
             SYSTEM_DATA = sysData;
             PRECOMPUTED_PL_DATA = null;
 
-            // Đảm bảo các Tab được khởi tạo theo đúng thứ tự
             if (typeof initTabHD === 'function') initTabHD();
             if (typeof initTabPL === 'function') initTabPL();
             if (typeof initTabTB === 'function') initTabTB();
-            
-            // --- XÓA dòng fetchActiveProjectsForDrawing() đã thêm ở bước trước ---
-
-            // Build DOM Dashboard sau khi đã có dữ liệu
             if (typeof executeFilter_PL === 'function') executeFilter_PL(false);
         }
-
         if (loading) {
             loading.style.opacity = "0";
             setTimeout(() => { loading.style.display = "none"; }, 500);
@@ -226,7 +318,7 @@ async function loadSystemData(isSilent = false) {
     } catch (error) {
         if (loading) loading.style.display = "none";
         console.error("Lỗi khởi tạo hệ thống:", error);
-        showToast_PL("⚠️ Lỗi kết nối dữ liệu!", "error");
+        showToast_PL("⚠️ Lỗi phiên làm việc hoặc kết nối!", "error");
     }
 }
 

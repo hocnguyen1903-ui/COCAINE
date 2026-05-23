@@ -3,23 +3,79 @@ const SHEET_NAME_TBKQ = "TBKQTT";
 const SHEET_NAME_SO_TB = "SO THONG BAO";
 const MASTER_FOLDER_ID = '1zStGfH5eitVgbxHF-bhrQGE4NWoKlCpw';
 
-// --- KHU VỰC CẤU HÌNH HỆ THỐNG ---
-const STAFF_CONFIG = {
-    "hocnguyen1903@gmail.com": "HỌC",
-    "ngocchaulhtst@gmail.com": "CHÂU"
-};
+// --- ĐỊNH DANH TOÀN CỤC CHO THIẾT BỊ ĐANG GỌI API ---
+var GLOBAL_STAFF_NAME = "UNKNOWN";
 
 /**
- * Hàm lấy tên nhân sự dựa trên Email đang đăng nhập
+ * Hàm lấy tên nhân sự cho các file xử lý logic dùng chung (API_PhuLuc, API_HopDong)
  */
 function getCurrentStaffName() {
-    const email = Session.getActiveUser().getEmail();
-    return STAFF_CONFIG[email] || email || "UNKNOWN";
+  return GLOBAL_STAFF_NAME;
 }
 
-// =========================================================================
-// 1. TẠO KHUNG WEB APP (SINGLE PAGE APPLICATION)
-// =========================================================================
+/**
+ * Xử lý xác thực Token qua kiến trúc Hybrid (RAM Cache -> SSD Properties)
+ */
+function authenticateAndGetName(token) {
+  if (!token) return "UNKNOWN";
+  
+  // Lớp 1: Kiểm tra RAM (CacheService - ~3ms)
+  const cache = CacheService.getScriptCache();
+  const cachedName = cache.get(token);
+  if (cachedName) return cachedName;
+
+  // Lớp 2: Kiểm tra SSD (PropertiesService - ~30ms)
+  const props = PropertiesService.getScriptProperties();
+  const propName = props.getProperty(token);
+  if (propName) {
+    // Nạp ngược lại RAM cho các request tiếp theo
+    cache.put(token, propName, 21600);
+    return propName;
+  }
+  return "UNKNOWN";
+}
+
+/**
+ * Xác thực thông tin đăng nhập từ Sheet "User_Registry"
+ */
+function loginUser(mail, password) {
+  if (password !== "1234") {
+    throw new Error("Sai mật khẩu đăng nhập hệ thống!");
+  }
+  
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName("User_Registry");
+  if (!sheet) throw new Error("Không tìm thấy Sheet danh sách User 'User_Registry'!");
+  
+  const data = sheet.getDataRange().getValues();
+  const targetMail = mail.toLowerCase().trim();
+  let matchedName = "";
+  
+  // Duyệt dữ liệu bỏ qua Header dòng 1 (A1: Mail, B1: Name)
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+      matchedName = data[i][1]?.toString().toUpperCase().trim();
+      break;
+    }
+  }
+  
+  if (!matchedName) {
+    throw new Error("Email của sếp chưa được đăng ký trong hệ thống!");
+  }
+  
+  const token = "TOKEN-" + Utilities.getUuid();
+  
+  // Lưu vĩnh viễn vào bộ nhớ SSD dự án
+  PropertiesService.getScriptProperties().setProperty(token, matchedName);
+  // Lưu đệm vào RAM 6 tiếng
+  CacheService.getScriptCache().put(token, matchedName, 21600);
+  
+  return { success: true, token: token, name: matchedName };
+}
+
+/**
+ * ĐỊNH TUYẾN WEB APP API (CHẶN BẢO MẬT 403)
+ */
 function doPost(e) {
   if (!e || !e.postData) return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "No post data" })).setMimeType(ContentService.MimeType.JSON);
   
@@ -30,40 +86,41 @@ function doPost(e) {
     return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "JSON Parse error" })).setMimeType(ContentService.MimeType.JSON);
   }
 
-  const { action, data: payload } = request;
+  const { action, data: payload, token } = request;
 
-  // BẢNG ĐỊNH TUYẾN CHUẨN (Time Complexity: O(1) Lookup)
+  // 1. Chạy tiến trình Đăng nhập (Bỏ qua màng lọc Token)
+  if (action === "loginUser") {
+    try {
+      const res = loginUser(payload.mail, payload.password);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // 2. Màng lọc bảo mật Hybrid xác thực Token cho toàn bộ Request khác
+  GLOBAL_STAFF_NAME = authenticateAndGetName(token);
+  if (GLOBAL_STAFF_NAME === "UNKNOWN") {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "UNAUTHORIZED: Phiên làm việc hết hạn hoặc không hợp lệ!" })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   const routes = {
-    // --- BATCH PROCESSING (Đã bổ sung) ---
     "batchRequest": () => apiDispatcher(payload),
-
-    // --- CORE & SYSTEM ---
     "getSystemData": () => getSystemData(),
     "getActiveProjectFolders_Backend": () => getActiveProjectFolders_Backend(),
-
-    // --- HỢP ĐỒNG (HDTCXD) ---
     "handleFullExportProcess_HD": () => handleFullExportProcess_HD(payload),
-
-    // --- THÔNG BÁO KẾT QUẢ (TBKQ) ---
     "handleFullExportProcess_TB": () => handleFullExportProcess_TB(payload),
-
-    // --- PHỤ LỤC & BÀN GIAO (PLHD) ---
     "writeToSheetAndExportDoc_PL": () => writeToSheetAndExportDoc_PL(payload),
-    // Sử dụng Optional Chaining (?.) để chống crash nếu payload null/undefined
     "updateContractData_PL": () => updateContractData_PL(payload?.[0], payload?.[1], payload?.[2]),
     "updateTransferStatus_PL": () => updateTransferStatus_PL(payload?.[0], payload?.[1], payload?.[2]),
     "exportToNewSpreadsheet_PL": () => exportToNewSpreadsheet_PL(payload),
     "deleteContractRow_Backend": () => deleteContractRow_Backend(payload),
     "uploadScanToDrive": () => uploadScanToDrive(payload?.[0], payload?.[1], payload?.[2]),
     "deleteScanFilePermanently": () => deleteScanFilePermanently(payload?.[0], payload?.[1]),
-
-    // --- DRAWING & MINDMAP ---
     "getMindmapData": () => getMindmapData(payload),
     "getTasksByFileId": () => getTasksByFileId(payload),
     "getAllTasksByProject": () => getAllTasksByProject(payload),
     "updateTasksOrderBackend": () => updateTasksOrderBackend(payload?.[0], payload?.[1], payload?.[2]),
-
-    // --- AI EXTRACTION ---
     "getFileBase64ForAI": () => getFileBase64ForAI(payload),
     "extractDataOnly": () => extractDataOnly(payload?.[0], payload?.[1], payload?.[2]),
     "batchAddTasksBackend": () => batchAddTasksBackend(payload?.[0], payload?.[1], payload?.[2], payload?.[3])
@@ -72,13 +129,10 @@ function doPost(e) {
   try {
     if (!routes[action]) throw new Error(`Action '${action}' not found in Backend Routing.`);
     const result = routes[action]();
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result })).setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
-    // Ghi log lỗi Server-side trước khi trả về Client
-    console.error(`[API ERROR] Action: ${action} | Msg: ${error.message} | Stack: ${error.stack}`);
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+    console.error(`[API ERROR] Action: ${action} | Msg: ${error.message}`);
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
@@ -220,3 +274,4 @@ function apiDispatcher(payload) {
   }
   return results;
 }
+
