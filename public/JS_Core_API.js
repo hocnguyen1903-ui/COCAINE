@@ -273,6 +273,12 @@ async function performLogin() {
             localStorage.setItem('bcons_session_token', res.token);
             localStorage.setItem('bcons_staff_identity', res.name);
             
+            // Gán tên lên Header ngay lần đầu đăng nhập thành công
+            const displayEl = document.getElementById('staffNameDisplay');
+            if (displayEl) {
+                displayEl.textContent = res.name;
+            }
+            
             document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
             showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
             
@@ -405,6 +411,13 @@ async function loadSystemData(isSilent = false) {
     if (!token) {
         showLoginUI();
         return;
+    }
+
+    // Gán tên lên Header khi F5 tải lại trang
+    const name = localStorage.getItem('bcons_staff_identity');
+    const displayEl = document.getElementById('staffNameDisplay');
+    if (displayEl && name) {
+        displayEl.textContent = name;
     }
 
     const loading = document.getElementById("loadingSystem");
