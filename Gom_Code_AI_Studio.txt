@@ -1,5 +1,5 @@
 === BẮT ĐẦU DUMP DỮ LIỆU DỰ ÁN ===
-Thời gian tạo: Sat May 23 20:43:09 +07 2026
+Thời gian tạo: Sun May 24 20:09:29 +07 2026
 ==================================
 
 
@@ -869,30 +869,44 @@ FILE [3]: ./index.html
         </div>
     </div>
 
-    <!-- KHUNG ĐĂNG NHẬP THIẾT BỊ (GLASSMORPHISM) -->
-    <div id="loginOverlay" class="luxury-loader" style="display: none; background: rgba(3, 28, 53, 0.95) !important;">
+    <!-- KHUNG ĐĂNG NHẬP / ĐĂNG KÝ THIẾT BỊ (GLASSMORPHISM) -->
+    <div id="loginOverlay" class="luxury-loader" style="display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 100000000 !important;">
         <div class="form-container" style="width: 320px; text-align: center; transform: none; animation: popIn_PL 0.4s ease-out; background: rgba(34, 56, 68, 0.4); border: 1.5px solid rgba(255, 186, 8, 0.4); padding: 30px;">
             <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" style="width: 90px; margin-bottom: 20px;">
-            <h2 style="color: #FFBA08; font-size: 15px; font-weight: 800; letter-spacing: 2px; margin-bottom: 25px; text-transform: uppercase;">MEMBER SIGN IN</h2>
+            <h2 id="loginTitle" style="color: #FFBA08; font-size: 15px; font-weight: 800; letter-spacing: 2px; margin-bottom: 25px; text-transform: uppercase;">MEMBER SIGN IN</h2>
             
-            <div style="display: flex; flex-direction: column; gap: 15px; text-align: left; margin-bottom: 25px;">
+            <div id="loginInputFields" style="display: flex; flex-direction: column; gap: 15px; text-align: left; margin-bottom: 25px;">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <label style="line-height: 1; font-size: 11px;"><i class="bi bi-envelope-fill"></i> Email</label>
-                    <input type="email" id="loginEmail" placeholder="example@gmail.com" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: center;" required>
+                    <input type="email" id="loginEmail" placeholder="example@gmail.com" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: left;" required>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 4px;">
+                <!-- VÙNG PASSWORD (ẨN KHI ĐĂNG KÝ) -->
+                <div id="passwordFieldContainer" style="display: flex; flex-direction: column; gap: 4px;">
                     <label style="line-height: 1; font-size: 11px;"><i class="bi bi-lock-fill"></i> Password</label>
-                    <input type="password" id="loginPassword" placeholder="••••" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: center;" required>
+                    <input type="password" id="loginPassword" placeholder="••••" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: left;" required>
+                </div>
+                <!-- VÙNG NHẬP HỌ TÊN (HIỆN KHI ĐĂNG KÝ) -->
+                <div id="nameFieldContainer" style="display: none; flex-direction: column; gap: 4px;">
+                    <label style="line-height: 1; font-size: 11px;"><i class="bi bi-person-fill"></i> Full Name</label>
+                    <input type="text" id="registerName" placeholder="NGUYỄN VĂN A" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: left;">
                 </div>
             </div>
             
-            <button type="button" class="submit-button" onclick="performLogin()" style="width: 100%; height: 40px; border-radius: 8px !important;">SIGN IN</button>
+            <button type="button" id="loginSubmitBtn" class="submit-button" onclick="performLogin()" style="width: 100%; height: 40px; border-radius: 8px !important; margin-bottom: 20px;">SIGN IN</button>
+            
+            <!-- LIÊN KẾT CHUYỂN TRẠNG THÁI -->
+            <div id="toggleLoginView" style="font-size: 11px; color: #95A1AF; cursor: pointer; text-decoration: underline;" onclick="toggleLoginMode()">Chưa có tài khoản? Đăng ký ngay</div>
         </div>
     </div>
     <div id="contractLoading" class="luxury-loader" style="display: none;"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">CRAFTING DOCUMENT</p></div></div>
 
     <!-- 2. HEADER -->
-    <div class="header">
+    <div class="header" style="justify-content: space-between !important; padding: 0 30px !important;">
+        <!-- NÚT LOG OUT PHÍA TRÁI HEADER -->
+        <a href="javascript:void(0)" onclick="performLogout()" style="color: #FFBA08; font-size: 13px; text-decoration: none; display: flex; align-items: center; gap: 6px; letter-spacing: 1px; transition: all 0.3s; opacity: 0.85;" onmouseover="this.style.opacity='1'; this.style.transform='scale(1.05)';" onmouseout="this.style.opacity='0.85'; this.style.transform='scale(1)';">
+            <i class="bi bi-box-arrow-left" style="font-size: 16px; position: relative; top: 1px;"></i> Log out
+        </a>
+        
         <div class="menu">
             <a href="javascript:void(0)" id="btn-about" onclick="openTab('tab-about')" class="active"><b>ABOUT</b></a>
             <a href="javascript:void(0)" id="btn-hd" onclick="openTab('tab-hdtcxd')">CONTRACT</a>
@@ -1837,6 +1851,9 @@ function authenticateAndGetName(token) {
 /**
  * Xác thực thông tin đăng nhập từ Sheet "User_Registry"
  */
+/**
+ * Xác thực thông tin đăng nhập và kiểm tra Trạng thái ACTIVE từ Sheet "User_Registry"
+ */
 function loginUser(mail, password) {
   if (password !== "1234") {
     throw new Error("Sai mật khẩu đăng nhập hệ thống!");
@@ -1849,17 +1866,23 @@ function loginUser(mail, password) {
   const data = sheet.getDataRange().getValues();
   const targetMail = mail.toLowerCase().trim();
   let matchedName = "";
+  let status = "PENDING";
   
-  // Duyệt dữ liệu bỏ qua Header dòng 1 (A1: Mail, B1: Name)
+  // Duyệt dữ liệu bỏ qua Header dòng 1 (A1: Mail, B1: Name, C1: Status)
   for (let i = 1; i < data.length; i++) {
     if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
       matchedName = data[i][1]?.toString().toUpperCase().trim();
+      status = data[i][2] ? data[i][2].toString().toUpperCase().trim() : "PENDING";
       break;
     }
   }
   
   if (!matchedName) {
     throw new Error("Email của sếp chưa được đăng ký trong hệ thống!");
+  }
+  
+  if (status !== "ACTIVE") {
+    throw new Error("Tài khoản đang chờ sếp phê duyệt hoặc đã bị khóa!");
   }
   
   const token = "TOKEN-" + Utilities.getUuid();
@@ -1873,7 +1896,161 @@ function loginUser(mail, password) {
 }
 
 /**
- * ĐỊNH TUYẾN WEB APP API (CHẶN BẢO MẬT 403)
+ * Xử lý yêu cầu Đăng ký tài khoản từ Nhân viên (Append PENDING & Gửi Email)
+ */
+function registerUser(mail, name) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName("User_Registry");
+  if (!sheet) {
+    sheet = ss.insertSheet("User_Registry");
+    sheet.appendRow(["Mail", "Name", "Status"]);
+  }
+  
+  const targetMail = mail.toLowerCase().trim();
+  const targetName = name.toUpperCase().trim();
+  const data = sheet.getDataRange().getValues();
+  
+  // Kiểm tra trùng lặp Email
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+      throw new Error("Email này đã được sử dụng hoặc đang trong hàng chờ duyệt!");
+    }
+  }
+  
+  // Thêm dòng mới trạng thái PENDING
+  sheet.appendRow([targetMail, targetName, "PENDING"]);
+  
+  // Sinh Token phê duyệt bảo mật dùng một lần
+  const approvalToken = "APPROVE-" + Utilities.getUuid();
+  PropertiesService.getScriptProperties().setProperty(approvalToken, targetMail + "|" + targetName);
+  
+  // Gửi Mail thông báo cho sếp
+  sendApprovalEmail(targetMail, targetName, approvalToken);
+  
+  return { success: true };
+}
+
+/**
+ * Gửi Mail định dạng HTML Luxury đến Sếp để duyệt nhanh
+ */
+function sendApprovalEmail(userMail, userName, token) {
+  const adminMail = Session.getEffectiveUser().getEmail(); // Tự động lấy Email của sếp (Người Deploy)
+  const webAppUrl = ScriptApp.getService().getUrl();
+  
+  const approveLink = `${webAppUrl}?action=approve&token=${token}`;
+  const rejectLink = `${webAppUrl}?action=reject&token=${token}`;
+  
+  const htmlBody = `
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background: #031c35; border: 1.5px solid #FFBA08; border-radius: 12px; color: #FFFFFF;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" style="width: 80px;">
+        <h2 style="color: #FFBA08; font-size: 16px; margin-top: 15px; text-transform: uppercase; letter-spacing: 1px;">YÊU CẦU PHÊ DUYỆT TÀI KHOẢN</h2>
+      </div>
+      <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #FFBA08;">
+        <p style="margin: 0 0 8px 0; font-size: 13px; color: #95a1af;">Họ và tên: <b style="color: #FFFFFF; font-size: 14px;">${userName}</b></p>
+        <p style="margin: 0; font-size: 13px; color: #95a1af;">Email đăng ký: <b style="color: #FFFFFF; font-size: 14px;">${userMail}</b></p>
+      </div>
+      <div style="display: flex; justify-content: space-between; gap: 15px;">
+        <a href="${approveLink}" target="_blank" style="flex: 1; text-align: center; display: inline-block; padding: 12px; background: #2ECC71; color: #FFFFFF; font-weight: bold; font-size: 13px; text-decoration: none; border-radius: 6px; text-transform: uppercase;">✔ PHÊ DUYỆT</a>
+        <a href="${rejectLink}" target="_blank" style="flex: 1; text-align: center; display: inline-block; padding: 12px; background: #E74C3C; color: #FFFFFF; font-weight: bold; font-size: 13px; text-decoration: none; border-radius: 6px; text-transform: uppercase;">✖ TỪ CHỐI</a>
+      </div>
+      <p style="font-size: 11px; color: #505966; margin-top: 25px; text-align: center;">Hệ thống Contract Hub V2 - Auto Security Middleware</p>
+    </div>
+  `;
+  
+  MailApp.sendEmail({
+    to: adminMail,
+    subject: `[Bcons Contract Hub] Duyệt đăng ký nhân sự: ${userName}`,
+    htmlBody: htmlBody
+  });
+}
+
+/**
+ * Xử lý tương tác Phê duyệt / Từ chối bằng 1-Click trực tiếp từ Email của sếp
+ */
+function doGet(e) {
+  if (e && e.parameter && e.parameter.action && e.parameter.token) {
+    const action = e.parameter.action;
+    const token = e.parameter.token;
+    const props = PropertiesService.getScriptProperties();
+    const rawData = props.getProperty(token);
+    
+    if (!rawData) {
+      return HtmlService.createHtmlOutput(buildResultHtmlPage("LỖI PHÊ DUYỆT", "Yêu cầu này đã được phê duyệt trước đó hoặc liên kết không hợp lệ!", false));
+    }
+    
+    const [userMail, userName] = rawData.split("|");
+    
+    if (action === "approve") {
+      const ss = SpreadsheetApp.openById(SHEET_ID);
+      const sheet = ss.getSheetByName("User_Registry");
+      const data = sheet.getDataRange().getValues();
+      let rowUpdated = false;
+      
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0]?.toString().toLowerCase().trim() === userMail.toLowerCase().trim()) {
+          sheet.getRange(i + 1, 3).setValue("ACTIVE"); // Cập nhật trạng thái
+          rowUpdated = true;
+          break;
+        }
+      }
+      
+      props.deleteProperty(token); // Vô hiệu hóa Token một lần dùng
+      
+      if (rowUpdated) {
+        return HtmlService.createHtmlOutput(buildResultHtmlPage("PHÊ DUYỆT THÀNH CÔNG", `Tài khoản của <b>${userName}</b> (${userMail}) đã được kích hoạt thành công! Nhân viên có thể đăng nhập ngay.`, true));
+      }
+    } 
+    else if (action === "reject") {
+      // Xóa yêu cầu PENDING khỏi Sheet
+      const ss = SpreadsheetApp.openById(SHEET_ID);
+      const sheet = ss.getSheetByName("User_Registry");
+      const data = sheet.getDataRange().getValues();
+      for (let i = data.length - 1; i >= 1; i--) {
+        if (data[i][0]?.toString().toLowerCase().trim() === userMail.toLowerCase().trim()) {
+          sheet.deleteRow(i + 1);
+          break;
+        }
+      }
+      props.deleteProperty(token); // Xóa Token
+      return HtmlService.createHtmlOutput(buildResultHtmlPage("ĐÃ TỪ CHỐI", `Yêu cầu đăng ký của <b>${userName}</b> đã bị từ chối và xóa khỏi hệ thống.`, false));
+    }
+  }
+  return ContentService.createTextOutput("Backend API is Online. Please use Frontend from GitHub.");
+}
+
+/**
+ * Trình dựng giao diện thông báo kết quả phê duyệt phong cách Glassmorphism
+ */
+function buildResultHtmlPage(title, desc, isSuccess) {
+  const color = isSuccess ? "#2ECC71" : "#E74C3C";
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>${title}</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: url(https://i.postimg.cc/yxPDnjWg/123456789.jpg) center/cover no-repeat fixed; margin:0; padding:0; display:flex; justify-content:center; align-items:center; height:100vh; }
+        body::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(3, 28, 53, 0.85); z-index: 1; }
+        .box { position: relative; z-index: 2; width: 400px; padding: 40px; background: rgba(34, 56, 68, 0.4); border: 2px solid ${color}; border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); text-align: center; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+        h2 { color: ${color}; margin-top: 15px; font-size: 18px; letter-spacing: 2px; text-transform: uppercase; }
+        p { color: #E0E0E0; font-size: 13.5px; line-height: 1.6; margin-top: 15px; }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" style="width: 80px;">
+        <h2>${title}</h2>
+        <p>${desc}</p>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * ĐỒNG BỘ ĐỊNH TUYẾN WEB APP API
  */
 function doPost(e) {
   if (!e || !e.postData) return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "No post data" })).setMimeType(ContentService.MimeType.JSON);
@@ -1887,10 +2064,19 @@ function doPost(e) {
 
   const { action, data: payload, token } = request;
 
-  // 1. Chạy tiến trình Đăng nhập (Bỏ qua màng lọc Token)
+  // 1. Chạy tiến trình Đăng nhập & Đăng ký (Bỏ qua màng lọc Token)
   if (action === "loginUser") {
     try {
       const res = loginUser(payload.mail, payload.password);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+  
+  if (action === "registerUser") {
+    try {
+      const res = registerUser(payload.mail, payload.name);
       return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
     } catch (err) {
       return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
@@ -1935,6 +2121,111 @@ function doPost(e) {
   }
 }
 
+// =========================================================================
+// 2. CHUYẾN XE TẢI DỮ LIỆU TỔNG (ĐÃ NÂNG CẤP LẤY CỘT K ĐỂ SEARCH)
+// =========================================================================
+function getSystemData() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  
+  // 1. LẤY DATA DỰ ÁN (Dùng chung cho HD và TBKQ)
+  const dataBcons = ss.getSheetByName("DATABCONS").getRange("A3:B").getValues().reverse();
+  const projectHD = dataBcons.map(r => ({
+    display: r[0].toString().trim(),
+    searchString: r[1] ? `${r[0]} | ${r[1]}`.trim() : r[0].toString().trim()
+  })).filter(i => i.display);
+
+  // 2. LẤY DATA GÓI THẦU (DATAGOITHAU)
+  const sheetGoiThau = ss.getSheetByName("DATAGOITHAU");
+  const lastRowGT = sheetGoiThau.getLastRow();
+  
+  let packHD = []; 
+  let warrantyHD = []; 
+
+  if (lastRowGT >= 12) {
+    const dataGT = sheetGoiThau.getRange(12, 2, lastRowGT - 11, 19).getValues();
+    packHD = dataGT.filter(r => r[18] !== "").map(r => ({
+      searchString: r[18].toString().trim(),
+      category: r[0].toString().trim()
+    }));
+    warrantyHD = sheetGoiThau.getRange("N3:N").getValues().flat().filter(String);
+  }
+
+  // 3. LẤY DATA NHÀ THẦU (DATANTP)
+  const dataNTP = ss.getSheetByName("DATANTP").getRange("C3:D").getValues();
+  const contractorHD = dataNTP.map(r => ({
+    display: r[0].toString().trim(),
+    searchString: r[1] ? `${r[1]} | ${r[0]}`.trim() : r[0].toString().trim()
+  })).filter(i => i.display);
+
+  // 4. LẤY DATA PHỤ LỤC (Sheet X) - ĐÃ BỔ SUNG CỘT K
+  const sheetX = ss.getSheetByName("X");
+  const lastRowX = sheetX.getLastRow();
+  let field0PL = [];
+  
+  if (lastRowX >= 4) {
+    // Lấy đến cột V (Index 21) để đảm bảo bao phủ hết các trường Q, R, S
+    const dataX = sheetX.getRange(`A4:V${lastRowX}`).getValues(); 
+    
+    field0PL = dataX.map(r => {
+      const valA = r[0]?.toString().trim() || ""; // Cột A: Số HĐ
+      if (!valA) return null;
+
+      const scanRaw = r[15]?.toString().trim() || ""; // Cột P: Scan ID
+      let rawDate = r[7]; // Cột H: Ngày ký
+      let strDate = rawDate instanceof Date ? Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy") : (rawDate?.toString().trim() || "");
+
+      return {
+        maHD: valA, // Cột A
+        display: `${valA} | ${r[6]?.toString().trim() || ""} | ${r[2]?.toString().trim() || r[3]?.toString().trim() || ""}`,
+        note: r[1]?.toString().trim() || "", // Cột B: Tên gói thầu
+        
+        // 🔥 BỔ SUNG: LẤY DỮ LIỆU CỘT K (Index 10) ĐỂ SEARCH
+        searchK: r[10]?.toString().trim() || "", 
+        
+        dateH: strDate, 
+        packageI: r[1]?.toString().trim() || "",
+        valueK: r[2]?.toString().trim() || "",
+        searchM: r[12]?.toString().trim() || "",
+        transferred: r[14]?.toString().trim() !== "", // Cột O: CHUYỂN HS
+        scanId: scanRaw, 
+        fileName: scanRaw.includes("|") ? scanRaw.split(";;")[0].split("|")[1].trim() : "", 
+        c: r[2]?.toString().trim() || "",
+        
+        // ĐỌC DỮ LIỆU TỪ CỘT Q, R, S (Index 16, 17, 18)
+        hasQ: r[16]?.toString().trim().toLowerCase() === "x", // Đề nghị tạm ứng
+        hasR: r[17]?.toString().trim().toLowerCase() === "x", // Bảo lãnh tạm ứng
+        hasS: r[18]?.toString().trim().toLowerCase() === "x"  // Bảo lãnh HĐ
+      };
+    }).filter(Boolean);
+  }
+
+  // 5. LẤY DỮ LIỆU SỔ THEO DÕI ĐỂ TICK CHUYỂN GIAO UI
+  const logSheet = ss.getSheetByName("SO HDTCXD BCONS - NTP");
+  const logLastRow = logSheet.getLastRow();
+  const transferMap = {};
+
+  if (logLastRow >= 3) {
+    const logData = logSheet.getRange(3, 2, logLastRow - 2, 21).getValues(); 
+    logData.forEach(r => {
+      const contractNo = r[2]?.toString().trim(); // Cột D (index 2 tính từ B)
+      if (contractNo) {
+        transferMap[contractNo] = {
+          isTransferred: r[13] !== "",                                       
+          t: r[18]?.toString().trim().toLowerCase().startsWith("x"),         
+          u: r[19]?.toString().trim() !== "" && r[19] != 0,                  
+          v: r[20]?.toString().trim() !== "" && r[20] != 0                   
+        };
+      }
+    });
+  }
+
+  return {
+    hd: { project: projectHD, pack: packHD, warranty: warrantyHD, contractor: contractorHD },
+    pl: { field0: field0PL },
+    transferMap: transferMap 
+  };
+}
+
 // THÊM VÀO CUỐI FILE Code.gs
 function apiDispatcher(payload) {
   const results = {};
@@ -1963,6 +2254,8 @@ function apiDispatcher(payload) {
   }
   return results;
 }
+
+
 
 
 ==================================================
@@ -5291,8 +5584,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0
 async function callBackend(action, data = {}) {
     const token = localStorage.getItem('bcons_session_token');
     
-    // Ngăn chặn gọi API nếu chưa đăng nhập và không phải hành động login
-    if (!token && action !== "loginUser") {
+    // Cho phép cả hành động đăng nhập (loginUser) và đăng ký (registerUser) bỏ qua màng lọc Token khi chưa đăng nhập
+    if (!token && action !== "loginUser" && action !== "registerUser") {
         showLoginUI();
         throw new Error("UNAUTHORIZED: Yêu cầu đăng nhập!");
     }
@@ -5322,7 +5615,12 @@ function showLoginUI() {
     const overlay = document.getElementById('loginOverlay');
     if (overlay) {
         overlay.style.display = 'flex';
-        // Tắt loading hệ thống nếu có để nhường không gian
+        // Khắc phục xung đột CSS mặc định opacity: 0 của lớp .form-container
+        const formContainer = overlay.querySelector('.form-container');
+        if (formContainer) {
+            formContainer.style.setProperty('opacity', '1', 'important');
+        }
+        // Tắt loading hệ thống nếu có để nhường không gian tương tác
         const loader = document.getElementById('loadingSystem');
         if (loader) loader.style.display = 'none';
     }
@@ -5350,7 +5648,7 @@ async function performLogin() {
             localStorage.setItem('bcons_session_token', res.token);
             localStorage.setItem('bcons_staff_identity', res.name);
             
-            document.getElementById('loginOverlay').style.display = 'none';
+            document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
             showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
             
             // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
@@ -5361,6 +5659,80 @@ async function performLogin() {
     } finally {
         loginBtn.disabled = false;
         loginBtn.textContent = "SIGN IN";
+    }
+}
+
+/**
+ * Xử lý sự kiện ĐĂNG XUẤT TÀI KHOẢN (LOG OUT)
+ */
+function performLogout() {
+    localStorage.removeItem('bcons_session_token');
+    localStorage.removeItem('bcons_staff_identity');
+    // Reload trang để xóa sạch toàn bộ RAM state lưu tạm trên thiết bị
+    window.location.reload();
+}
+
+// Biến trạng thái đăng ký của giao diện
+let isRegisterMode = false;
+
+/**
+ * Chuyển đổi trạng thái giao diện giữa ĐĂNG NHẬP và ĐĂNG KÝ
+ */
+function toggleLoginMode() {
+    const title = document.getElementById('loginTitle');
+    const passContainer = document.getElementById('passwordFieldContainer');
+    const nameContainer = document.getElementById('nameFieldContainer');
+    const submitBtn = document.getElementById('loginSubmitBtn');
+    const toggleLink = document.getElementById('toggleLoginView');
+
+    isRegisterMode = !isRegisterMode;
+
+    if (isRegisterMode) {
+        title.textContent = "CREATE ACCOUNT";
+        passContainer.style.setProperty('display', 'none', 'important');
+        nameContainer.style.setProperty('display', 'flex', 'important');
+        submitBtn.textContent = "REGISTER";
+        submitBtn.setAttribute('onclick', 'performRegister()');
+        toggleLink.textContent = "Đã có tài khoản? Đăng nhập ngay";
+    } else {
+        title.textContent = "MEMBER SIGN IN";
+        passContainer.style.setProperty('display', 'flex', 'important');
+        nameContainer.style.setProperty('display', 'none', 'important');
+        submitBtn.textContent = "SIGN IN";
+        submitBtn.setAttribute('onclick', 'performLogin()');
+        toggleLink.textContent = "Chưa có tài khoản? Đăng ký ngay";
+    }
+}
+
+/**
+ * Xử lý sự kiện đăng ký tài khoản mới lên hệ thống
+ */
+async function performRegister() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    const name = document.getElementById('registerName').value.trim();
+
+    if (!mail || !name) {
+        alert("Sếp vui lòng điền đầy đủ Email và Họ tên!");
+        return;
+    }
+
+    const registerBtn = document.getElementById('loginSubmitBtn');
+    registerBtn.disabled = true;
+    registerBtn.textContent = "REGISTERING...";
+
+    try {
+        const res = await callBackend("registerUser", { mail, name });
+        if (res) {
+            showToast_PL("🚀 Đăng ký thành công! Hãy đợi sếp duyệt qua hòm thư Email.", "success");
+            // Khôi phục lại trạng thái form Đăng nhập
+            document.getElementById('registerName').value = "";
+            toggleLoginMode();
+        }
+    } catch (err) {
+        alert(err.message || "Đăng ký thất bại!");
+    } finally {
+        registerBtn.disabled = false;
+        registerBtn.textContent = "REGISTER";
     }
 }
 

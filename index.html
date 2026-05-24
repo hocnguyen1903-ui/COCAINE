@@ -39,30 +39,47 @@
         </div>
     </div>
 
-    <!-- KHUNG ĐĂNG NHẬP THIẾT BỊ (GLASSMORPHISM) -->
-    <div id="loginOverlay" class="luxury-loader" style="display: none; background: rgba(3, 28, 53, 0.95) !important;">
-        <div class="form-container" style="width: 320px; text-align: center; transform: none; animation: popIn_PL 0.4s ease-out; background: rgba(34, 56, 68, 0.4); border: 1.5px solid rgba(255, 186, 8, 0.4); padding: 30px;">
+    <!-- KHUNG ĐĂNG NHẬP / ĐĂNG KÝ THIẾT BỊ (GLASSMORPHISM) -->
+    <!-- KHUNG ĐĂNG NHẬP / ĐĂNG KÝ THIẾT BỊ (GLASSMORPHISM) -->
+    <div id="loginOverlay" class="luxury-loader" style="display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 100000000 !important;">
+        <div class="form-container" style="width: 500px; text-align: center; transform: none; animation: popIn_PL 0.4s ease-out; background: rgba(34, 56, 68, 0.4); border: 1.5px solid rgba(255, 186, 8, 0.4); padding: 30px;">
             <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" style="width: 90px; margin-bottom: 20px;">
-            <h2 style="color: #FFBA08; font-size: 15px; font-weight: 800; letter-spacing: 2px; margin-bottom: 25px; text-transform: uppercase;">MEMBER SIGN IN</h2>
+            <h2 id="loginTitle" style="color: #FFBA08; font-size: 15px; font-weight: 800; letter-spacing: 2px; margin-bottom: 25px; text-transform: uppercase;">MEMBER SIGN IN</h2>
             
-            <div style="display: flex; flex-direction: column; gap: 15px; text-align: left; margin-bottom: 25px;">
+            <div id="loginInputFields" style="display: flex; flex-direction: column; gap: 15px; text-align: left; margin-bottom: 25px;">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <label style="line-height: 1; font-size: 11px;"><i class="bi bi-envelope-fill"></i> Email</label>
-                    <input type="email" id="loginEmail" placeholder="example@gmail.com" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: center;" required>
+                    <input type="email" id="loginEmail" placeholder="example@gmail.com" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: left;" required>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 4px;">
+                <!-- VÙNG PASSWORD (ẨN KHI ĐĂNG KÝ) -->
+                <div id="passwordFieldContainer" style="display: flex; flex-direction: column; gap: 4px;">
                     <label style="line-height: 1; font-size: 11px;"><i class="bi bi-lock-fill"></i> Password</label>
-                    <input type="password" id="loginPassword" placeholder="••••" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: center;" required>
+                    <input type="password" id="loginPassword" placeholder="••••" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: left;" required>
+                </div>
+                <!-- VÙNG NHẬP HỌ TÊN (HIỆN KHI ĐĂNG KÝ) - HỖ TRỢ GÕ TIẾNG VIỆT -->
+                <div id="nameFieldContainer" style="display: none; flex-direction: column; gap: 4px;">
+                    <label style="line-height: 1; font-size: 11px;"><i class="bi bi-person-fill"></i> Name</label>
+                    <input type="text" id="registerName" placeholder="HỌC" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: left; text-transform: uppercase; border: 1.5px solid rgba(255, 186, 8, 0.4);" oninput="clearNameWarning()" onblur="this.value = this.value.toUpperCase()" required>
+                    <!-- DÒNG CẢNH BÁO TRÙNG TÊN IN NGHIÊNG MÀU ĐỎ -->
+                    <span id="nameWarningText" style="display: none; color: #ff4d4d; font-size: 11.5px; font-style: italic; margin-top: 4px; line-height: 1.3;"></span>
                 </div>
             </div>
             
-            <button type="button" class="submit-button" onclick="performLogin()" style="width: 100%; height: 40px; border-radius: 8px !important;">SIGN IN</button>
+            <button type="button" id="loginSubmitBtn" class="submit-button" onclick="performLogin()" style="width: 100%; height: 40px; border-radius: 8px !important; margin-bottom: 20px;">SIGN IN</button>
+            
+            <!-- LIÊN KẾT CHUYỂN TRẠNG THÁI -->
+            <div id="toggleLoginView" style="font-size: 11px; color: #95A1AF; cursor: pointer; text-decoration: underline;" onclick="toggleLoginMode()">Chưa có tài khoản? Đăng ký ngay</div>
         </div>
     </div>
     <div id="contractLoading" class="luxury-loader" style="display: none;"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">CRAFTING DOCUMENT</p></div></div>
 
     <!-- 2. HEADER -->
-    <div class="header">
+    <div class="header" style="justify-content: space-between !important; padding: 0 30px !important;">
+        <!-- NÚT LOG OUT PHÍA TRÁI HEADER -->
+        <a href="javascript:void(0)" onclick="performLogout()" style="color: #FFBA08; font-size: 13px; text-decoration: none; display: flex; align-items: center; gap: 6px; letter-spacing: 1px; transition: all 0.15s; opacity: 0.85;" onmouseover="this.style.opacity='1'; this.style.transform='scale(1.1)';" onmouseout="this.style.opacity='0.9'; this.style.transform='scale(1)';">
+            <i class="bi bi-box-arrow-left" style="font-size: 16px; position: relative; top: 1px;"></i> Log out
+        </a>
+        
         <div class="menu">
             <a href="javascript:void(0)" id="btn-about" onclick="openTab('tab-about')" class="active"><b>ABOUT</b></a>
             <a href="javascript:void(0)" id="btn-hd" onclick="openTab('tab-hdtcxd')">CONTRACT</a>

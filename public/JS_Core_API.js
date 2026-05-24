@@ -156,14 +156,14 @@ function showToast_PL(message, type) {
     let toast = document.getElementById("toastNotification-pl");
     if (!toast) { 
         toast = document.createElement("div"); toast.id = "toastNotification-pl"; 
-        toast.style.cssText = `position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #222831; color: white; padding: 12px 25px; border-radius: 8px; font-size: 14.5px; font-weight: 500; z-index: 1000000; opacity: 0; visibility: hidden; transition: all 0.3s ease-in-out; text-align: center;`;
+        toast.style.cssText = `position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #222831; color: white; padding: 12px 25px; border-radius: 8px; font-size: 14.5px; font-weight: 500; z-index: 100000005 !important; opacity: 0; visibility: hidden; transition: all 0.3s ease-in-out; text-align: center;`;
         document.body.appendChild(toast); 
     }
     toast.innerHTML = message; 
     if (type === 'success') { toast.style.border = "1px solid #2ECC71"; toast.style.boxShadow = "0 0 15px rgba(46, 204, 113, 0.3)"; }
     else { toast.style.border = "1px solid #ff4d4d"; toast.style.boxShadow = "0 0 15px rgba(255, 77, 77, 0.3)"; }
     setTimeout(() => { toast.style.opacity = "1"; toast.style.visibility = "visible"; toast.style.bottom = "50px"; }, 10);
-    setTimeout(() => { toast.style.opacity = "0"; toast.style.visibility = "hidden"; toast.style.bottom = "20px"; }, 3500);
+    setTimeout(() => { toast.style.opacity = "0"; toast.style.visibility = "hidden"; toast.style.bottom = "20px"; }, 5000);
 }
 
 function showSearchGuide_PL() {
@@ -209,8 +209,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0
 async function callBackend(action, data = {}) {
     const token = localStorage.getItem('bcons_session_token');
     
-    // Ngăn chặn gọi API nếu chưa đăng nhập và không phải hành động login
-    if (!token && action !== "loginUser") {
+    // Cho phép cả hành động đăng nhập (loginUser) và đăng ký (registerUser) bỏ qua màng lọc Token khi chưa đăng nhập
+    if (!token && action !== "loginUser" && action !== "registerUser") {
         showLoginUI();
         throw new Error("UNAUTHORIZED: Yêu cầu đăng nhập!");
     }
@@ -273,7 +273,7 @@ async function performLogin() {
             localStorage.setItem('bcons_session_token', res.token);
             localStorage.setItem('bcons_staff_identity', res.name);
             
-            document.getElementById('loginOverlay').style.display = 'none';
+            document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
             showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
             
             // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
@@ -284,6 +284,116 @@ async function performLogin() {
     } finally {
         loginBtn.disabled = false;
         loginBtn.textContent = "SIGN IN";
+    }
+}
+
+/**
+ * Xử lý sự kiện ĐĂNG XUẤT TÀI KHOẢN (LOG OUT)
+ */
+function performLogout() {
+    localStorage.removeItem('bcons_session_token');
+    localStorage.removeItem('bcons_staff_identity');
+    // Reload trang để xóa sạch toàn bộ RAM state lưu tạm trên thiết bị
+    window.location.reload();
+}
+
+// Biến trạng thái đăng ký của giao diện
+let isRegisterMode = false;
+
+/**
+ * Chuyển đổi trạng thái giao diện giữa ĐĂNG NHẬP và ĐĂNG KÝ
+ */
+function toggleLoginMode() {
+    const title = document.getElementById('loginTitle');
+    const passContainer = document.getElementById('passwordFieldContainer');
+    const nameContainer = document.getElementById('nameFieldContainer');
+    const submitBtn = document.getElementById('loginSubmitBtn');
+    const toggleLink = document.getElementById('toggleLoginView');
+
+    isRegisterMode = !isRegisterMode;
+    clearNameWarning(); // Dọn dẹp cảnh báo đỏ cũ nếu có
+
+    if (isRegisterMode) {
+        title.textContent = "CREATE ACCOUNT";
+        passContainer.style.setProperty('display', 'none', 'important');
+        nameContainer.style.setProperty('display', 'flex', 'important');
+        submitBtn.textContent = "REGISTER";
+        submitBtn.setAttribute('onclick', 'performRegister()');
+        toggleLink.textContent = "Đã có tài khoản? Đăng nhập ngay";
+    } else {
+        title.textContent = "MEMBER SIGN IN";
+        passContainer.style.setProperty('display', 'flex', 'important');
+        nameContainer.style.setProperty('display', 'none', 'important');
+        submitBtn.textContent = "SIGN IN";
+        submitBtn.setAttribute('onclick', 'performLogin()');
+        toggleLink.textContent = "Chưa có tài khoản? Đăng ký ngay";
+    }
+}
+
+/**
+ * Xử lý hiển thị cảnh báo trùng tên ngay dưới ô nhập và đổi màu viền input sang đỏ
+ */
+function showNameWarning(name) {
+    const warningEl = document.getElementById('nameWarningText');
+    if (warningEl) {
+        warningEl.textContent = `(Tên "${name}" đã được đăng ký, vui lòng chọn tên khác)`;
+        warningEl.style.display = 'block';
+    }
+    const inputEl = document.getElementById('registerName');
+    if (inputEl) {
+        inputEl.style.setProperty('border-color', '#ff4d4d', 'important');
+    }
+}
+
+/**
+ * Xóa bỏ cảnh báo đỏ và trả lại màu viền mặc định cho ô nhập
+ */
+function clearNameWarning() {
+    const warningEl = document.getElementById('nameWarningText');
+    if (warningEl) {
+        warningEl.style.display = 'none';
+        warningEl.textContent = '';
+    }
+    const inputEl = document.getElementById('registerName');
+    if (inputEl) {
+        inputEl.style.setProperty('border-color', 'rgba(255, 186, 8, 0.4)', 'important');
+    }
+}
+
+/**
+ * Xử lý sự kiện đăng ký tài khoản mới lên hệ thống
+ */
+async function performRegister() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    const name = document.getElementById('registerName').value.trim().toUpperCase();
+
+    if (!mail || !name) {
+        alert("Sếp vui lòng điền đầy đủ Email và Họ tên!");
+        return;
+    }
+
+    const registerBtn = document.getElementById('loginSubmitBtn');
+    registerBtn.disabled = true;
+    registerBtn.textContent = "REGISTERING...";
+
+    try {
+        const res = await callBackend("registerUser", { mail, name });
+        if (res) {
+            showToast_PL("🚀 Gửi yêu cầu đăng ký thành công! Hãy liên hệ với Admin để được duyệt!", "success");
+            // Khôi phục lại trạng thái form Đăng nhập
+            document.getElementById('registerName').value = "";
+            toggleLoginMode();
+        }
+    } catch (err) {
+        // Kiểm tra xem lỗi trả về từ Backend có phải lỗi trùng tên viết tắt không
+        if (err.message.includes("đã tồn tại")) {
+            showNameWarning(name);
+        } else {
+            alert(err.message || "Đăng ký thất bại!");
+        }
+    } finally {
+        registerBtn.disabled = false;
+        registerBtn.textContent = "REGISTER";
     }
 }
 
