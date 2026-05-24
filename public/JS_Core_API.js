@@ -314,7 +314,7 @@ function toggleLoginMode() {
     clearNameWarning(); // Dọn dẹp cảnh báo đỏ cũ nếu có
 
     if (isRegisterMode) {
-        title.textContent = "CREATE ACCOUNT";
+        title.textContent = "CREATE AN ACCOUNT";
         passContainer.style.setProperty('display', 'none', 'important');
         nameContainer.style.setProperty('display', 'flex', 'important');
         submitBtn.textContent = "REGISTER";
