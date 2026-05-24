@@ -134,17 +134,28 @@ function sendApprovalEmail(userMail, userName, token) {
   const rejectLink = `${webAppUrl}?action=reject&token=${token}`;
   
   const htmlBody = `
-    <div style="font-family: Arial, sans-serif; max-width: 400px; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
-      <h3 style="margin-top: 0; color: #333; font-size: 15px;">Yêu cầu đăng ký tài khoản mới</h3>
-      <p style="margin-bottom: 20px; font-size: 13.5px; color: #555; line-height: 1.5;">
-        • Name: <b>${userName}</b><br>
-        • Email: <b>${userMail}</b>
+    <div style="font-family: Arial, sans-serif; max-width: 400px; padding: 22px; border: 1px solid #dddddd; border-radius: 12px; background-color: #ffffff;">
+      <h3 style="margin-top: 0; color: #333333; font-size: 16px; border-bottom: 1px solid #eeeeee; padding-bottom: 12px; margin-bottom: 15px;">New sign-up request</h3>
+      <p style="margin-bottom: 25px; font-size: 13.5px; color: #555555; line-height: 1.6; margin-top: 0;">
+        • Name: <b style="color: #111111;">${userName}</b><br>
+        • Email: <b style="color: #111111;">${userMail}</b>
       </p>
-      <!-- Hộp chứa Flexbox căn đều 2 cột trái phải bằng nhau -->
-      <div style="display: flex; gap: 10px;">
-        <a href="${approveLink}" target="_blank" style="flex: 1; text-align: center; padding: 8px 0; background: #2ECC71; color: #ffffff; font-weight: bold; font-size: 12px; text-decoration: none; border-radius: 4px;">OK</a>
-        <a href="${rejectLink}" target="_blank" style="flex: 1; text-align: center; padding: 8px 0; background: #E74C3C; color: #ffffff; font-weight: bold; font-size: 12px; text-decoration: none; border-radius: 4px;">REJECT</a>
-      </div>
+      
+      <!-- BẢNG ĐỒNG BỘ HIỂN THỊ NÚT BẤM (CHỐNG TRÔI KHUNG TRÊN GMAIL) -->
+      <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+        <tr>
+          <!-- NÚT OK (CHIẾM CHÍNH XÁC 48% ĐỘ RỘNG) -->
+          <td width="48%" align="center" style="background-color: #2ECC71; border-radius: 6px;">
+            <a href="${approveLink}" target="_blank" style="display: block; padding: 10px 0; color: #ffffff; font-family: Arial, sans-serif; font-size: 13px; font-weight: bold; text-decoration: none; text-align: center; text-transform: uppercase;">APPROVE</a>
+          </td>
+          <!-- KHE HỞ GIỮA 2 NÚT (CHIẾM 4% ĐỘ RỘNG) -->
+          <td width="4%"></td>
+          <!-- NÚT REJECT (CHIẾM CHÍNH XÁC 48% ĐỘ RỘNG) -->
+          <td width="48%" align="center" style="background-color: #E74C3C; border-radius: 6px;">
+            <a href="${rejectLink}" target="_blank" style="display: block; padding: 10px 0; color: #ffffff; font-family: Arial, sans-serif; font-size: 13px; font-weight: bold; text-decoration: none; text-align: center; text-transform: uppercase;">REJECT</a>
+          </td>
+        </tr>
+      </table>
     </div>
   `;
   
