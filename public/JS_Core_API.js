@@ -251,47 +251,6 @@ function showLoginUI() {
     }
 }
 
-/**
- * Xử lý sự kiện nhấn nút SIGN IN
- */
-async function performLogin() {
-    const mail = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value.trim();
-    
-    if (!mail || !password) {
-        alert("Sếp vui lòng điền đầy đủ thông tin đăng nhập!");
-        return;
-    }
-
-    const loginBtn = document.querySelector('#loginOverlay .submit-button');
-    loginBtn.disabled = true;
-    loginBtn.textContent = "VERIFYING...";
-
-    try {
-        const res = await callBackend("loginUser", { mail, password });
-        if (res && res.token) {
-            localStorage.setItem('bcons_session_token', res.token);
-            localStorage.setItem('bcons_staff_identity', res.name);
-            
-            // Gán tên lên Header ngay lần đầu đăng nhập thành công
-            const displayEl = document.getElementById('staffNameDisplay');
-            if (displayEl) {
-                displayEl.textContent = res.name;
-            }
-            
-            document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
-            showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
-            
-            // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
-            loadSystemData();
-        }
-    } catch (err) {
-        alert(err.message || "Xác thực thất bại!");
-    } finally {
-        loginBtn.disabled = false;
-        loginBtn.textContent = "SIGN IN";
-    }
-}
 
 /**
  * Xử lý sự kiện ĐĂNG XUẤT TÀI KHOẢN (LOG OUT)
@@ -403,47 +362,6 @@ async function performRegister() {
     }
 }
 
-/**
- * Khởi tạo dữ liệu hệ thống có kiểm tra phiên làm việc
- */
-async function loadSystemData(isSilent = false) {
-    const token = localStorage.getItem('bcons_session_token');
-    if (!token) {
-        showLoginUI();
-        return;
-    }
-
-    // Gán tên lên Header khi F5 tải lại trang
-    const name = localStorage.getItem('bcons_staff_identity');
-    const displayEl = document.getElementById('staffNameDisplay');
-    if (displayEl && name) {
-        displayEl.textContent = name;
-    }
-
-    const loading = document.getElementById("loadingSystem");
-    if (loading && !isSilent) loading.style.display = "flex";
-
-    try {
-        const sysData = await callBackend('getSystemData');
-        if (sysData) {
-            SYSTEM_DATA = sysData;
-            PRECOMPUTED_PL_DATA = null;
-
-            if (typeof initTabHD === 'function') initTabHD();
-            if (typeof initTabPL === 'function') initTabPL();
-            if (typeof initTabTB === 'function') initTabTB();
-            if (typeof executeFilter_PL === 'function') executeFilter_PL(false);
-        }
-        if (loading) {
-            loading.style.opacity = "0";
-            setTimeout(() => { loading.style.display = "none"; }, 500);
-        }
-    } catch (error) {
-        if (loading) loading.style.display = "none";
-        console.error("Lỗi khởi tạo hệ thống:", error);
-        showToast_PL("⚠️ Lỗi phiên làm việc hoặc kết nối!", "error");
-    }
-}
 
 function submitData_HD() {
     const btn = document.getElementById("submitButton-hd");
@@ -470,26 +388,6 @@ function submitData_HD() {
     });
 }
 
-function submitEdit_PL() {
-    const val = document.getElementById('ep-input-val').value.trim();
-    const loading = document.getElementById("contractLoading"); 
-    if(loading) loading.style.display = "flex";
-    // Lưu ý: Đóng gói 3 biến thành array [editingMaHD_PL, currentEditType, val]
-    callBackend("updateContractData_PL", [editingMaHD_PL, currentEditType, val]).then(res => {
-        if(loading) loading.style.display = "none";
-        if (res) {
-            showToast_PL(`🟢 Đã cập nhật thành công: ${editingMaHD_PL}`, 'success');
-            if (currentEditType === "CONTRACT_NO") currentEditItemData.maHD = val;
-            else if (currentEditType === "DATE") currentEditItemData.dateH = val;
-            else if (currentEditType === "PACKAGE") { currentEditItemData.packageI = val; currentEditItemData.note = val; } 
-            else if (currentEditType === "VALUE") { currentEditItemData.valueK = val; currentEditItemData.c = val; }
-            currentEditItemData.display = `${currentEditItemData.maHD} | ${currentEditItemData.packageI} | ${(currentEditItemData.valueK || "").toString().replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
-            PRECOMPUTED_PL_DATA = null; executeFilter_PL(false); closeEditPanel_PL();
-        }
-    }).catch(err => {
-        if(loading) loading.style.display = "none"; alert("Lỗi Server: " + (err.message || err));
-    });
-}
 
 function submitData_PL() {
     const loading = document.getElementById("contractLoading");
@@ -549,38 +447,6 @@ function submitData_TB() {
     });
 }
 
-function executeActualDeleteData_PL() {
-    closeDataDeleteModal(); const maToDelete = editingMaHD_PL; const loading = document.getElementById("contractLoading");
-    if (loading) { loading.style.display = "flex"; loading.querySelector('p').textContent = "SYSTEM DELETING DATA..."; }
-    callBackend("deleteContractRow_Backend", maToDelete).then(res => {
-        if (loading) loading.style.display = "none"; 
-        SYSTEM_DATA.pl.field0 = SYSTEM_DATA.pl.field0.filter(item => (item.display || "").split(" | ")[0].trim() !== maToDelete); 
-        PRECOMPUTED_PL_DATA = null; executeFilter_PL(); closeEditPanel_PL(); 
-        showToast_PL(`🗑️ Đã xóa dữ liệu số: ${maToDelete}`, "success"); loadSystemData(true);
-    }).catch(err => {
-        if (loading) loading.style.display = "none"; showToast_PL("⚠️ Lỗi khi xóa dữ liệu trên Server!", "error");
-    });
-}
-
-function executeActualDelete_PL() {
-    if (!fileIdToProcess) return; cancelDeleteScan_PL(); const loading = document.getElementById("contractLoading");
-    if(loading) { loading.style.display = "flex"; loading.querySelector('p').textContent = "SYSTEM DELETING SCAN FILE..."; }
-    callBackend("deleteScanFilePermanently", [currentScanMaHD, fileIdToProcess]).then(res => {
-        if(loading) loading.style.display = "none"; 
-        if (res && res.success) { 
-            const item = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === currentScanMaHD); 
-            if (item) { 
-                item.scanId = item.scanId.split(";;").filter(f => f && !f.startsWith(fileIdToProcess + "|")).join(";;"); 
-                PRECOMPUTED_PL_DATA = null; renderExistingFiles_PL(currentScanMaHD); executeFilter_PL(); 
-            } 
-            showToast_PL("🗑️ Đã xóa file thành công", "success"); fileIdToProcess = ""; 
-        } else {
-            alert("Lỗi xóa file: " + (res ? res.error : "Unknown"));
-        }
-    }).catch(err => {
-        if(loading) loading.style.display = "none"; alert("Lỗi kết nối: " + (err.message || err));
-    });
-}
 
 function exportFilteredToNewSheet_PL() {
     const input = document.getElementById("field0-pl").value.toLowerCase();
@@ -664,4 +530,433 @@ function handleMobileSwipe() {
             }
         }
     }
+}
+
+// --- KHAI BÁO KEY KẾT NỐI ABLY PHÍA CLIENT (DÙNG CHUNG KHÓA Ở BƯỚC 2) ---
+const ABLY_CLIENT_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8RU";
+
+/**
+ * Xử lý sự kiện nhấn nút SIGN IN (Đồng bộ tên và quyền lên Client)
+ */
+async function performLogin() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value.trim();
+    
+    if (!mail || !password) {
+        alert("Sếp vui lòng điền đầy đủ thông tin đăng nhập!");
+        return;
+    }
+
+    const loginBtn = document.querySelector('#loginOverlay .submit-button');
+    loginBtn.disabled = true;
+    loginBtn.textContent = "VERIFYING...";
+
+    try {
+        const res = await callBackend("loginUser", { mail, password });
+        if (res && res.token) {
+            localStorage.setItem('bcons_session_token', res.token);
+            localStorage.setItem('bcons_staff_identity', res.name);
+            localStorage.setItem('bcons_staff_role', res.role || "USER"); // Lưu quyền vĩnh viễn trên máy
+            
+            // Gán tên lên Header ngay lần đầu đăng nhập thành công
+            const displayEl = document.getElementById('staffNameDisplay');
+            if (displayEl) {
+                displayEl.textContent = res.name;
+            }
+            
+            document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
+            showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
+            
+            // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
+            loadSystemData();
+        }
+    } catch (err) {
+        alert(err.message || "Xác thực thất bại!");
+    } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "SIGN IN";
+    }
+}
+
+/**
+ * Khởi tạo dữ liệu hệ thống có kiểm tra phiên làm việc (Mở chuông cho TẤT CẢ mọi người)
+ */
+async function loadSystemData(isSilent = false) {
+    const token = localStorage.getItem('bcons_session_token');
+    if (!token) {
+        showLoginUI();
+        return;
+    }
+
+    // Gán tên lên Header khi F5 tải lại trang
+    const name = localStorage.getItem('bcons_staff_identity');
+    const displayEl = document.getElementById('staffNameDisplay');
+    if (displayEl && name) {
+        displayEl.textContent = name;
+    }
+
+    const loading = document.getElementById("loadingSystem");
+    if (loading && !isSilent) loading.style.display = "flex";
+
+    try {
+        const sysData = await callBackend('getSystemData');
+        if (sysData) {
+            SYSTEM_DATA = sysData;
+            PRECOMPUTED_PL_DATA = null;
+
+            // Nạp dữ liệu chờ duyệt về Client
+            pendingUsersList_PL = sysData.pendingUsers || [];
+
+            if (typeof initTabHD === 'function') initTabHD();
+            if (typeof initTabPL === 'function') initTabPL();
+            if (typeof initTabTB === 'function') initTabTB();
+            if (typeof executeFilter_PL === 'function') executeFilter_PL(false);
+
+            // 🚀 MỞ QUẢ CHUÔNG THÔNG BÁO CHO TẤT CẢ MỌI NGƯỜI ĐÃ ĐĂNG NHẬP THÀNH CÔNG
+            if (name) {
+                const bellContainer = document.getElementById('bellNotificationContainer');
+                if (bellContainer) {
+                    bellContainer.style.setProperty('display', 'flex', 'important');
+                }
+                updateBellBadge();
+                initAblyRealtimeConnection(); // Mở cổng Socket lắng nghe
+            }
+        }
+        if (loading) {
+            loading.style.opacity = "0";
+            setTimeout(() => { loading.style.display = "none"; }, 500);
+        }
+    } catch (error) {
+        if (loading) loading.style.display = "none";
+        console.error("Lỗi khởi tạo hệ thống:", error);
+        showToast_PL("⚠️ Lỗi phiên làm việc hoặc kết nối!", "error");
+    }
+}
+
+/**
+ * Trình dựng danh sách chờ duyệt (Chỉ hiện nút APPROVE/REJECT đối với quyền ADMIN)
+ */
+function renderBellList() {
+    const listContainer = document.getElementById('bellListContent');
+    if (!listContainer) return;
+    
+    if (pendingUsersList_PL.length === 0) {
+        listContainer.innerHTML = `<div style="color: #505966; font-size: 11px; font-style: italic; text-align: center; padding: 25px 0;">Không có yêu cầu chờ duyệt</div>`;
+        return;
+    }
+    
+    // Kiểm tra quyền của máy sếp
+    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
+    const isAdmin = (currentRole.toUpperCase() === "ADMIN");
+
+    let html = "";
+    pendingUsersList_PL.forEach(u => {
+        html += `
+            <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,186,8,0.15); border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #FFFFFF; font-size: 12.5px; font-weight: bold;">${u.name}</span>
+                    <span style="color: #95A1AF; font-size: 10.5px; font-family: monospace;">${u.mail}</span>
+                </div>
+                ${isAdmin ? `
+                <!-- Giao diện hiển thị nút duyệt nhanh dành cho ADMIN -->
+                <div style="display: flex; gap: 8px; margin-top: 4px;">
+                    <button type="button" onclick="approveUserInApp('${u.mail}', '${u.name}')" style="flex: 1; height: 26px; border: none; background: #2ECC71; color: white; font-weight: bold; font-size: 10.5px; border-radius: 4px; cursor: pointer;">APPROVE</button>
+                    <button type="button" onclick="rejectUserInApp('${u.mail}', '${u.name}')" style="flex: 1; height: 26px; border: none; background: #E74C3C; color: white; font-weight: bold; font-size: 10.5px; border-radius: 4px; cursor: pointer;">REJECT</button>
+                </div>
+                ` : `
+                <!-- Giao diện hiển thị tĩnh chỉ xem đối với nhân sự thường (USER) -->
+                <div style="color: #95A1AF; font-size: 10.5px; font-style: italic; text-align: center; margin-top: 4px; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px;">Đang chờ phê duyệt...</div>
+                `}
+            </div>
+        `;
+    });
+    listContainer.innerHTML = html;
+}
+
+/**
+ * Mở cổng kết nối WebSocket thời gian thực đến Máy chủ Ably
+ */
+function initAblyRealtimeConnection() {
+    try {
+        if (typeof Ably === 'undefined') return;
+        
+        // Khởi tạo Client Realtime
+        const realtime = new Ably.Realtime(ABLY_CLIENT_KEY);
+        const channel = realtime.channels.get('bcons-registration-channel');
+        
+        // Đăng ký lắng nghe sự kiện Đăng ký mới từ nhân viên
+        channel.subscribe('new-registration', (message) => {
+            const newUser = message.data;
+            if (newUser && newUser.mail) {
+                // Kiểm tra xem đã có trong danh sách cục bộ chưa để tránh trùng lặp
+                const exists = pendingUsersList_PL.some(u => u.mail === newUser.mail);
+                if (!exists) {
+                    pendingUsersList_PL.push(newUser);
+                    updateBellBadge();
+                    showToast_PL(`🔔 Nhân viên <b>${newUser.name}</b> vừa gửi yêu cầu đăng ký tài khoản mới!`, "success");
+                }
+            }
+        });
+        
+        console.log("⚡ [Realtime] Cổng kết nối WebSockets Ably đã kích hoạt!");
+    } catch (e) {
+        console.error("[Realtime Error] Không thể kết nối máy chủ Ably: " + e.message);
+    }
+}
+
+/**
+ * Đóng mở Dropdown quả chuông và tự động đóng các dropdown khác để tránh đè giao diện
+ */
+function toggleBellDropdown(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('bellDropdown');
+    const isShowing = dropdown.style.display === 'flex';
+    
+    // Đóng toàn bộ menu dropdown khác
+    document.querySelectorAll('.smooth-dropdown').forEach(d => d.classList.remove('show'));
+    
+    if (isShowing) {
+        dropdown.style.display = 'none';
+    } else {
+        dropdown.style.display = 'flex';
+        renderBellList();
+    }
+}
+
+/**
+ * Cập nhật số đỏ hiển thị trên quả chuông báo
+ */
+function updateBellBadge() {
+    const badge = document.getElementById('bellBadge');
+    const count = pendingUsersList_PL.length;
+    
+    if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'block';
+        // Tạo hiệu ứng lắc nhẹ quả chuông để sếp chú ý
+        const icon = document.getElementById('bellIcon');
+        if (icon) {
+            icon.style.transform = 'scale(1.2) rotate(15deg)';
+            setTimeout(() => { icon.style.transform = 'scale(1) rotate(0deg)'; }, 300);
+        }
+    } else {
+        badge.style.display = 'none';
+    }
+
+    // 🚀 THÊM MỚI: Tự động cập nhật thông báo lên Tiêu đề Tab & Favicon
+    updateTabNotification(count);
+}
+
+
+/**
+ * Gọi API duyệt nhanh ACTIVE tài khoản ngay trên Web (Zero Reload)
+ */
+async function approveUserInApp(mail, name) {
+    const loading = document.getElementById("contractLoading");
+    if (loading) {
+        loading.style.display = "flex";
+        loading.querySelector('p').textContent = "APPROVING USER...";
+    }
+    
+    try {
+        const success = await callBackend("approveUser_InApp", mail);
+        if (success) {
+            // Xóa tài khoản vừa duyệt khỏi mảng cục bộ
+            pendingUsersList_PL = pendingUsersList_PL.filter(u => u.mail !== mail);
+            updateBellBadge();
+            renderBellList();
+            showToast_PL(`🟢 Kích hoạt thành công tài khoản của ${name}!`, "success");
+            
+            // Nếu sếp đang ở menu dropdown trống thì tự động đóng lại
+            if (pendingUsersList_PL.length === 0) {
+                document.getElementById('bellDropdown').style.display = 'none';
+            }
+        }
+    } catch (e) {
+        alert("Lỗi duyệt: " + e.message);
+    } finally {
+        if (loading) loading.style.display = "none";
+    }
+}
+
+/**
+ * Gọi API từ chối xóa tài khoản chờ duyệt ngay trên Web (Zero Reload)
+ */
+async function rejectUserInApp(mail, name) {
+    // Đã loại bỏ dòng confirm xác nhận tại đây để xử lý trực tiếp khi nhấn nút
+    
+    const loading = document.getElementById("contractLoading");
+    if (loading) {
+        loading.style.display = "flex";
+        loading.querySelector('p').textContent = "REJECTING USER...";
+    }
+    
+    try {
+        const success = await callBackend("rejectUser_InApp", mail);
+        if (success) {
+            // Cập nhật danh sách chờ duyệt cục bộ
+            pendingUsersList_PL = pendingUsersList_PL.filter(u => u.mail !== mail);
+            updateBellBadge();
+            renderBellList();
+            showToast_PL(`🔴 Đã từ chối đăng ký của ${name}!`, "error");
+            
+            // Tự động đóng dropdown nếu không còn ai trong danh sách chờ
+            if (pendingUsersList_PL.length === 0) {
+                document.getElementById('bellDropdown').style.display = 'none';
+            }
+        }
+    } catch (e) {
+        alert("Lỗi từ chối: " + e.message);
+    } finally {
+        if (loading) loading.style.display = "none";
+    }
+}
+
+// Lắng nghe sự kiện click ngoài màn hình để tự động đóng dropdown Quả chuông báo
+document.addEventListener('click', () => {
+    const dropdown = document.getElementById('bellDropdown');
+    if (dropdown) dropdown.style.display = 'none';
+});
+
+function initAblyRealtimeConnection() {
+    try {
+        if (typeof Ably === 'undefined') return;
+        
+        // Khởi tạo Client Realtime sử dụng Client Key chính xác
+        const realtime = new Ably.Realtime(ABLY_CLIENT_KEY);
+        
+        // SỬA LỖI: Đồng bộ khớp tên Channel với Backend
+        const channel = realtime.channels.get('bcons_notification');
+        
+        // SỬA LỖI: Đồng bộ khớp tên Event đăng ký mới
+        channel.subscribe('new_registration', (message) => {
+            const newUser = message.data;
+            if (newUser && newUser.mail) {
+                // Kiểm tra trùng lặp để tránh hiện thông báo nhiều lần
+                const exists = pendingUsersList_PL.some(u => u.mail === newUser.mail);
+                if (!exists) {
+                    // Đẩy user mới trực tiếp vào RAM của Client
+                    pendingUsersList_PL.push(newUser);
+                    
+                    // Cập nhật chấm đỏ thông báo ngay lập tức
+                    updateBellBadge();
+                    
+                    // Nếu admin đang mở sẵn Dropdown quả chuông, tự động vẽ lại danh sách ngay lập tức
+                    const dropdown = document.getElementById('bellDropdown');
+                    if (dropdown && dropdown.style.display === 'flex') {
+                        renderBellList();
+                    }
+                    
+                    // Hiện Toast thông báo góc màn hình
+                    showToast_PL(`🔔 Nhân viên <b>${newUser.name}</b> vừa gửi yêu cầu đăng ký tài khoản mới!`, "success");
+                }
+            }
+        });
+        
+        console.log("⚡ [Realtime] Cổng kết nối WebSockets Ably đã kích hoạt!");
+    } catch (e) {
+        console.error("[Realtime Error] Không thể kết nối máy chủ Ably: " + e.message);
+    }
+}
+
+/**
+ * Xử lý cập nhật số lượng thông báo dạng (1) hoặc (2) lên Tiêu đề và Favicon của Tab
+ */
+function updateTabNotification(count) {
+    const baseTitle = "KEN";
+    
+    // 1. CẬP NHẬT TIÊU ĐỀ TAB DẠNG (Count) KEN
+    if (count > 0) {
+        document.title = `(${count}) ${baseTitle}`;
+    } else {
+        document.title = baseTitle;
+    }
+
+    // 2. CẬP NHẬT CHẤM ĐỎ TRÊN FAVICON
+    const favicon = document.querySelector('link[rel="icon"]');
+    if (!favicon) return;
+
+    const originalSrc = "https://i.postimg.cc/W4v0Vv2C/logo.png";
+
+    if (count <= 0) {
+        favicon.href = originalSrc;
+        return;
+    }
+
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+
+        const img = new Image();
+        img.crossOrigin = "anonymous"; // Cho phép tải ảnh an toàn nếu máy chủ hỗ trợ CORS
+        img.src = originalSrc;
+
+        img.onload = function() {
+            try {
+                // Vẽ logo gốc
+                ctx.drawImage(img, 0, 0, 32, 32);
+                // Vẽ thêm chấm đỏ thông báo
+                drawFaviconBadge(ctx, count);
+                // Cập nhật lại liên kết Icon
+                favicon.href = canvas.toDataURL('image/png');
+            } catch (err) {
+                // Dự phòng vẽ tay hoàn toàn bằng Canvas nếu dính lỗi bảo mật CORS từ nhà cung cấp ảnh
+                drawFallbackFavicon(favicon, count);
+            }
+        };
+        img.onerror = function() {
+            drawFallbackFavicon(favicon, count);
+        };
+    } catch (e) {
+        drawFallbackFavicon(favicon, count);
+    }
+}
+
+/**
+ * Hàm hỗ trợ vẽ chấm tròn đỏ chứa số lượng thông báo
+ */
+function drawFaviconBadge(ctx, count) {
+    ctx.beginPath();
+    ctx.arc(24, 8, 7, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ff4d4d'; // Màu đỏ thông báo chuẩn
+    ctx.fill();
+
+    ctx.font = 'bold 9px Arial';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(count > 9 ? '9+' : count, 24, 8);
+}
+
+/**
+ * Hàm vẽ favicon dự phòng (Vẽ tay trực tiếp, không sử dụng tài nguyên ảnh ngoài)
+ */
+function drawFallbackFavicon(favicon, count) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+
+    // Vẽ hình tròn nền tối màu của hệ thống
+    ctx.fillStyle = '#031c35';
+    ctx.beginPath();
+    ctx.arc(16, 16, 15, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = '#FFBA08';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Vẽ chữ K màu vàng đại diện thương hiệu
+    ctx.font = 'bold 15px Arial';
+    ctx.fillStyle = '#FFBA08';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('K', 15, 16);
+
+    // Vẽ chấm đỏ thông báo
+    drawFaviconBadge(ctx, count);
+
+    favicon.href = canvas.toDataURL('image/png');
 }

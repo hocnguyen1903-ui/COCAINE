@@ -48,6 +48,7 @@ let currentScanFiles = [];
 let fileIdToProcess = "";
 let lastTap_Scan = 0;
 
+let pendingUsersList_PL = [];
 // ==========================================================================
 // 2. HẰNG SỐ CẤU HÌNH (CONSTANTS)
 // ==========================================================================

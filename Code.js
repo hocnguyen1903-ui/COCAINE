@@ -5,41 +5,34 @@ const MASTER_FOLDER_ID = '1zStGfH5eitVgbxHF-bhrQGE4NWoKlCpw';
 
 // --- ĐỊNH DANH TOÀN CỤC CHO THIẾT BỊ ĐANG GỌI API ---
 var GLOBAL_STAFF_NAME = "UNKNOWN";
+var GLOBAL_STAFF_ROLE = "USER"; // Mặc định quyền của phiên làm việc là USER
 
 /**
- * Hàm lấy tên nhân sự cho các file xử lý logic dùng chung (API_PhuLuc, API_HopDong)
- */
-function getCurrentStaffName() {
-  return GLOBAL_STAFF_NAME;
-}
-
-/**
- * Xử lý xác thực Token qua kiến trúc Hybrid (RAM Cache -> SSD Properties)
+ * Xử lý xác thực Token qua kiến trúc Hybrid (Bóc tách phân quyền Name|Role)
  */
 function authenticateAndGetName(token) {
   if (!token) return "UNKNOWN";
   
-  // Lớp 1: Kiểm tra RAM (CacheService - ~3ms)
   const cache = CacheService.getScriptCache();
-  const cachedName = cache.get(token);
-  if (cachedName) return cachedName;
-
-  // Lớp 2: Kiểm tra SSD (PropertiesService - ~30ms)
-  const props = PropertiesService.getScriptProperties();
-  const propName = props.getProperty(token);
-  if (propName) {
-    // Nạp ngược lại RAM cho các request tiếp theo
-    cache.put(token, propName, 21600);
-    return propName;
+  let cachedVal = cache.get(token);
+  
+  if (!cachedVal) {
+    const props = PropertiesService.getScriptProperties();
+    cachedVal = props.getProperty(token);
+    if (cachedVal) cache.put(token, cachedVal, 21600);
+  }
+  
+  if (cachedVal && cachedVal.includes("|")) {
+    const parts = cachedVal.split("|");
+    GLOBAL_STAFF_NAME = parts[0].toUpperCase().trim();
+    GLOBAL_STAFF_ROLE = parts[1] ? parts[1].toUpperCase().trim() : "USER"; 
+    return GLOBAL_STAFF_NAME;
   }
   return "UNKNOWN";
 }
 
 /**
  * Xác thực thông tin đăng nhập từ Sheet "User_Registry"
- */
-/**
- * Xác thực thông tin đăng nhập và kiểm tra Trạng thái ACTIVE từ Sheet "User_Registry"
  */
 function loginUser(mail, password) {
   if (password !== "1234") {
@@ -54,12 +47,13 @@ function loginUser(mail, password) {
   const targetMail = mail.toLowerCase().trim();
   let matchedName = "";
   let status = "PENDING";
+  let role = "USER"; 
   
-  // Duyệt dữ liệu bỏ qua Header dòng 1 (A1: Mail, B1: Name, C1: Status)
   for (let i = 1; i < data.length; i++) {
     if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
       matchedName = data[i][1]?.toString().toUpperCase().trim();
       status = data[i][2] ? data[i][2].toString().toUpperCase().trim() : "PENDING";
+      role = data[i][3] ? data[i][3].toString().toUpperCase().trim() : "USER";
       break;
     }
   }
@@ -73,17 +67,295 @@ function loginUser(mail, password) {
   }
   
   const token = "TOKEN-" + Utilities.getUuid();
+  const tokenValue = matchedName + "|" + role; 
   
-  // Lưu vĩnh viễn vào bộ nhớ SSD dự án
-  PropertiesService.getScriptProperties().setProperty(token, matchedName);
-  // Lưu đệm vào RAM 6 tiếng
-  CacheService.getScriptCache().put(token, matchedName, 21600);
+  PropertiesService.getScriptProperties().setProperty(token, tokenValue);
+  CacheService.getScriptCache().put(token, tokenValue, 21600);
   
-  return { success: true, token: token, name: matchedName };
+  return { success: true, token: token, name: matchedName, role: role }; 
 }
 
 /**
- * Xử lý yêu cầu Đăng ký tài khoản từ Nhân viên (Append PENDING & Gửi Email)
+ * Hàm phê duyệt nhanh tài khoản ACTIVE ngay trong Web App
+ */
+function approveUser_InApp(mail) {
+  if (GLOBAL_STAFF_ROLE !== "ADMIN") {
+    throw new Error("BẢO MẬT: Sếp không có quyền quản trị để thực hiện hành động này!");
+  }
+
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName("User_Registry");
+  if (!sheet) return false;
+  
+  const data = sheet.getDataRange().getValues();
+  const targetMail = mail.toLowerCase().trim();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+      sheet.getRange(i + 1, 3).setValue("ACTIVE");
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Hàm từ chối và xóa tài khoản ngay trong Web App
+ */
+function rejectUser_InApp(mail) {
+  if (GLOBAL_STAFF_ROLE !== "ADMIN") {
+    throw new Error("BẢO MẬT: Sếp không có quyền quản trị để thực hiện hành động này!");
+  }
+
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName("User_Registry");
+  if (!sheet) return false;
+  
+  const data = sheet.getDataRange().getValues();
+  const targetMail = mail.toLowerCase().trim();
+  
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+      sheet.deleteRow(i + 1);
+      return true;
+    }
+  }
+  return false;
+}
+
+// --- CẤU HÌNH KHÓA TRUYỀN TIN THỜI GIAN THỰC ABLY ---
+const ABLY_API_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8RU";
+
+/**
+ * CHUYẾN XE TẢI DỮ LIỆU TỔNG
+ */
+function getSystemData(token) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  
+  if (token) {
+    authenticateAndGetName(token); 
+  }
+  
+  // 1. LẤY DANH SÁCH USER CHỜ PHÊ DUYỆT (PENDING)
+  const sheetUser = ss.getSheetByName("User_Registry");
+  let pendingUsers = [];
+  if (sheetUser) {
+    const userData = sheetUser.getDataRange().getValues();
+    for (let i = 1; i < userData.length; i++) {
+      const uMail = userData[i][0]?.toString().toLowerCase().trim();
+      const uName = userData[i][1]?.toString().toUpperCase().trim();
+      const uStatus = userData[i][2]?.toString().toUpperCase().trim() || "PENDING";
+      if (uMail && uStatus === "PENDING") {
+        pendingUsers.push({ mail: uMail, name: uName });
+      }
+    }
+  }
+
+  // 2. LẤY DATA DỰ ÁN
+  const dataBcons = ss.getSheetByName("DATABCONS").getRange("A3:B").getValues().reverse();
+  const projectHD = dataBcons.map(r => ({
+    display: r[0].toString().trim(),
+    searchString: r[1] ? `${r[0]} | ${r[1]}`.trim() : r[0].toString().trim()
+  })).filter(i => i.display);
+
+  // 3. LẤY DATA GÓI THẦU
+  const sheetGoiThau = ss.getSheetByName("DATAGOITHAU");
+  const lastRowGT = sheetGoiThau.getLastRow();
+  
+  let packHD = []; 
+  let warrantyHD = []; 
+
+  if (lastRowGT >= 12) {
+    const dataGT = sheetGoiThau.getRange(12, 2, lastRowGT - 11, 19).getValues();
+    packHD = dataGT.filter(r => r[18] !== "").map(r => ({
+      searchString: r[18].toString().trim(),
+      category: r[0].toString().trim()
+    }));
+    warrantyHD = sheetGoiThau.getRange("N3:N").getValues().flat().filter(String);
+  }
+
+  // 4. LẤY DATA NHÀ THẦU
+  const dataNTP = ss.getSheetByName("DATANTP").getRange("C3:D").getValues();
+  const contractorHD = dataNTP.map(r => ({
+    display: r[0].toString().trim(),
+    searchString: r[1] ? `${r[1]} | ${r[0]}`.trim() : r[0].toString().trim()
+  })).filter(i => i.display);
+
+  // 5. LẤY DATA PHỤ LỤC
+  const sheetX = ss.getSheetByName("X");
+  const lastRowX = sheetX.getLastRow();
+  let field0PL = [];
+  
+  if (lastRowX >= 4) {
+    const dataX = sheetX.getRange(`A4:V${lastRowX}`).getValues(); 
+    field0PL = dataX.map(r => {
+      const valA = r[0]?.toString().trim() || "";
+      if (!valA) return null;
+      const scanRaw = r[15]?.toString().trim() || "";
+      let rawDate = r[7];
+      let strDate = rawDate instanceof Date ? Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy") : (rawDate?.toString().trim() || "");
+
+      return {
+        maHD: valA,
+        display: `${valA} | ${r[6]?.toString().trim() || ""} | ${r[2]?.toString().trim() || r[3]?.toString().trim() || ""}`,
+        note: r[1]?.toString().trim() || "",
+        searchK: r[10]?.toString().trim() || "", 
+        dateH: strDate, 
+        packageI: r[1]?.toString().trim() || "",
+        valueK: r[2]?.toString().trim() || "",
+        searchM: r[12]?.toString().trim() || "",
+        transferred: r[14]?.toString().trim() !== "",
+        scanId: scanRaw, 
+        fileName: scanRaw.includes("|") ? scanRaw.split(";;")[0].split("|")[1].trim() : "", 
+        c: r[2]?.toString().trim() || "",
+        hasQ: r[16]?.toString().trim().toLowerCase() === "x",
+        hasR: r[17]?.toString().trim().toLowerCase() === "x",
+        hasS: r[18]?.toString().trim().toLowerCase() === "x"
+      };
+    }).filter(Boolean);
+  }
+
+  // 6. LẤY DỮ LIỆU SỔ THEO DÕI
+  const logSheet = ss.getSheetByName("SO HDTCXD BCONS - NTP");
+  const logLastRow = logSheet.getLastRow();
+  const transferMap = {};
+
+  if (logLastRow >= 3) {
+    const logData = logSheet.getRange(3, 2, logLastRow - 2, 21).getValues(); 
+    logData.forEach(r => {
+      const contractNo = r[2]?.toString().trim();
+      if (contractNo) {
+        transferMap[contractNo] = {
+          isTransferred: r[13] !== "",                                       
+          t: r[18]?.toString().trim().toLowerCase().startsWith("x"),         
+          u: r[19]?.toString().trim() !== "" && r[19] != 0,                  
+          v: r[20]?.toString().trim() !== "" && r[20] != 0                   
+        };
+      }
+    });
+  }
+
+  return {
+    hd: { project: projectHD, pack: packHD, warranty: warrantyHD, contractor: contractorHD },
+    pl: { field0: field0PL },
+    transferMap: transferMap,
+    pendingUsers: pendingUsers, 
+    currentUserRole: GLOBAL_STAFF_ROLE ? GLOBAL_STAFF_ROLE.toUpperCase().trim() : "USER" 
+  };
+}
+
+/**
+ * ĐỊNH TUYẾN WEB APP API
+ */
+function doPost(e) {
+  if (!e || !e.postData) return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "No post data" })).setMimeType(ContentService.MimeType.JSON);
+  
+  let request;
+  try {
+    request = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "JSON Parse error" })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const { action, data: payload, token } = request;
+
+  if (token && action !== "loginUser" && action !== "registerUser") {
+    authenticateAndGetName(token); 
+  }
+
+  if (action === "loginUser") {
+    try {
+      const res = loginUser(payload.mail, payload.password);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+  
+  if (action === "registerUser") {
+    try {
+      const res = registerUser(payload.mail, payload.name);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  const routes = {
+    "batchRequest": () => apiDispatcher(payload),
+    "getSystemData": () => getSystemData(),
+    "getActiveProjectFolders_Backend": () => getActiveProjectFolders_Backend(),
+    "handleFullExportProcess_HD": () => handleFullExportProcess_HD(payload),
+    "handleFullExportProcess_TB": () => handleFullExportProcess_TB(payload),
+    "writeToSheetAndExportDoc_PL": () => writeToSheetAndExportDoc_PL(payload),
+    "updateContractData_PL": () => updateContractData_PL(payload?.[0], payload?.[1], payload?.[2]),
+    "updateTransferStatus_PL": () => updateTransferStatus_PL(payload?.[0], payload?.[1], payload?.[2]),
+    "exportToNewSpreadsheet_PL": () => exportToNewSpreadsheet_PL(payload),
+    "deleteContractRow_Backend": () => deleteContractRow_Backend(payload),
+    "uploadScanToDrive": () => uploadScanToDrive(payload?.[0], payload?.[1], payload?.[2]),
+    "deleteScanFilePermanently": () => deleteScanFilePermanently(payload?.[0], payload?.[1]),
+    "getMindmapData": () => getMindmapData(payload),
+    "getTasksByFileId": () => getTasksByFileId(payload),
+    "getAllTasksByProject": () => getAllTasksByProject(payload),
+    "updateTasksOrderBackend": () => updateTasksOrderBackend(payload?.[0], payload?.[1], payload?.[2]),
+    "getFileBase64ForAI": () => getFileBase64ForAI(payload),
+    "extractDataOnly": () => extractDataOnly(payload?.[0], payload?.[1], payload?.[2]),
+    "batchAddTasksBackend": () => batchAddTasksBackend(payload?.[0], payload?.[1], payload?.[2], payload?.[3]),
+    "approveUser_InApp": () => approveUser_InApp(payload), 
+    "rejectUser_InApp": () => rejectUser_InApp(payload)    
+  };
+
+  try {
+    if (!routes[action]) throw new Error(`Action '${action}' not found in Backend Routing.`);
+    const result = routes[action]();
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result })).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    console.error(`[API ERROR] Action: ${action} | Msg: ${error.message}`);
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function getCurrentStaffName() {
+  return GLOBAL_STAFF_NAME;
+}
+
+/**
+ * Trả về trạng thái online của Backend
+ */
+function doGet(e) {
+  return HtmlService.createHtmlOutput("<h3>Backend API is Online.</h3>");
+}
+
+function apiDispatcher(payload) {
+  const results = {};
+  for (const key in payload) {
+    const request = payload[key];
+    const action = request.action;
+    const params = request.params || [];
+    try {
+      switch (action) {
+        case 'getSystemData':
+          results[key] = getSystemData();
+          break;
+        case 'getActiveProjectFolders':
+          results[key] = getActiveProjectFolders_Backend();
+          break;
+        case 'getLatestTBNo':
+          results[key] = getLatestContractNumber_TB();
+          break;
+        default:
+          results[key] = null;
+          break;
+      }
+    } catch (e) {
+      results[key] = { error: e.toString() };
+    }
+  }
+  return results;
+}
+
+/**
+ * XỬ LÝ YÊU CẦU ĐĂNG KÝ TÀI KHOẢN TỪ NHÂN VIÊN (ĐỒNG BỘ REALTIME QUA ABLY)
  */
 function registerUser(mail, name) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -114,323 +386,26 @@ function registerUser(mail, name) {
   // Thêm dòng mới trạng thái PENDING
   sheet.appendRow([targetMail, targetName, "PENDING"]);
   
-  // Sinh Token phê duyệt bảo mật dùng một lần
-  const approvalToken = "APPROVE-" + Utilities.getUuid();
-  PropertiesService.getScriptProperties().setProperty(approvalToken, targetMail + "|" + targetName);
-  
-  // Gửi Mail thông báo cho sếp
-  sendApprovalEmail(targetMail, targetName, approvalToken);
+  // 🚀 BẮN TÍN HIỆU THỜI GIAN THỰC SANG ABLY
+  try {
+    const ablyUrl = "https://rest.ably.io/channels/bcons_notification/messages";
+    const ablyPayload = {
+      "name": "new_registration",
+      "data": { "mail": targetMail, "name": targetName }
+    };
+    const ablyOptions = {
+      "method": "POST",
+      "headers": {
+        "Authorization": "Basic " + Utilities.base64Encode(ABLY_API_KEY),
+        "Content-Type": "application/json"
+      },
+      "payload": JSON.stringify(ablyPayload),
+      "muteHttpExceptions": true
+    };
+    UrlFetchApp.fetch(ablyUrl, ablyOptions);
+  } catch (err) {
+    console.error("Lỗi bắn tín hiệu Ably Realtime: " + err.message);
+  }
   
   return { success: true };
 }
-/**
- * Gửi Mail thông báo tối giản chỉ gồm thông tin đăng ký và 2 nút bấm
- */
-function sendApprovalEmail(userMail, userName, token) {
-  const adminMail = "hocnguyen1903@gmail.com"; 
-  const webAppUrl = ScriptApp.getService().getUrl();
-  
-  const approveLink = `${webAppUrl}?action=approve&token=${token}`;
-  const rejectLink = `${webAppUrl}?action=reject&token=${token}`;
-  
-  const htmlBody = `
-    <div style="font-family: Arial, sans-serif; max-width: 400px; padding: 22px; border: 1px solid #dddddd; border-radius: 12px; background-color: #ffffff;">
-      <h3 style="margin-top: 0; color: #333333; font-size: 16px; border-bottom: 1px solid #eeeeee; padding-bottom: 12px; margin-bottom: 15px;">New sign-up request</h3>
-      <p style="margin-bottom: 25px; font-size: 13.5px; color: #555555; line-height: 1.6; margin-top: 0;">
-        • Name: <b style="color: #111111;">${userName}</b><br>
-        • Email: <b style="color: #111111;">${userMail}</b>
-      </p>
-      
-      <!-- BẢNG ĐỒNG BỘ HIỂN THỊ NÚT BẤM (CHỐNG TRÔI KHUNG TRÊN GMAIL) -->
-      <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
-        <tr>
-          <!-- NÚT OK (CHIẾM CHÍNH XÁC 48% ĐỘ RỘNG) -->
-          <td width="48%" align="center" style="background-color: #2ECC71; border-radius: 6px;">
-            <a href="${approveLink}" target="_blank" style="display: block; padding: 10px 0; color: #ffffff; font-family: Arial, sans-serif; font-size: 13px; font-weight: bold; text-decoration: none; text-align: center; text-transform: uppercase;">APPROVE</a>
-          </td>
-          <!-- KHE HỞ GIỮA 2 NÚT (CHIẾM 4% ĐỘ RỘNG) -->
-          <td width="4%"></td>
-          <!-- NÚT REJECT (CHIẾM CHÍNH XÁC 48% ĐỘ RỘNG) -->
-          <td width="48%" align="center" style="background-color: #E74C3C; border-radius: 6px;">
-            <a href="${rejectLink}" target="_blank" style="display: block; padding: 10px 0; color: #ffffff; font-family: Arial, sans-serif; font-size: 13px; font-weight: bold; text-decoration: none; text-align: center; text-transform: uppercase;">REJECT</a>
-          </td>
-        </tr>
-      </table>
-    </div>
-  `;
-  
-  MailApp.sendEmail({
-    to: adminMail,
-    subject: `[KEN_Registration Approval] ${userName}`,
-    htmlBody: htmlBody
-  });
-}
-
-/**
- * Xử lý tương tác Phê duyệt / Từ chối (Trả về Plain Text siêu tốc thay vì dựng HTML)
- */
-function doGet(e) {
-  if (e && e.parameter && e.parameter.action && e.parameter.token) {
-    const action = e.parameter.action;
-    const token = e.parameter.token;
-    const props = PropertiesService.getScriptProperties();
-    const rawData = props.getProperty(token);
-    
-    if (!rawData) {
-      return HtmlService.createHtmlOutput(buildAutoClosePage("LỖI LIÊN KẾT", "Yêu cầu đã được phê duyệt trước đó hoặc liên kết không hợp lệ!", false));
-    }
-    
-    const [userMail, userName] = rawData.split("|");
-    
-    if (action === "approve") {
-      const ss = SpreadsheetApp.openById(SHEET_ID);
-      const sheet = ss.getSheetByName("User_Registry");
-      const data = sheet.getDataRange().getValues();
-      let rowUpdated = false;
-      
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][0]?.toString().toLowerCase().trim() === userMail.toLowerCase().trim()) {
-          sheet.getRange(i + 1, 3).setValue("ACTIVE");
-          rowUpdated = true;
-          break;
-        }
-      }
-      
-      props.deleteProperty(token); // Vô hiệu hóa Token một lần dùng
-      
-      if (rowUpdated) {
-        return HtmlService.createHtmlOutput(buildAutoClosePage("PHÊ DUYỆT THÀNH CÔNG", `Tài khoản của <b>${userName}</b> (${userMail}) đã được kích hoạt thành công!`, true));
-      }
-    } 
-    else if (action === "reject") {
-      // Xóa yêu cầu PENDING khỏi Sheet
-      const ss = SpreadsheetApp.openById(SHEET_ID);
-      const sheet = ss.getSheetByName("User_Registry");
-      const data = sheet.getDataRange().getValues();
-      for (let i = data.length - 1; i >= 1; i--) {
-        if (data[i][0]?.toString().toLowerCase().trim() === userMail.toLowerCase().trim()) {
-          sheet.deleteRow(i + 1);
-          break;
-        }
-      }
-      props.deleteProperty(token); // Xóa Token
-      return HtmlService.createHtmlOutput(buildAutoClosePage("ĐÃ TỪ CHỐI", `Yêu cầu đăng ký của <b>${userName}</b> đã bị từ chối và xóa khỏi hệ thống.`, false));
-    }
-  }
-  return HtmlService.createHtmlOutput("<h3>Backend API is Online.</h3>");
-}
-
-/**
- * Trình dựng giao diện cực hạn (Ultra-Lightweight), tối ưu hóa CPU & RAM render tuyệt đối
- */
-function buildAutoClosePage(title, desc, isSuccess) {
-  const color = isSuccess ? "#2ECC71" : "#E74C3C";
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{background:#031c35;color:#E0E0E0;font-family:sans-serif;text-align:center;padding:35vh 20px 0 20px;margin:0}h2{color:${color};font-size:18px;text-transform:uppercase;margin:0 0 10px 0}p{font-size:14px;margin:0}</style></head><body><h2>${title}</h2><p>${desc}</p></body></html>`;
-}
-
-/**
- * ĐỒNG BỘ ĐỊNH TUYẾN WEB APP API
- */
-function doPost(e) {
-  if (!e || !e.postData) return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "No post data" })).setMimeType(ContentService.MimeType.JSON);
-  
-  let request;
-  try {
-    request = JSON.parse(e.postData.contents);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "JSON Parse error" })).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  const { action, data: payload, token } = request;
-
-  // 1. Chạy tiến trình Đăng nhập & Đăng ký (Bỏ qua màng lọc Token)
-  if (action === "loginUser") {
-    try {
-      const res = loginUser(payload.mail, payload.password);
-      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
-    } catch (err) {
-      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
-    }
-  }
-  
-  if (action === "registerUser") {
-    try {
-      const res = registerUser(payload.mail, payload.name);
-      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
-    } catch (err) {
-      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
-    }
-  }
-
-  // 2. Màng lọc bảo mật Hybrid xác thực Token cho toàn bộ Request khác
-  GLOBAL_STAFF_NAME = authenticateAndGetName(token);
-  if (GLOBAL_STAFF_NAME === "UNKNOWN") {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "UNAUTHORIZED: Phiên làm việc hết hạn hoặc không hợp lệ!" })).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  const routes = {
-    "batchRequest": () => apiDispatcher(payload),
-    "getSystemData": () => getSystemData(),
-    "getActiveProjectFolders_Backend": () => getActiveProjectFolders_Backend(),
-    "handleFullExportProcess_HD": () => handleFullExportProcess_HD(payload),
-    "handleFullExportProcess_TB": () => handleFullExportProcess_TB(payload),
-    "writeToSheetAndExportDoc_PL": () => writeToSheetAndExportDoc_PL(payload),
-    "updateContractData_PL": () => updateContractData_PL(payload?.[0], payload?.[1], payload?.[2]),
-    "updateTransferStatus_PL": () => updateTransferStatus_PL(payload?.[0], payload?.[1], payload?.[2]),
-    "exportToNewSpreadsheet_PL": () => exportToNewSpreadsheet_PL(payload),
-    "deleteContractRow_Backend": () => deleteContractRow_Backend(payload),
-    "uploadScanToDrive": () => uploadScanToDrive(payload?.[0], payload?.[1], payload?.[2]),
-    "deleteScanFilePermanently": () => deleteScanFilePermanently(payload?.[0], payload?.[1]),
-    "getMindmapData": () => getMindmapData(payload),
-    "getTasksByFileId": () => getTasksByFileId(payload),
-    "getAllTasksByProject": () => getAllTasksByProject(payload),
-    "updateTasksOrderBackend": () => updateTasksOrderBackend(payload?.[0], payload?.[1], payload?.[2]),
-    "getFileBase64ForAI": () => getFileBase64ForAI(payload),
-    "extractDataOnly": () => extractDataOnly(payload?.[0], payload?.[1], payload?.[2]),
-    "batchAddTasksBackend": () => batchAddTasksBackend(payload?.[0], payload?.[1], payload?.[2], payload?.[3])
-  };
-
-  try {
-    if (!routes[action]) throw new Error(`Action '${action}' not found in Backend Routing.`);
-    const result = routes[action]();
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result })).setMimeType(ContentService.MimeType.JSON);
-  } catch (error) {
-    console.error(`[API ERROR] Action: ${action} | Msg: ${error.message}`);
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-// =========================================================================
-// 2. CHUYẾN XE TẢI DỮ LIỆU TỔNG (ĐÃ NÂNG CẤP LẤY CỘT K ĐỂ SEARCH)
-// =========================================================================
-function getSystemData() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  
-  // 1. LẤY DATA DỰ ÁN (Dùng chung cho HD và TBKQ)
-  const dataBcons = ss.getSheetByName("DATABCONS").getRange("A3:B").getValues().reverse();
-  const projectHD = dataBcons.map(r => ({
-    display: r[0].toString().trim(),
-    searchString: r[1] ? `${r[0]} | ${r[1]}`.trim() : r[0].toString().trim()
-  })).filter(i => i.display);
-
-  // 2. LẤY DATA GÓI THẦU (DATAGOITHAU)
-  const sheetGoiThau = ss.getSheetByName("DATAGOITHAU");
-  const lastRowGT = sheetGoiThau.getLastRow();
-  
-  let packHD = []; 
-  let warrantyHD = []; 
-
-  if (lastRowGT >= 12) {
-    const dataGT = sheetGoiThau.getRange(12, 2, lastRowGT - 11, 19).getValues();
-    packHD = dataGT.filter(r => r[18] !== "").map(r => ({
-      searchString: r[18].toString().trim(),
-      category: r[0].toString().trim()
-    }));
-    warrantyHD = sheetGoiThau.getRange("N3:N").getValues().flat().filter(String);
-  }
-
-  // 3. LẤY DATA NHÀ THẦU (DATANTP)
-  const dataNTP = ss.getSheetByName("DATANTP").getRange("C3:D").getValues();
-  const contractorHD = dataNTP.map(r => ({
-    display: r[0].toString().trim(),
-    searchString: r[1] ? `${r[1]} | ${r[0]}`.trim() : r[0].toString().trim()
-  })).filter(i => i.display);
-
-  // 4. LẤY DATA PHỤ LỤC (Sheet X) - ĐÃ BỔ SUNG CỘT K
-  const sheetX = ss.getSheetByName("X");
-  const lastRowX = sheetX.getLastRow();
-  let field0PL = [];
-  
-  if (lastRowX >= 4) {
-    // Lấy đến cột V (Index 21) để đảm bảo bao phủ hết các trường Q, R, S
-    const dataX = sheetX.getRange(`A4:V${lastRowX}`).getValues(); 
-    
-    field0PL = dataX.map(r => {
-      const valA = r[0]?.toString().trim() || ""; // Cột A: Số HĐ
-      if (!valA) return null;
-
-      const scanRaw = r[15]?.toString().trim() || ""; // Cột P: Scan ID
-      let rawDate = r[7]; // Cột H: Ngày ký
-      let strDate = rawDate instanceof Date ? Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy") : (rawDate?.toString().trim() || "");
-
-      return {
-        maHD: valA, // Cột A
-        display: `${valA} | ${r[6]?.toString().trim() || ""} | ${r[2]?.toString().trim() || r[3]?.toString().trim() || ""}`,
-        note: r[1]?.toString().trim() || "", // Cột B: Tên gói thầu
-        
-        // 🔥 BỔ SUNG: LẤY DỮ LIỆU CỘT K (Index 10) ĐỂ SEARCH
-        searchK: r[10]?.toString().trim() || "", 
-        
-        dateH: strDate, 
-        packageI: r[1]?.toString().trim() || "",
-        valueK: r[2]?.toString().trim() || "",
-        searchM: r[12]?.toString().trim() || "",
-        transferred: r[14]?.toString().trim() !== "", // Cột O: CHUYỂN HS
-        scanId: scanRaw, 
-        fileName: scanRaw.includes("|") ? scanRaw.split(";;")[0].split("|")[1].trim() : "", 
-        c: r[2]?.toString().trim() || "",
-        
-        // ĐỌC DỮ LIỆU TỪ CỘT Q, R, S (Index 16, 17, 18)
-        hasQ: r[16]?.toString().trim().toLowerCase() === "x", // Đề nghị tạm ứng
-        hasR: r[17]?.toString().trim().toLowerCase() === "x", // Bảo lãnh tạm ứng
-        hasS: r[18]?.toString().trim().toLowerCase() === "x"  // Bảo lãnh HĐ
-      };
-    }).filter(Boolean);
-  }
-
-  // 5. LẤY DỮ LIỆU SỔ THEO DÕI ĐỂ TICK CHUYỂN GIAO UI
-  const logSheet = ss.getSheetByName("SO HDTCXD BCONS - NTP");
-  const logLastRow = logSheet.getLastRow();
-  const transferMap = {};
-
-  if (logLastRow >= 3) {
-    const logData = logSheet.getRange(3, 2, logLastRow - 2, 21).getValues(); 
-    logData.forEach(r => {
-      const contractNo = r[2]?.toString().trim(); // Cột D (index 2 tính từ B)
-      if (contractNo) {
-        transferMap[contractNo] = {
-          isTransferred: r[13] !== "",                                       
-          t: r[18]?.toString().trim().toLowerCase().startsWith("x"),         
-          u: r[19]?.toString().trim() !== "" && r[19] != 0,                  
-          v: r[20]?.toString().trim() !== "" && r[20] != 0                   
-        };
-      }
-    });
-  }
-
-  return {
-    hd: { project: projectHD, pack: packHD, warranty: warrantyHD, contractor: contractorHD },
-    pl: { field0: field0PL },
-    transferMap: transferMap 
-  };
-}
-
-// THÊM VÀO CUỐI FILE Code.gs
-function apiDispatcher(payload) {
-  const results = {};
-  for (const key in payload) {
-    const request = payload[key];
-    const action = request.action;
-    const params = request.params || [];
-    try {
-      switch (action) {
-        case 'getSystemData':
-          results[key] = getSystemData();
-          break;
-        case 'getActiveProjectFolders':
-          results[key] = getActiveProjectFolders_Backend();
-          break;
-        case 'getLatestTBNo':
-          results[key] = getLatestContractNumber_TB();
-          break;
-        // Mày có thể thêm các case khác ở đây nếu muốn gộp thêm
-        default:
-          results[key] = null;
-      }
-    } catch (e) {
-      results[key] = { error: e.toString() };
-    }
-  }
-  return results;
-}
-
