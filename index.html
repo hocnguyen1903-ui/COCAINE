@@ -78,15 +78,26 @@
     <div class="header" style="justify-content: space-between !important; padding: 0 30px !important;">
         <!-- KHU VỰC TRÁI: LOGOUT & QUẢ CHUÔNG THÔNG BÁO -->
         <div style="display: flex; align-items: center; gap: 20px;">
-            <a href="javascript:void(0)" id="btn-logout" onclick="performLogout()" style="color: #FFBA08; font-size: 13px; text-decoration: none; display: flex; align-items: center; gap: 6px; letter-spacing: 1px; transition: all 0.15s; opacity: 0.8;" onmouseover="this.style.opacity='1'; this.style.transform='scale(1.1)';" onmouseout="this.style.opacity='0.88'; this.style.transform='scale(1)';">
-                <i class="bi bi-box-arrow-left" style="font-size: 16px; position: relative; top: 1px;"></i> Log out,<span id="staffNameDisplay" style="text-transform: uppercase;"></span>
-            </a>
+            <a href="javascript:void(0)" id="btn-logout" onclick="performLogout()" 
+   style="text-decoration: none; display: flex; align-items: center; gap: 8px; font-size: 14px; transition: all 0.2s ease-in-out;" 
+   onmouseover="this.querySelector('i').style.color='#ffffff'; this.querySelector('.logout-txt').style.color='#ffffff';" 
+   onmouseout="this.querySelector('i').style.color='rgba(255,255,255,0.4)'; this.querySelector('.logout-txt').style.color='rgba(255,255,255,0.6)';">
+   
+    <!-- Icon đăng xuất (Mặc định mờ nhẹ, khi hover sáng màu trắng đồng bộ) -->
+    <i class="bi bi-box-arrow-left" style="font-size: 15px; color: rgba(255, 255, 255, 0.4); transition: color 0.2s; position: relative; top: 0.5px;"></i>
+    
+    <!-- Chữ Log out mờ nhẹ -->
+    <span class="logout-txt" style="color: rgba(255, 255, 255, 0.6); font-weight: 500; transition: color 0.2s; letter-spacing: 0.3px;">Log out,</span>
+    
+    <!-- Tên Admin giữ tông vàng Gold thương hiệu sắc nét -->
+    <strong id="staffNameDisplay" style="color: #FFBA08; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px; padding-left: 2px;"></strong>
+</a>
             
             <!-- BIỂU TƯỢNG QUẢ CHUÔNG THÔNG BÁO (CHỈ HIỂN THỊ CHO SẾP "HỌC") -->
             <div id="bellNotificationContainer" style="display: none; position: relative; cursor: pointer; align-items: center; height: 100%;" onclick="toggleBellDropdown(event)">
-                <i class="bi bi-bell-fill" id="bellIcon" style="color: #FFBA08; font-size: 16.5px; transition: transform 0.2s;"></i>
+                <i class="bi bi-bell-fill" id="bellIcon" style="color: #FFBA08; font-size: 15px; transition: transform 0.2s;"></i>
                 <!-- CHẤM ĐỎ NHẢY SỐ LƯỢNG -->
-                <span id="bellBadge" style="display: none; position: absolute; top: -7px; right: -8px; background-color: #ff4d4d; color: white; font-size: 8px; font-weight: bold; border-radius: 50%; padding: 1.5px 4.5px; line-height: 1;">0</span>
+                <span id="bellBadge" style="display: none; position: absolute; top: -7px; right: -8px; background-color: #ff4d4d; color: white; font-size: 9px; font-weight: bold; border-radius: 50%; padding: 1.5px 4.5px; line-height: 1;">0</span>
                 
                 <!-- DROPDOWN DANH SÁCH CHỜ DUYỆT (ĐÃ KHẮC PHỤC XUNG ĐỘT CSS) -->
                 <div id="bellDropdown" style="position: absolute !important; top: 100% !important; left: 0 !important; width: 320px; padding: 12px; border: 1px solid rgba(255, 186, 8, 0.3) !important; border-top: 2px solid #FFBA08 !important; transform: translateY(10px); display: none; flex-direction: column; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.85); background: rgba(3, 24, 48, 0.95); border-radius: 8px; box-sizing: border-box; z-index: 100000005 !important;" onclick="event.stopPropagation()">
