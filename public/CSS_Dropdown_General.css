@@ -108,3 +108,10 @@
     text-overflow: ellipsis; 
     white-space: nowrap; 
 }
+
+/* 🚀 THÊM MỚI: Đồng bộ đổi màu nền khi dùng phím mũi tên lên/xuống */
+#tab-hdtcxd .smooth-dropdown div:not(.disable-hover).active,
+#tab-tbkq .smooth-dropdown div:not(.disable-hover).active {
+    background-color: rgba(255, 255, 255, 0.12) !important; 
+    color: #ffffff !important;
+}

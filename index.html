@@ -737,7 +737,83 @@
     <!-- 4. GLOBAL ELEMENTS (BẮT BUỘC Ở ĐÂY) -->
     <div id="customContextMenu-pl"></div>
     <div id="toastContainer"></div>
-    <div id="infoModal-pl" class="info-modal-overlay" onclick="closeSearchGuide_PL()"></div>
+    <div id="infoModal-pl" class="info-modal-overlay" onclick="closeSearchGuide_PL()">
+    <div class="info-modal-content" onclick="event.stopPropagation()">
+        <div class="info-modal-header">
+            <i class="bi bi-info-circle-fill" style="color: #FFBA08; font-size: 32px;"></i>
+            <span>SYSTEM GUIDELINES</span>
+        </div>
+        
+  <div class="info-modal-body">
+    <!-- PHẦN 1: SOẠN THẢO PHỤ LỤC (MỚI BỔ SUNG) -->
+    <div class="info-section-title">CREATE ANNEX (PLHD)</div>
+    <div class="info-row">
+        <div class="info-key"><i class="bi bi-file-earmark-plus-fill"></i></div>
+        <div class="info-desc">
+    <b>CÁC BƯỚC SOẠN PHỤ LỤC HỢP ĐỒNG:</b>
+    <p>1. Đối chiếu dữ liệu hệ thống với Hợp đồng gốc và các Phụ lục đã ký.</p>
+    <p>2. Chỉ chọn mã Hợp đồng gốc (không chọn mã Phụ lục).</p>
+    <p>3. Tick chọn "PL01" nếu đây là Phụ lục số 01.</p>
+    <p>4. Chọn nội dung cần điều chỉnh và Xuất file.</p>
+    
+    <div class="info-example" style="margin-top: 12px; padding: 10px;">
+        <b style="color: #FFBA08;">Lưu ý:</b> Đảm bảo dữ liệu của Phụ lục gần nhất đã được nhập vào hệ thống. Đặc biệt, nếu soạn Phụ lục thay đổi GIÁ TRỊ, bắt buộc phải cập nhật FULL các Phụ lục thay đổi GIÁ TRỊ trước đó.
+    </div>
+</div>
+    </div>
+
+    <!-- PHẦN 2: TÌM KIẾM (GIỮ NGUYÊN CODE SẾP GỬI) -->
+    <div class="info-section-title" style="margin-top: 25px;">ADVANCED SEARCH</div>
+    
+    <div class="info-row">
+        <div class="info-key">+</div>
+        <div class="info-desc">
+            <b>TÌM KIẾM ĐA ĐIỀU KIỆN</b>
+            <p>Kết hợp nhiều từ khóa (Số HĐ, Gói thầu, Nhà thầu).</p>
+            <span class="info-example">Ví dụ: 2026 + Sơn nước + APT</span>
+        </div>
+    </div>
+
+    <div class="info-row">
+        <div class="info-key">'</div>
+        <div class="info-desc">
+            <b>TÌM KIẾM NHÂN SỰ</b>
+            <p>Lọc hồ sơ theo người phụ trách.</p>
+            <span class="info-example">Ví dụ: 'học + 2026</span>
+        </div>
+    </div>
+
+    <!-- PHẦN 3: QUẢN LÝ (GIỮ NGUYÊN CODE SẾP GỬI) -->
+    <div class="info-section-title" style="margin-top: 25px;">DATA MANAGEMENT</div>
+    
+    <div class="info-row">
+        <div class="info-key"><i class="bi bi-mouse2-fill"></i></div>
+        <div class="info-desc">
+            <b>MỞ BẢNG CHỌN (RIGHT-CLICK)</b>
+            <p>Click chuột phải hoặc Nhấn giữ vào dòng dữ liệu.</p>
+            
+            <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+                <!-- Dòng 1: Transfer -->
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span class="info-tag-fixed">Transfer Records</span>
+                    <span class="info-tag-desc">Chuyển giao hợp đồng qua phòng Thanh toán.</span>
+                </div>
+                <!-- Dòng 2: Edit -->
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span class="info-tag-fixed">Edit Data</span>
+                    <span class="info-tag-desc">Cập nhật: Mã số, Ngày ký, Tên gói thầu, Giá trị hoặc Xoá dữ liệu.</span>
+                </div>
+                <!-- Dòng 3: Scan -->
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span class="info-tag-fixed">Upload Files</span>
+                    <span class="info-tag-desc">Quản lý File.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+</div>
     <script src="public/JS_Variables.js"></script>
     <script src="public/JS_Utils.js"></script>
     <script src="public/JS_Core_API.js"></script>

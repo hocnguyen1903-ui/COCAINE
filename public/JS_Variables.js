@@ -150,15 +150,28 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
+// Bộ lắng nghe sự kiện Focus an toàn (Chống lặp vô hạn)
 document.addEventListener('focusin', function(e) {
     const activeField = e.target;
     const isHDorTB = activeField.closest('#tab-hdtcxd, #tab-tbkq');
     if (isHDorTB && activeField.tagName === 'INPUT') {
-        if (activeField.hasAttribute('onclick')) {
+        // Chỉ kích hoạt tự động Click nếu ô này chưa từng được kích hoạt click trong phiên focus hiện tại
+        if (activeField.hasAttribute('onclick') && !activeField.dataset.focusTriggered) {
+            activeField.dataset.focusTriggered = "true"; // Đánh dấu đã kích hoạt click an toàn
             setTimeout(() => {
-                activeField.click();
+                if (document.activeElement === activeField) {
+                    activeField.click();
+                }
             }, 100);
         }
+    }
+});
+
+// Giải phóng cờ bảo vệ khi người dùng rời khỏi ô nhập liệu
+document.addEventListener('focusout', function(e) {
+    const activeField = e.target;
+    if (activeField.tagName === 'INPUT') {
+        delete activeField.dataset.focusTriggered; // Reset trạng thái để sẵn sàng cho lần focus tiếp theo
     }
 });
 

@@ -16,6 +16,13 @@ const serverCall = async (serverMethodName, ...args) => {
 
 async function openTab(tabId, triggerIntro = true) {
     if (tabId === activeTabId && !isInitialLoad) return;
+
+    // 🚀 1. GIẢI PHÓNG HÀNG CHỜ ĐANG CHẠY (Triệt tiêu hoàn toàn lỗi biến mất Form khi click nhanh)
+    if (tabTimeout) {
+        clearTimeout(tabTimeout);
+        tabTimeout = null;
+    }
+
     localStorage.setItem('bcons_hub_last_tab', tabId);
     const targetTab = document.getElementById(tabId);
     if (!targetTab) return;
@@ -56,8 +63,14 @@ async function openTab(tabId, triggerIntro = true) {
         const currentIndex = TAB_MAP[activeTabId] || 0;
         const targetIndex = TAB_MAP[tabId] || 0;
 
+        // Xóa triệt để các class hoạt ảnh cũ trên TẤT CẢ các tab để tránh xung đột
         allTabs.forEach(t => {
             t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
+            
+            // Nâng cao bảo vệ: Nếu click quá nhanh, lập tức ẩn các tab trung gian để tránh đè giao diện
+            if (t.id !== activeTabId && t.id !== tabId) {
+                t.style.display = 'none';
+            }
         });
 
         if (currentIndex < targetIndex) {
@@ -70,13 +83,15 @@ async function openTab(tabId, triggerIntro = true) {
 
         targetTab.style.display = 'flex';
 
-        setTimeout(() => {
+        // 🚀 2. GÁN TIMEOUT MỚI VÀO BIẾN TOÀN CỤC ĐỂ QUẢN LÝ
+        tabTimeout = setTimeout(() => {
             allTabs.forEach(t => {
                 if (t.id !== tabId) {
                     t.style.display = 'none';
                     t.classList.remove('slide-out-left', 'slide-out-right');
                 }
             });
+            tabTimeout = null; // Giải phóng bộ nhớ hàng chờ sau khi hoàn tất hoạt ảnh
         }, 400);
 
     } else {
@@ -111,8 +126,6 @@ async function openTab(tabId, triggerIntro = true) {
     }
 
     // 5. KÍCH HOẠT MÔ-ĐUN DRAWING KHI CHUYỂN TAB ĐÃ ĐƯỢC TẢI SẴN (CÓ KIỂM SOÁT)
-    // Chỉ gọi ở đây nếu tab này KHÔNG phải là tab vừa được fetch mới (isTabJustFetched === false)
-    // Điều này triệt tiêu hoàn toàn lỗi gọi trùng lặp (Double-trigger) khi load trang
     if (!isTabJustFetched && tabId === 'tab-drawing' && typeof loadDrawingModule === 'function') {
         loadDrawingModule();
     }
@@ -178,13 +191,31 @@ function closeSearchGuide_PL() {
 
 function updateAppScrollState() {
     const activeTab = document.querySelector('.tab-content[style*="display: flex"]');
-    if (!activeTab || activeTab.id === 'tab-about') { document.body.style.overflowY = "hidden"; return; }
+    if (!activeTab || activeTab.id === 'tab-about') { 
+        document.body.style.overflowY = "hidden"; 
+        return; 
+    }
     const form = activeTab.querySelector('.form-container');
     if (form) {
         const contentHeight = form.offsetHeight + 120; 
         const viewportHeight = window.innerHeight;
-        if (contentHeight > viewportHeight) document.body.style.overflowY = "auto";
-        else { document.body.style.overflowY = "hidden"; window.scrollTo(0, 0); }
+        
+        // 🚀 THIẾT LẬP VÙNG ĐỆM TRỄ 25PX CHỐNG RUNG LẮC (HYSTERESIS)
+        const threshold = 25; 
+        const currentOverflow = document.body.style.overflowY;
+
+        if (contentHeight > viewportHeight) {
+            // Chỉ đổi trạng thái nếu thực sự cần cuộn và trạng thái cũ chưa phải là auto
+            if (currentOverflow !== "auto") {
+                document.body.style.overflowY = "auto";
+            }
+        } else if (contentHeight < (viewportHeight - threshold)) {
+            // Chỉ ẩn thanh cuộn nếu chiều cao Form hụt hẳn dưới màn hình quá 25px
+            if (currentOverflow !== "hidden") {
+                document.body.style.overflowY = "hidden";
+                window.scrollTo(0, 0);
+            }
+        }
     }
 }
 
