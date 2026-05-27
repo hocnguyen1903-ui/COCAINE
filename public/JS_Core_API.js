@@ -381,7 +381,6 @@ async function performRegister() {
             toggleLoginMode();
         }
     } catch (err) {
-        // Kiểm tra xem lỗi trả về từ Backend có phải lỗi trùng tên viết tắt không
         if (err.message.includes("đã tồn tại")) {
             showNameWarning(name);
         } else {
@@ -389,7 +388,11 @@ async function performRegister() {
         }
     } finally {
         registerBtn.disabled = false;
-        registerBtn.textContent = "REGISTER";
+        
+        // 🚀 SỬA LỖI: Chỉ hoàn tác chữ nút bấm thành REGISTER nếu sếp vẫn đang ở màn hình Đăng ký
+        if (isRegisterMode) {
+            registerBtn.textContent = "REGISTER";
+        }
     }
 }
 
