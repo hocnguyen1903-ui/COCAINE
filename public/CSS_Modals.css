@@ -329,3 +329,22 @@
     opacity: 1;
     visibility: visible;
 }
+
+/* 🚀 THÊM MỚI: Hiệu ứng Hover cao cấp cho nút duyệt nhanh */
+.btn-bell-approve:hover {
+    background-color: #27ae60 !important; /* Xanh đậm hơn */
+    transform: translateY(-1.5px);
+    box-shadow: 0 3px 10px rgba(46, 204, 113, 0.4);
+}
+.btn-bell-approve:active {
+    transform: translateY(0.5px) scale(0.97); /* Nhấn lún nút nhẹ */
+}
+
+.btn-bell-reject:hover {
+    background-color: #c0392b !important; /* Đỏ đậm hơn */
+    transform: translateY(-1.5px);
+    box-shadow: 0 3px 10px rgba(231, 76, 60, 0.4);
+}
+.btn-bell-reject:active {
+    transform: translateY(0.5px) scale(0.97);
+}
