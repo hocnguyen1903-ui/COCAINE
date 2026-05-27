@@ -1,3 +1,8 @@
+// Quản lý hàng chờ duyệt gom lô 3 giây
+let pendingApprovalBatch_PL = [];
+let approvalBatchTimer_PL = null;
+let countdownInterval_PL = null;
+let countdownSeconds_PL = 3;
 
 // ==========================================================================
 // 1. NHÓM CORE / GLOBAL UI LOGIC
@@ -12,7 +17,14 @@ const serverCall = async (serverMethodName, ...args) => {
         throw error;
     }
 };
-/* --- public/JS_Core_API.js --- */
+
+/**
+ * Hàm tạo ID an toàn từ Email (Tránh lỗi Crash btoa khi gặp Tiếng Việt/Ký tự đặc biệt)
+ */
+function getSafeId_PL(mail) {
+    if (!mail) return "unknown";
+    return mail.toLowerCase().replace(/[^a-z0-9]/g, ""); // Lọc sạch chỉ giữ lại chữ cái và số
+}
 
 async function openTab(tabId, triggerIntro = true) {
     if (tabId === activeTabId && !isInitialLoad) return;
@@ -234,9 +246,6 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0
 /**
  * Thực thi gọi API đính kèm bảo mật Token
  */
-/**
- * Thực thi gọi API đính kèm bảo mật Token
- */
 async function callBackend(action, data = {}) {
     const token = localStorage.getItem('bcons_session_token');
     
@@ -372,12 +381,14 @@ async function performRegister() {
     registerBtn.disabled = true;
     registerBtn.textContent = "REGISTERING...";
 
+    let isSuccess = false; // Thêm cờ kiểm soát trạng thái
+
     try {
         const res = await callBackend("registerUser", { mail, name });
         if (res) {
             showToast_PL("🚀 Gửi yêu cầu đăng ký thành công! Hãy liên hệ với Admin để được duyệt!", "success");
-            // Khôi phục lại trạng thái form Đăng nhập
             document.getElementById('registerName').value = "";
+            isSuccess = true; // Bật cờ thành công
             toggleLoginMode();
         }
     } catch (err) {
@@ -388,9 +399,9 @@ async function performRegister() {
         }
     } finally {
         registerBtn.disabled = false;
-        
-        // 🚀 SỬA LỖI: Chỉ hoàn tác chữ nút bấm thành REGISTER nếu sếp vẫn đang ở màn hình Đăng ký
-        if (isRegisterMode) {
+        // Chỉ reset text về REGISTER nếu đăng ký thất bại. 
+        // Nếu thành công, toggleLoginMode đã tự lo việc đổi thành SIGN IN.
+        if (!isSuccess) {
             registerBtn.textContent = "REGISTER";
         }
     }
@@ -590,8 +601,9 @@ async function performLogin() {
         if (res && res.token) {
             localStorage.setItem('bcons_session_token', res.token);
             localStorage.setItem('bcons_staff_identity', res.name);
-            localStorage.setItem('bcons_staff_role', res.role || "USER"); 
+            localStorage.setItem('bcons_staff_role', res.role || "USER"); // Lưu quyền vĩnh viễn trên máy
             
+            // Gán tên lên Header ngay lần đầu đăng nhập thành công
             const displayEl = document.getElementById('staffNameDisplay');
             if (displayEl) {
                 displayEl.textContent = res.name;
@@ -600,14 +612,13 @@ async function performLogin() {
             document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
             showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
             
+            // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
             loadSystemData();
         }
     } catch (err) {
         alert(err.message || "Xác thực thất bại!");
     } finally {
         loginBtn.disabled = false;
-        
-        // 🚀 SỬA LỖI: Trả lại chữ "SIGN IN" chính xác khi kết thúc luồng đăng nhập
         loginBtn.textContent = "SIGN IN";
     }
 }
@@ -679,63 +690,59 @@ function renderBellList() {
         return;
     }
     
-    // Kiểm tra quyền của máy sếp
     const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
     const isAdmin = (currentRole.toUpperCase() === "ADMIN");
 
     let html = "";
     pendingUsersList_PL.forEach(u => {
+        const safeId = getSafeId_PL(u.mail); 
+        
+        // Kiểm tra xem user này có đang nằm trong hàng chờ đếm ngược hay không
+        const queuedItem = pendingApprovalBatch_PL.find(item => item.mail === u.mail);
+        
+        let cardStyle = "background: rgba(255,255,255,0.02); border: 1px solid rgba(255,186,8,0.15);";
+        let buttonHTML = "";
+
+        if (queuedItem) {
+            // Nếu đang trong hàng chờ, đổi viền sang Xanh (Approve) hoặc Đỏ (Reject)
+            const borderCol = queuedItem.action === "APPROVE" ? "#2ECC71" : "#E74C3C";
+            const actionText = queuedItem.action === "APPROVE" ? "Đang chờ Duyệt" : "Đang chờ Từ chối";
+            cardStyle = `background: rgba(255,255,255,0.01); border: 1.5px solid ${borderCol}; opacity: 0.75;`;
+            
+            buttonHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 4px;">
+                    <span class="batch-status-text" style="color: ${borderCol}; font-size: 11px; font-style: italic; font-weight: bold;">${actionText} (3s)...</span>
+                    <button type="button" onclick="undoBatchAction_PL('${u.mail}')" 
+                            style="padding: 2px 10px; border: 1px solid #95A1AF; background: transparent; color: #95A1AF; font-size: 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;">UNDO</button>
+                </div>
+            `;
+        } else if (isAdmin) {
+            buttonHTML = `
+                <div class="action-buttons-wrapper" style="display: flex; gap: 8px; margin-top: 4px;">
+                    <button type="button" class="btn-bell-approve" onclick="queueBatchAction_PL('${u.mail}', '${u.name}', 'APPROVE')" 
+                            style="flex: 1; height: 26px; border: none; background: #2ECC71; color: white; font-weight: bold; font-size: 10.5px; border-radius: 4px; cursor: pointer; transition: all 0.2s ease-in-out;">APPROVE</button>
+                    <button type="button" class="btn-bell-reject" onclick="queueBatchAction_PL('${u.mail}', '${u.name}', 'REJECT')" 
+                            style="flex: 1; height: 26px; border: none; background: #E74C3C; color: white; font-weight: bold; font-size: 10.5px; border-radius: 4px; cursor: pointer; transition: all 0.2s ease-in-out;">REJECT</button>
+                </div>
+            `;
+        } else {
+            buttonHTML = `
+                <div style="color: #95A1AF; font-size: 10.5px; font-style: italic; text-align: center; margin-top: 4px; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px;">Đang chờ phê duyệt...</div>
+            `;
+        }
+
         html += `
-            <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,186,8,0.15); border-radius: 6px;">
+            <div id="user-card-${safeId}" class="pending-user-card" 
+                 style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); transform-origin: top; ${cardStyle}">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="color: #FFFFFF; font-size: 12.5px; font-weight: bold;">${u.name}</span>
                     <span style="color: #95A1AF; font-size: 10.5px; font-family: monospace;">${u.mail}</span>
                 </div>
-                ${isAdmin ? `
-                <!-- Giao diện hiển thị nút duyệt nhanh dành cho ADMIN -->
-                <div style="display: flex; gap: 8px; margin-top: 4px;">
-                    <button type="button" onclick="approveUserInApp('${u.mail}', '${u.name}')" style="flex: 1; height: 26px; border: none; background: #2ECC71; color: white; font-weight: bold; font-size: 10.5px; border-radius: 4px; cursor: pointer;">APPROVE</button>
-                    <button type="button" onclick="rejectUserInApp('${u.mail}', '${u.name}')" style="flex: 1; height: 26px; border: none; background: #E74C3C; color: white; font-weight: bold; font-size: 10.5px; border-radius: 4px; cursor: pointer;">REJECT</button>
-                </div>
-                ` : `
-                <!-- Giao diện hiển thị tĩnh chỉ xem đối với nhân sự thường (USER) -->
-                <div style="color: #95A1AF; font-size: 10.5px; font-style: italic; text-align: center; margin-top: 4px; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px;">Đang chờ phê duyệt...</div>
-                `}
+                ${buttonHTML}
             </div>
         `;
     });
     listContainer.innerHTML = html;
-}
-
-/**
- * Mở cổng kết nối WebSocket thời gian thực đến Máy chủ Ably
- */
-function initAblyRealtimeConnection() {
-    try {
-        if (typeof Ably === 'undefined') return;
-        
-        // Khởi tạo Client Realtime
-        const realtime = new Ably.Realtime(ABLY_CLIENT_KEY);
-        const channel = realtime.channels.get('bcons-registration-channel');
-        
-        // Đăng ký lắng nghe sự kiện Đăng ký mới từ nhân viên
-        channel.subscribe('new-registration', (message) => {
-            const newUser = message.data;
-            if (newUser && newUser.mail) {
-                // Kiểm tra xem đã có trong danh sách cục bộ chưa để tránh trùng lặp
-                const exists = pendingUsersList_PL.some(u => u.mail === newUser.mail);
-                if (!exists) {
-                    pendingUsersList_PL.push(newUser);
-                    updateBellBadge();
-                    showToast_PL(`🔔 Nhân viên <b>${newUser.name}</b> vừa gửi yêu cầu đăng ký tài khoản mới!`, "success");
-                }
-            }
-        });
-        
-        console.log("⚡ [Realtime] Cổng kết nối WebSockets Ably đã kích hoạt!");
-    } catch (e) {
-        console.error("[Realtime Error] Không thể kết nối máy chủ Ably: " + e.message);
-    }
 }
 
 /**
@@ -783,66 +790,131 @@ function updateBellBadge() {
 
 
 /**
- * Gọi API duyệt nhanh ACTIVE tài khoản ngay trên Web (Zero Reload)
+ * Thêm hành động duyệt/từ chối vào hàng chờ đếm ngược 3 giây
  */
-async function approveUserInApp(mail, name) {
-    const loading = document.getElementById("contractLoading");
-    if (loading) {
-        loading.style.display = "flex";
-        loading.querySelector('p').textContent = "APPROVING USER...";
+function queueBatchAction_PL(mail, name, action) {
+    const safeId = getSafeId_PL(mail);
+
+    // 1. Thêm hành động hoặc cập nhật nếu đã tồn tại trong hàng chờ
+    const existingIndex = pendingApprovalBatch_PL.findIndex(item => item.mail === mail);
+    if (existingIndex > -1) {
+        pendingApprovalBatch_PL[existingIndex].action = action;
+    } else {
+        pendingApprovalBatch_PL.push({ mail, name, action, safeId }); // Lưu kèm safeId để can thiệp thẻ card
     }
-    
-    try {
-        const success = await callBackend("approveUser_InApp", mail);
-        if (success) {
-            // Xóa tài khoản vừa duyệt khỏi mảng cục bộ
-            pendingUsersList_PL = pendingUsersList_PL.filter(u => u.mail !== mail);
-            updateBellBadge();
-            renderBellList();
-            showToast_PL(`🟢 Kích hoạt thành công tài khoản của ${name}!`, "success");
-            
-            // Nếu sếp đang ở menu dropdown trống thì tự động đóng lại
-            if (pendingUsersList_PL.length === 0) {
-                document.getElementById('bellDropdown').style.display = 'none';
-            }
+
+    // Vẽ lại giao diện quả chuông ngay lập tức để hiện viền màu trạng thái chờ duyệt
+    renderBellList();
+
+    // 2. KHỞI CHẠY / RESET THỜI GIAN ĐẾM NGƯỢC 3 GIÂY (DEBOUNCE)
+    clearTimeout(approvalBatchTimer_PL);
+    clearInterval(countdownInterval_PL);
+    countdownSeconds_PL = 3;
+
+    // ĐỒNG BỘ: Đã xóa hoàn toàn thông báo Toast gây nhiễu tại đây theo yêu cầu của sếp
+
+    // 🚀 ĐẾM NGƯỢC GIÂY TRỰC TIẾP TRÊN THẺ CARD
+    countdownInterval_PL = setInterval(() => {
+        countdownSeconds_PL--;
+        if (countdownSeconds_PL > 0) {
+            // Duyệt qua toàn bộ hàng chờ để giảm giây hiển thị trên màn hình
+            pendingApprovalBatch_PL.forEach(item => {
+                const card = document.getElementById(`user-card-${item.safeId}`);
+                if (card) {
+                    const statusText = card.querySelector('.batch-status-text');
+                    if (statusText) {
+                        const actionLabel = item.action === "APPROVE" ? "Đang chờ Duyệt" : "Đang chờ Từ chối";
+                        statusText.textContent = `${actionLabel} (${countdownSeconds_PL}s)...`;
+                    }
+                }
+            });
+        } else {
+            clearInterval(countdownInterval_PL);
         }
-    } catch (e) {
-        alert("Lỗi duyệt: " + e.message);
-    } finally {
-        if (loading) loading.style.display = "none";
+    }, 1000);
+
+    // Kích hoạt gửi lệnh hàng loạt sau 3 giây nếu sếp dừng không bấm gì thêm
+    approvalBatchTimer_PL = setTimeout(async () => {
+        await commitApprovalBatch_PL();
+    }, 3000);
+}
+
+/**
+ * Hàm rút lại quyết định (Hủy hàng chờ) cho một tài khoản cụ thể
+ */
+function undoBatchAction_PL(mail) {
+    // Xóa khỏi hàng chờ
+    pendingApprovalBatch_PL = pendingApprovalBatch_PL.filter(item => item.mail !== mail);
+    
+    // Khôi phục lại giao diện mặc định
+    renderBellList();
+
+    // Nếu hàng chờ trống rỗng hoàn toàn, tắt bộ đếm ngược
+    if (pendingApprovalBatch_PL.length === 0) {
+        clearTimeout(approvalBatchTimer_PL);
+        clearInterval(countdownInterval_PL);
+    } else {
+        // Nếu vẫn còn người khác, gia hạn lại thời gian đếm ngược về 3 giây
+        const firstItem = pendingApprovalBatch_PL[0];
+        queueBatchAction_PL(firstItem.mail, firstItem.name, firstItem.action);
     }
 }
 
 /**
- * Gọi API từ chối xóa tài khoản chờ duyệt ngay trên Web (Zero Reload)
+ * Thực thi gửi lô phê duyệt tuần tự lên Server (Khi hết thời gian chờ 3 giây)
  */
-async function rejectUserInApp(mail, name) {
-    // Đã loại bỏ dòng confirm xác nhận tại đây để xử lý trực tiếp khi nhấn nút
-    
+async function commitApprovalBatch_PL() {
+    if (pendingApprovalBatch_PL.length === 0) return;
+
+    // 1. Hiện bảng tải đen toàn màn hình duy nhất 1 lần để báo đang đồng bộ lô dữ liệu
     const loading = document.getElementById("contractLoading");
     if (loading) {
         loading.style.display = "flex";
-        loading.querySelector('p').textContent = "REJECTING USER...";
+        loading.querySelector('p').textContent = `ĐANG XỬ LÝ LÔ ${pendingApprovalBatch_PL.length} YÊU CẦU...`;
     }
-    
+
+    // Sao lưu lại mảng hàng chờ để xử lý hoạt ảnh bay thẻ
+    const currentBatch = [...pendingApprovalBatch_PL];
+    pendingApprovalBatch_PL = []; // Dọn sạch hàng chờ toàn cục ngay để sẵn sàng nhận đợt bấm mới
+
     try {
-        const success = await callBackend("rejectUser_InApp", mail);
-        if (success) {
-            // Cập nhật danh sách chờ duyệt cục bộ
-            pendingUsersList_PL = pendingUsersList_PL.filter(u => u.mail !== mail);
+        // 2. CHẠY TUẦN TỰ (SEQUENTIAL) ĐỂ TRÁNH LOCK FILE GOOGLE SHEETS
+        for (const item of currentBatch) {
+            const action = item.action === "APPROVE" ? "approveUser_InApp" : "rejectUser_InApp";
+            
+            // Gửi lệnh lên Server và chờ phản hồi thành công rồi mới đi tiếp người sau
+            const success = await callBackend(action, item.mail);
+            
+            if (success) {
+                // Xóa khỏi danh sách bộ nhớ tạm
+                pendingUsersList_PL = pendingUsersList_PL.filter(u => u.mail !== item.mail);
+                
+                // Hiệu ứng bay thẻ
+                const safeId = getSafeId_PL(item.mail);
+                const card = document.getElementById(`user-card-${safeId}`);
+                if (card) {
+                    card.style.transform = item.action === "APPROVE" ? "translateX(50px)" : "translateX(-50px)";
+                    card.style.opacity = "0";
+                }
+            }
+        }
+
+        // 3. Hoàn tất toàn bộ lô sau khi Server phản hồi đầy đủ
+        setTimeout(() => {
+            if (loading) loading.style.display = "none";
             updateBellBadge();
             renderBellList();
-            showToast_PL(`🔴 Đã từ chối đăng ký của ${name}!`, "error");
-            
-            // Tự động đóng dropdown nếu không còn ai trong danh sách chờ
+
             if (pendingUsersList_PL.length === 0) {
                 document.getElementById('bellDropdown').style.display = 'none';
             }
-        }
+        }, 400);
+
     } catch (e) {
-        alert("Lỗi từ chối: " + e.message);
-    } finally {
         if (loading) loading.style.display = "none";
+        alert("Lỗi xử lý lô: " + e.message);
+        // Nếu lỗi xảy ra, khôi phục lại danh sách chờ duyệt ban đầu
+        loadSystemData(true);
     }
 }
 
@@ -864,7 +936,9 @@ function initAblyRealtimeConnection() {
         
         // SỬA LỖI: Đồng bộ khớp tên Event đăng ký mới
         channel.subscribe('new_registration', (message) => {
-            const newUser = message.data;
+            // SỬA LỖI: Tự động giải mã JSON nếu Ably đẩy về dạng chuỗi String
+            const newUser = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
+            
             if (newUser && newUser.mail) {
                 // Kiểm tra trùng lặp để tránh hiện thông báo nhiều lần
                 const exists = pendingUsersList_PL.some(u => u.mail === newUser.mail);
