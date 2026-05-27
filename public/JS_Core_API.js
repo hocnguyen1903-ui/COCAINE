@@ -590,9 +590,8 @@ async function performLogin() {
         if (res && res.token) {
             localStorage.setItem('bcons_session_token', res.token);
             localStorage.setItem('bcons_staff_identity', res.name);
-            localStorage.setItem('bcons_staff_role', res.role || "USER"); // Lưu quyền vĩnh viễn trên máy
+            localStorage.setItem('bcons_staff_role', res.role || "USER"); 
             
-            // Gán tên lên Header ngay lần đầu đăng nhập thành công
             const displayEl = document.getElementById('staffNameDisplay');
             if (displayEl) {
                 displayEl.textContent = res.name;
@@ -601,13 +600,14 @@ async function performLogin() {
             document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
             showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
             
-            // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
             loadSystemData();
         }
     } catch (err) {
         alert(err.message || "Xác thực thất bại!");
     } finally {
         loginBtn.disabled = false;
+        
+        // 🚀 SỬA LỖI: Trả lại chữ "SIGN IN" chính xác khi kết thúc luồng đăng nhập
         loginBtn.textContent = "SIGN IN";
     }
 }
