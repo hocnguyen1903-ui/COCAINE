@@ -409,3 +409,29 @@ function registerUser(mail, name) {
   
   return { success: true };
 }
+
+function publishAblyContractUpdate(actionType, contractNo) {
+  try {
+    const ablyUrl = "https://rest.ably.io/channels/bcons_notification/messages";
+    const ablyPayload = {
+      "name": "contract_update",
+      "data": {
+        "actionType": actionType,
+        "contractNo": contractNo,
+        "staffName": getCurrentStaffName()
+      }
+    };
+    const ablyOptions = {
+      "method": "POST",
+      "headers": {
+        "Authorization": "Basic " + Utilities.base64Encode(ABLY_API_KEY),
+        "Content-Type": "application/json"
+      },
+      "payload": JSON.stringify(ablyPayload),
+      "muteHttpExceptions": true
+    };
+    UrlFetchApp.fetch(ablyUrl, ablyOptions);
+  } catch (err) {
+    console.error("Lỗi gửi tín hiệu cập nhật Ably Realtime: " + err.message);
+  }
+}

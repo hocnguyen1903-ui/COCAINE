@@ -928,42 +928,50 @@ function initAblyRealtimeConnection() {
     try {
         if (typeof Ably === 'undefined') return;
         
-        // Khởi tạo Client Realtime sử dụng Client Key chính xác
         const realtime = new Ably.Realtime(ABLY_CLIENT_KEY);
-        
-        // SỬA LỖI: Đồng bộ khớp tên Channel với Backend
         const channel = realtime.channels.get('bcons_notification');
         
-        // SỬA LỖI: Đồng bộ khớp tên Event đăng ký mới
+        // 1. Đăng ký nhận thông báo Đăng ký Nhân viên mới
         channel.subscribe('new_registration', (message) => {
-            // SỬA LỖI: Tự động giải mã JSON nếu Ably đẩy về dạng chuỗi String
             const newUser = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
-            
             if (newUser && newUser.mail) {
-                // Kiểm tra trùng lặp để tránh hiện thông báo nhiều lần
                 const exists = pendingUsersList_PL.some(u => u.mail === newUser.mail);
                 if (!exists) {
-                    // Đẩy user mới trực tiếp vào RAM của Client
                     pendingUsersList_PL.push(newUser);
-                    
-                    // Cập nhật chấm đỏ thông báo ngay lập tức
                     updateBellBadge();
-                    
-                    // Nếu admin đang mở sẵn Dropdown quả chuông, tự động vẽ lại danh sách ngay lập tức
                     const dropdown = document.getElementById('bellDropdown');
                     if (dropdown && dropdown.style.display === 'flex') {
                         renderBellList();
                     }
-                    
-                    // Hiện Toast thông báo góc màn hình
                     showToast_PL(`🔔 Nhân viên <b>${newUser.name}</b> vừa gửi yêu cầu đăng ký tài khoản mới!`, "success");
                 }
             }
         });
+
+        // 2. Đăng ký nhận thông báo Cập nhật Hợp đồng / Phụ lục Realtime
+        channel.subscribe('contract_update', (message) => {
+            const updateInfo = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
+            const localStaffName = localStorage.getItem('bcons_staff_identity');
+            
+            // Chỉ xử lý nếu hành động này được thực thi bởi một user khác
+            if (updateInfo && updateInfo.staffName !== localStaffName) {
+                // Tải ngầm dữ liệu để cập nhật Dashboard
+                loadSystemData(true);
+                
+                // Định hình thông báo dựa vào loại thao tác dữ liệu
+                let actionText = "vừa được cập nhật";
+                if (updateInfo.actionType === "CREATE_HD") actionText = "vừa được khởi tạo";
+                else if (updateInfo.actionType === "CREATE_PL") actionText = "vừa được tạo Phụ lục mới";
+                else if (updateInfo.actionType === "DELETE_DATA") actionText = "vừa bị xóa khỏi hệ thống";
+                else if (updateInfo.actionType === "TRANSFER_STATUS") actionText = "vừa thay đổi trạng thái bàn giao";
+
+                showToast_PL(`📢 Hồ sơ <b>${updateInfo.contractNo}</b> ${actionText} bởi <b>${updateInfo.staffName}</b>!`, "success");
+            }
+        });
         
-        console.log("⚡ [Realtime] Cổng kết nối WebSockets Ably đã kích hoạt!");
+        console.log("⚡ [Realtime] Cổng kết nối WebSockets Ably đã sẵn sàng!");
     } catch (e) {
-        console.error("[Realtime Error] Không thể kết nối máy chủ Ably: " + e.message);
+        console.error("[Realtime Error] Lỗi kết nối hệ thống thời gian thực Ably: " + e.message);
     }
 }
 

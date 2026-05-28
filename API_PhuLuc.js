@@ -9,8 +9,6 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
   const lastRowX = sheetX.getLastRow();
   if (lastRowX < 4) return false;
 
-  // --- BATCH GET: Lấy toàn bộ dữ liệu cần thiết từ Sheet X (Cột A đến O) ---
-  // Cột 1 (A): Số HĐ, Cột 8 (H): Ngày ký, Cột 15 (O): Trạng thái chuyển
   const rangeX = sheetX.getRange(4, 1, lastRowX - 3, 15);
   const dataX = rangeX.getValues(); 
 
@@ -21,7 +19,6 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
   for (let i = 0; i < dataX.length; i++) {
     if (dataX[i][0]?.toString().trim() === targetMa) {
       targetIndex = i;
-      // Lấy ngày ký từ cột H (index 7)
       let rawDate = dataX[i][7];
       if (rawDate instanceof Date) ngayKyStr = Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy");
       else ngayKyStr = rawDate ? rawDate.toString() : "";
@@ -31,20 +28,16 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
 
   if (targetIndex === -1) return false;
 
-  // 1. CẬP NHẬT TRẠNG THÁI TẠI SHEET X (CỘT O)
   sheetX.getRange(targetIndex + 4, 15).setValue(isTransferred ? "x" : "");
 
-  // 2. XỬ LÝ LOG TẠI SHEET "CHUYEN HO SO"
   const lastRowLog = logSheet.getLastRow();
   
   if (isTransferred) {
-    // --- TRƯỜNG HỢP THÊM MỚI (TRANSFER) ---
     const senderName = getCurrentStaffName();
     const now = new Date();
-    // Logic dịch ngày (Sau 17h hoặc cuối tuần)
     if (now.getHours() >= 17) now.setDate(now.getDate() + 1);
-    if (now.getDay() === 6) now.setDate(now.getDate() + 2); // Thứ 7 -> Thứ 2
-    else if (now.getDay() === 0) now.setDate(now.getDate() + 1); // CN -> Thứ 2
+    if (now.getDay() === 6) now.setDate(now.getDate() + 2); 
+    else if (now.getDay() === 0) now.setDate(now.getDate() + 1); 
     
     const timeString = Utilities.formatDate(now, "GMT+7", "dd/MM/yyyy");
 
@@ -62,7 +55,6 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
 
     const newRowData = [["", maDuAn, loaiHoSo, soHopDongGoc, ngayKyStr, senderName, timeString, "", docTypes]];
     
-    // Tìm vị trí dòng trống cuối cùng để append (Batch Set)
     let nextRow = 4;
     if (lastRowLog >= 4) {
       const existingDValues = logSheet.getRange(1, 4, lastRowLog, 1).getValues();
@@ -76,7 +68,6 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
     logSheet.getRange(nextRow, 1, 1, 9).setValues(newRowData);
 
   } else {
-    // --- TRƯỜNG HỢP HỦY (CANCEL) - TỐI ƯU BẰNG FILTER ARRAY ---
     if (lastRowLog >= 4) {
       const fullRangeLog = logSheet.getRange(4, 1, lastRowLog - 3, 9);
       const allLogData = fullRangeLog.getValues();
@@ -86,7 +77,6 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
         contractToFind = contractToFind.split(" - ").slice(1).join(" - ").trim();
       }
 
-      // Lọc sạch mảng trên RAM (Chỉ giữ lại những dòng KHÔNG khớp)
       let isRemoved = false;
       const filteredLogs = allLogData.filter(row => {
         const valD = row[3]?.toString().trim() || "";
@@ -96,13 +86,12 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
         const isMatchLoai = targetMa.match(/^PL\d{2}\s*-/) ? loaiC.startsWith("PL") : loaiC === "HỢP ĐỒNG";
         
         if (isMatchMa && isMatchLoai && !isRemoved) {
-          isRemoved = true; // Chỉ xóa 1 dòng trùng khớp gần nhất (giống logic deleteRow cũ)
+          isRemoved = true; 
           return false;
         }
         return true;
       });
 
-      // Ghi đè lại toàn bộ vùng dữ liệu sạch
       fullRangeLog.clearContent();
       if (filteredLogs.length > 0) {
         logSheet.getRange(4, 1, filteredLogs.length, 9).setValues(filteredLogs);
@@ -144,7 +133,7 @@ function writeToSheetAndExportDoc_PL(data) {
     const targetSheet = ss.getSheetByName("SO HDTCXD BCONS - NTP");
     const targetRow = targetSheet.getRange("S1").getValue();
 
-   const jValue = getCurrentStaffName();
+    const jValue = getCurrentStaffName();
 
     const valuesToWrite = [[
       row3Data[1], row3Data[51], "", data.field8, "", row3Data[6], row3Data[21], 
@@ -164,7 +153,11 @@ function writeToSheetAndExportDoc_PL(data) {
       sheetX.getRange(rowX + 4, 15, 1, 5).setValues(plStatus);
     }
 
-    // 3. TẠO VÀ XỬ LÝ DOCS
+    // 🚀 TỐI ƯU TỐC ĐỘ: Bắn tin realtime đồng bộ phụ lục mới lên Ably ngay khi ghi sheet thành công
+    SpreadsheetApp.flush(); 
+    publishAblyContractUpdate("CREATE_PL", data.field8);
+
+    // 3. TẠO VÀ XỬ LÝ DOCS (Bắt đầu chạy ngầm tiến trình nhân bản và bóc tách chữ mất nhiều thời gian)
     const docTemplateId = "1u8zXn5BGzOtJkxtGvNIK__Sr225vM9CM3yElOY9Kybc";
     const selectedNDs = data.selectedNDs || [];
     const fileName = generateFileName_PL(data.field8);
@@ -192,7 +185,6 @@ function writeToSheetAndExportDoc_PL(data) {
     const computedIds = typeof computeAllActiveIds === "function" ? computeAllActiveIds(rawIds) : []; 
     const otherSections = row3Data.slice(64, 78).map(v => v.toString().trim()).filter(Boolean);
     
-    // Đẩy toàn bộ mảng ID hợp lệ vào Set để tra cứu O(1)
     const validSectionsSet = new Set([...computedIds, ...otherSections, ...selectedNDs].map(String));
 
     const paragraphs = body.getParagraphs();
@@ -200,7 +192,6 @@ function writeToSheetAndExportDoc_PL(data) {
     let deleteBuffer = [];
     let elementsToRemove = [];
 
-    // Lặp thuần túy để thu thập Node, không can thiệp API trong lúc duyệt
     for (let i = 0; i < paragraphs.length; i++) {
       let p = paragraphs[i];
       let text = p.getText();
@@ -215,7 +206,6 @@ function writeToSheetAndExportDoc_PL(data) {
       if (text.includes("}")) {
         let match = text.match(/\}\s*(\d+)/);
         if (match && match[1]) {
-          // Chỉ gom node nếu ID không tồn tại trong Set
           if (!validSectionsSet.has(match[1])) {
             elementsToRemove.push(...deleteBuffer);
           }
@@ -225,18 +215,15 @@ function writeToSheetAndExportDoc_PL(data) {
       }
     }
 
-    // 3.3 Batch Remove DOM Elements
     elementsToRemove.forEach(el => {
       try { el.removeFromParent(); } catch(e) {}
     });
 
-    // 3.4 Global Regex Cleanup (Nhanh gấp 10 lần việc dùng editAsText().deleteText() ở vòng lặp trên)
     body.replaceText("\\{", "");
     body.replaceText("\\}\\s*\\d+", "");
 
     copiedDoc.saveAndClose();
 
-    // 3.5 Kiểm tra Doc rỗng
     if (DocumentApp.openById(copiedFile.getId()).getBody().getText().trim() === "") {
       DriveApp.getFileById(copiedFile.getId()).setTrashed(true);
       return { link: "" };
@@ -324,12 +311,10 @@ function updateContractData_PL(maHD, editType, newValue) {
     if (!sheetLog) throw new Error("Không tìm thấy Sổ gốc!");
 
     const lastRow = sheetLog.getLastRow();
-    // Tối ưu RAM: Bỏ .flat()
     const dataE = sheetLog.getRange(1, 5, lastRow, 1).getValues(); 
     const maClean = maHD.trim().toUpperCase();
     
     let targetRow = -1;
-    // Duyệt ngược từ dưới lên để tìm dòng mới nhất (phòng trường hợp trùng mã)
     for (let i = dataE.length - 1; i >= 0; i--) {
         if (dataE[i][0].toString().trim().toUpperCase() === maClean) {
             targetRow = i + 1;
@@ -339,19 +324,18 @@ function updateContractData_PL(maHD, editType, newValue) {
 
     if (targetRow === -1) return false; 
 
-    // THỰC THI GHI DỮ LIỆU
     if (editType === "DATE") {
-        sheetLog.getRange(targetRow, 2).setValue(newValue); // Cột B
+        sheetLog.getRange(targetRow, 2).setValue(newValue); 
     } 
     else if (editType === "PACKAGE") {
-        sheetLog.getRange(targetRow, 9).setValue(newValue); // 🔥 ĐÃ SỬA: Cột I (Cột số 9)
+        sheetLog.getRange(targetRow, 9).setValue(newValue); 
     } 
     else if (editType === "VALUE") {
         const num = Number(newValue.toString().replace(/\./g, ""));
-        sheetLog.getRange(targetRow, 11).setValue(num); // Cột K
+        sheetLog.getRange(targetRow, 11).setValue(num); 
     }
     else if (editType === "CONTRACT_NO") {
-        sheetLog.getRange(targetRow, 5).setValue(newValue.trim()); // Cột E
+        sheetLog.getRange(targetRow, 5).setValue(newValue.trim()); 
     }
 
     SpreadsheetApp.flush(); 
@@ -477,6 +461,10 @@ function deleteContractRow_Backend(maHD) {
     }
 
     SpreadsheetApp.flush();
+    
+    // Kích hoạt đồng bộ realtime khi xóa dữ liệu hợp đồng thành công
+    publishAblyContractUpdate("DELETE_DATA", maHD);
+    
     return true;
   } catch (e) {
     throw new Error("Lỗi Backend xóa Cột E: " + e.message);

@@ -127,6 +127,10 @@ function writeToSheetAndExportDoc_HD(data) {
         optimizeDocSections(body, validSections);
 
         doc.saveAndClose();
+        
+        // Kích hoạt đồng bộ realtime cho các user khác
+        publishAblyContractUpdate("CREATE_HD", data.field8);
+        
         return { link: copiedFile.getUrl() };
 
     } catch (error) {
