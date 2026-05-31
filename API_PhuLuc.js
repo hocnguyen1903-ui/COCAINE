@@ -1,120 +1,15 @@
+// =========================================================================
 // 4. LOGIC XỬ LÝ PHỤ LỤC (PLHD) & BÀN GIAO HỒ SƠ
 // =========================================================================
-function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sheetX = ss.getSheetByName("X");
-  const logSheet = ss.getSheetByName("CHUYEN HO SO");
-  if (!sheetX || !logSheet) throw new Error("Hệ thống thiếu Sheet X hoặc CHUYEN HO SO");
 
-  const lastRowX = sheetX.getLastRow();
-  if (lastRowX < 4) return false;
-
-  const rangeX = sheetX.getRange(4, 1, lastRowX - 3, 15);
-  const dataX = rangeX.getValues(); 
-
-  const targetMa = contractNumber.trim();
-  let targetIndex = -1;
-  let ngayKyStr = "";
-
-  for (let i = 0; i < dataX.length; i++) {
-    if (dataX[i][0]?.toString().trim() === targetMa) {
-      targetIndex = i;
-      let rawDate = dataX[i][7];
-      if (rawDate instanceof Date) ngayKyStr = Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy");
-      else ngayKyStr = rawDate ? rawDate.toString() : "";
-      break;
-    }
-  }
-
-  if (targetIndex === -1) return false;
-
-  sheetX.getRange(targetIndex + 4, 15).setValue(isTransferred ? "x" : "");
-
-  const lastRowLog = logSheet.getLastRow();
-  
-  if (isTransferred) {
-    const senderName = getCurrentStaffName();
-    const now = new Date();
-    if (now.getHours() >= 17) now.setDate(now.getDate() + 1);
-    if (now.getDay() === 6) now.setDate(now.getDate() + 2); 
-    else if (now.getDay() === 0) now.setDate(now.getDate() + 1); 
-    
-    const timeString = Utilities.formatDate(now, "GMT+7", "dd/MM/yyyy");
-
-    let loaiHoSo = "HỢP ĐỒNG";
-    let soHopDongGoc = targetMa;
-    let maDuAn = "";
-
-    if (soHopDongGoc.match(/^PL\d{2}\s*-/)) {
-      const parts = soHopDongGoc.split(" - ");
-      loaiHoSo = parts[0].trim();
-      soHopDongGoc = parts.slice(1).join(" - ").trim();
-    }
-    const projectMatch = soHopDongGoc.match(/-(.*?)\//);
-    if (projectMatch && projectMatch[1]) maDuAn = projectMatch[1].trim();
-
-    const newRowData = [["", maDuAn, loaiHoSo, soHopDongGoc, ngayKyStr, senderName, timeString, "", docTypes]];
-    
-    let nextRow = 4;
-    if (lastRowLog >= 4) {
-      const existingDValues = logSheet.getRange(1, 4, lastRowLog, 1).getValues();
-      for (let i = existingDValues.length - 1; i >= 3; i--) {
-        if (existingDValues[i][0].toString().trim() !== "") {
-          nextRow = i + 2;
-          break;
-        }
-      }
-    }
-    logSheet.getRange(nextRow, 1, 1, 9).setValues(newRowData);
-
-  } else {
-    if (lastRowLog >= 4) {
-      const fullRangeLog = logSheet.getRange(4, 1, lastRowLog - 3, 9);
-      const allLogData = fullRangeLog.getValues();
-      
-      let contractToFind = targetMa;
-      if (contractToFind.match(/^PL\d{2}\s*-/)) {
-        contractToFind = contractToFind.split(" - ").slice(1).join(" - ").trim();
-      }
-
-      let isRemoved = false;
-      const filteredLogs = allLogData.filter(row => {
-        const valD = row[3]?.toString().trim() || "";
-        const loaiC = row[2]?.toString().trim() || "";
-        
-        const isMatchMa = (valD === contractToFind);
-        const isMatchLoai = targetMa.match(/^PL\d{2}\s*-/) ? loaiC.startsWith("PL") : loaiC === "HỢP ĐỒNG";
-        
-        if (isMatchMa && isMatchLoai && !isRemoved) {
-          isRemoved = true; 
-          return false;
-        }
-        return true;
-      });
-
-      fullRangeLog.clearContent();
-      if (filteredLogs.length > 0) {
-        logSheet.getRange(4, 1, filteredLogs.length, 9).setValues(filteredLogs);
-      }
-    }
-  }
-  return true;
-}
-
-// --- 4.2 XUẤT FILE DOCS PHỤ LỤC ---
-function generateFileName_PL(field8) {
-  if (!field8) return "BDH_PLXX_XXX_TEN GOI THAU_XXX";
-  const parts = field8.split(" - ");
-  const annexNumber = parts[0]?.trim() || "PLXX"; 
-  const contractPart = parts[1]?.trim() || "160/2025/HĐTCXD-BDH/BCONS-TĐT"; 
-  const contractNumber = (contractPart.match(/^([^/]+)/) || [])[1] || "XXX";
-  const contractType = (contractPart.match(/-(.*?)\//) || [])[1] || "BDH";
-  const lastPart = (contractPart.match(/-([^/]+)$/) || [])[1] || "XXX";
-  return `${contractType}_${annexNumber}_${contractNumber}_TEN GOI THAU_${lastPart}`;
-}
+// ==========================================
+// --- PHÂN HỆ: PHỤ LỤC HỢP ĐỒNG (PLHD) ---
+// ==========================================
 
 function writeToSheetAndExportDoc_PL(data) {
+  var lock = LockService.getScriptLock();
   try {
+    lock.waitLock(20000); 
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const sheet = ss.getSheetByName("PLHD");
     if (!sheet) throw new Error("Không tìm thấy sheet PLHD!");
@@ -131,7 +26,7 @@ function writeToSheetAndExportDoc_PL(data) {
 
     // 2. GHI SỔ THEO DÕI
     const targetSheet = ss.getSheetByName("SO HDTCXD BCONS - NTP");
-    const targetRow = targetSheet.getRange("S1").getValue();
+    const targetRow = getNextRowAfterLastData_SO(targetSheet, 3, 2, 5);
 
     const jValue = getCurrentStaffName();
 
@@ -153,11 +48,9 @@ function writeToSheetAndExportDoc_PL(data) {
       sheetX.getRange(rowX + 4, 15, 1, 5).setValues(plStatus);
     }
 
-    // 🚀 TỐI ƯU TỐC ĐỘ: Bắn tin realtime đồng bộ phụ lục mới lên Ably ngay khi ghi sheet thành công
-    SpreadsheetApp.flush(); 
     publishAblyContractUpdate("CREATE_PL", data.field8);
 
-    // 3. TẠO VÀ XỬ LÝ DOCS (Bắt đầu chạy ngầm tiến trình nhân bản và bóc tách chữ mất nhiều thời gian)
+    // 3. TẠO VÀ XỬ LÝ DOCS
     const docTemplateId = "1u8zXn5BGzOtJkxtGvNIK__Sr225vM9CM3yElOY9Kybc";
     const selectedNDs = data.selectedNDs || [];
     const fileName = generateFileName_PL(data.field8);
@@ -168,7 +61,6 @@ function writeToSheetAndExportDoc_PL(data) {
     const copiedDoc = DocumentApp.openById(copiedFile.getId());
     const body = copiedDoc.getBody();
 
-    // 3.1 Replace Data [FIELD]
     const lastCol = sheet.getLastColumn();
     const dataRange = sheet.getRange(2, 2, 2, lastCol - 1).getDisplayValues();
     const placeholders = dataRange[0];
@@ -180,7 +72,6 @@ function writeToSheetAndExportDoc_PL(data) {
       }
     });
     
-    // 3.2 Logic xử lý ID (Bóc tách O(N) DOM Bottleneck)
     const rawIds = row3Data[63] || ""; 
     const computedIds = typeof computeAllActiveIds === "function" ? computeAllActiveIds(rawIds) : []; 
     const otherSections = row3Data.slice(64, 78).map(v => v.toString().trim()).filter(Boolean);
@@ -233,31 +124,56 @@ function writeToSheetAndExportDoc_PL(data) {
 
   } catch (error) { 
     throw new Error("Lỗi xử lý Phụ lục: " + error.message); 
+  } finally {
+    lock.releaseLock(); 
   }
 }
 
-function computeAllActiveIds(rawIdsString) {
-  if (!rawIdsString) return [];
-  
-  const selected = rawIdsString.toString().split(",").map(id => id.trim());
-  const set = new Set(selected);
-  let finalIds = [...selected];
+function updateContractData_PL(maHD, editType, newValue) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng 20 giây tránh tranh chấp trượt dòng với lệnh xóa
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sheetLog = ss.getSheetByName("SO HDTCXD BCONS - NTP");
+    if (!sheetLog) throw new Error("Không tìm thấy Sổ gốc!");
 
-  const hasA = set.has("1") || set.has("2");
-  // 🔥 Thêm ID 5 vào cụm logic của Bên B
-  const hasB = set.has("3") || set.has("4") || set.has("5"); 
+    const lastRow = sheetLog.getLastRow();
+    const dataE = sheetLog.getRange(1, 5, lastRow, 1).getValues(); 
+    const maClean = maHD.trim().toUpperCase();
+    
+    let targetRow = -1;
+    for (let i = dataE.length - 1; i >= 0; i--) {
+        if (dataE[i][0].toString().trim().toUpperCase() === maClean) {
+            targetRow = i + 1;
+            break;
+        }
+    }
 
-  if (hasA && hasB) finalIds.push("200");
-  else if (hasA) finalIds.push("201");
-  else if (hasB) finalIds.push("202");
+    if (targetRow === -1) return false; 
 
-  if (hasA) finalIds.push("300");
-  if (hasB) finalIds.push("301");
+    if (editType === "DATE") {
+        sheetLog.getRange(targetRow, 2).setValue(newValue); 
+    } 
+    else if (editType === "PACKAGE") {
+        sheetLog.getRange(targetRow, 9).setValue(newValue); 
+    } 
+    else if (editType === "VALUE") {
+        const num = Number(newValue.toString().replace(/\./g, ""));
+        sheetLog.getRange(targetRow, 11).setValue(num); 
+    }
+    else if (editType === "CONTRACT_NO") {
+        sheetLog.getRange(targetRow, 5).setValue(newValue.trim()); 
+    }
 
-  return finalIds;
+    SpreadsheetApp.flush(); 
+    return true;
+  } catch (e) { 
+    throw new Error("Lỗi Backend: " + e.message); 
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
+  }
 }
 
-// --- 4.3 XUẤT DATA SANG SHEET MỚI (CHỨC NĂNG BÔI ĐEN XUẤT) ---
 function exportToNewSpreadsheet_PL(filteredA) {
   try {
     const newSS = SpreadsheetApp.create("DATA HỢP ĐỒNG");
@@ -303,63 +219,155 @@ function exportToNewSpreadsheet_PL(filteredA) {
   } catch (e) { throw new Error("Lỗi xuất Sheet: " + e.message); }
 }
 
-// --- 4.4 HÀM MỚI: CẬP NHẬT DỮ LIỆU TỪ WEB (EDIT DATA VÀO SO HDTCXD) ---
-function updateContractData_PL(maHD, editType, newValue) {
+function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
+  var lock = LockService.getScriptLock();
   try {
+    lock.waitLock(20000); 
     const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sheetLog = ss.getSheetByName("SO HDTCXD BCONS - NTP");
-    if (!sheetLog) throw new Error("Không tìm thấy Sổ gốc!");
+    const sheetX = ss.getSheetByName("X");
+    const logSheet = ss.getSheetByName("CHUYEN HO SO");
+    if (!sheetX || !logSheet) throw new Error("Hệ thống thiếu Sheet X hoặc CHUYEN HO SO");
 
-    const lastRow = sheetLog.getLastRow();
-    const dataE = sheetLog.getRange(1, 5, lastRow, 1).getValues(); 
-    const maClean = maHD.trim().toUpperCase();
+    const lastRowX = sheetX.getLastRow();
+    if (lastRowX < 4) return false;
+
+    const rangeX = sheetX.getRange(4, 1, lastRowX - 3, 15);
+    const dataX = rangeX.getValues(); 
+
+    const targetMa = contractNumber.trim();
+    let targetIndex = -1;
+    let ngayKyStr = "";
+
+    for (let i = 0; i < dataX.length; i++) {
+      if (dataX[i][0]?.toString().trim() === targetMa) {
+        targetIndex = i;
+        let rawDate = dataX[i][7];
+        if (rawDate instanceof Date) ngayKyStr = Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy");
+        else ngayKyStr = rawDate ? rawDate.toString() : "";
+        break;
+      }
+    }
+
+    if (targetIndex === -1) return false;
+
+    sheetX.getRange(targetIndex + 4, 16).setValue(isTransferred ? "x" : "");
+
+    const lastRowLog = logSheet.getLastRow();
     
-    let targetRow = -1;
-    for (let i = dataE.length - 1; i >= 0; i--) {
-        if (dataE[i][0].toString().trim().toUpperCase() === maClean) {
-            targetRow = i + 1;
-            break;
+    if (isTransferred) {
+      const senderName = getCurrentStaffName();
+      const now = new Date();
+      if (now.getHours() >= 17) now.setDate(now.getDate() + 1);
+      if (now.getDay() === 6) now.setDate(now.getDate() + 2); 
+      else if (now.getDay() === 0) now.setDate(now.getDate() + 1); 
+      
+      const timeString = Utilities.formatDate(now, "GMT+7", "dd/MM/yyyy");
+
+      let loaiHoSo = "HỢP ĐỒNG";
+      let soHopDongGoc = targetMa;
+      let maDuAn = "";
+
+      if (soHopDongGoc.match(/^PL\d{2}\s*-/)) {
+        const parts = soHopDongGoc.split(" - ");
+        loaiHoSo = parts[0].trim();
+        soHopDongGoc = parts.slice(1).join(" - ").trim();
+      }
+      const projectMatch = soHopDongGoc.match(/-(.*?)\//);
+      if (projectMatch && projectMatch[1]) maDuAn = projectMatch[1].trim();
+
+      const newRowData = [["", maDuAn, loaiHoSo, soHopDongGoc, ngayKyStr, senderName, timeString, "", docTypes]];
+      
+      const nextRow = getNextRowAfterLastData_SO(logSheet, 4, 2, 4);
+      logSheet.getRange(nextRow, 1, 1, 9).setValues(newRowData);
+
+    } else {
+      if (lastRowLog >= 4) {
+        const fullRangeLog = logSheet.getRange(4, 1, lastRowLog - 3, 9);
+        const allLogData = fullRangeLog.getValues();
+        
+        let contractToFind = targetMa;
+        if (contractToFind.match(/^PL\d{2}\s*-/)) {
+          contractToFind = contractToFind.split(" - ").slice(1).join(" - ").trim();
         }
-    }
 
-    if (targetRow === -1) return false; 
+        let isRemoved = false;
+        const filteredLogs = allLogData.filter(row => {
+          const valD = row[3]?.toString().trim() || "";
+          const loaiC = row[2]?.toString().trim() || "";
+          
+          const isMatchMa = (valD === contractToFind);
+          const isMatchLoai = targetMa.match(/^PL\d{2}\s*-/) ? loaiC.startsWith("PL") : loaiC === "HỢP ĐỒNG";
+          
+          if (isMatchMa && isMatchLoai && !isRemoved) {
+            isRemoved = true; 
+            return false;
+          }
+          return true;
+        });
 
-    if (editType === "DATE") {
-        sheetLog.getRange(targetRow, 2).setValue(newValue); 
-    } 
-    else if (editType === "PACKAGE") {
-        sheetLog.getRange(targetRow, 9).setValue(newValue); 
-    } 
-    else if (editType === "VALUE") {
-        const num = Number(newValue.toString().replace(/\./g, ""));
-        sheetLog.getRange(targetRow, 11).setValue(num); 
+        fullRangeLog.clearContent();
+        if (filteredLogs.length > 0) {
+          logSheet.getRange(4, 1, filteredLogs.length, 9).setValues(filteredLogs);
+        }
+      }
     }
-    else if (editType === "CONTRACT_NO") {
-        sheetLog.getRange(targetRow, 5).setValue(newValue.trim()); 
-    }
-
-    SpreadsheetApp.flush(); 
     return true;
-  } catch (e) { throw new Error("Lỗi Backend: " + e.message); }
+  } finally {
+    lock.releaseLock(); 
+  }
 }
 
-// =========================================================================
-// QUẢN LÝ FILE DRIVE & SCAN UTILITIES
-// =========================================================================
+// ==========================================
+// --- NHÓM HÀM HỖ TRỢ PHỤ LỤC (HELPERS) ---
+// ==========================================
 
-// CHỈ CẦN CUNG CẤP ID CỦA THƯ MỤC MẸ (Nơi chứa tất cả các thư mục dự án)
+function generateFileName_PL(field8) {
+  if (!field8) return "BDH_PLXX_XXX_TEN GOI THAU_XXX";
+  const parts = field8.split(" - ");
+  const annexNumber = parts[0]?.trim() || "PLXX"; 
+  const contractPart = parts[1]?.trim() || "160/2025/HĐTCXD-BDH/BCONS-TĐT"; 
+  const contractNumber = (contractPart.match(/^([^/]+)/) || [])[1] || "XXX";
+  const contractType = (contractPart.match(/-(.*?)\//) || [])[1] || "BDH";
+  const lastPart = (contractPart.match(/-([^/]+)$/) || [])[1] || "XXX";
+  return `${contractType}_${annexNumber}_${contractNumber}_TEN GOI THAU_${lastPart}`;
+}
+
+function computeAllActiveIds(rawIdsString) {
+  if (!rawIdsString) return [];
+  
+  const selected = rawIdsString.toString().split(",").map(id => id.trim());
+  const set = new Set(selected);
+  let finalIds = [...selected];
+
+  const hasA = set.has("1") || set.has("2");
+  const hasB = set.has("3") || set.has("4") || set.has("5"); 
+
+  if (hasA && hasB) finalIds.push("200");
+  else if (hasA) finalIds.push("201");
+  else if (hasB) finalIds.push("202");
+
+  if (hasA) finalIds.push("300");
+  if (hasB) finalIds.push("301");
+
+  return finalIds;
+}
+
+// ==========================================
+// --- PHÂN HỆ: QUẢN LÝ FILE & SCAN UTILITIES ---
+// ==========================================
+
 const ROOT_FOLDER_ID = "1SmlwbdIfTTQAaGTl2sEtRU-KFEYmx9Xc";
 
 function uploadScanToDrive(base64Data, maHD, fileName) {
+  const lock = LockService.getScriptLock();
   try {
-    // 1. Trích xuất Tên dự án từ maHD
+    lock.waitLock(20000); // Khóa luồng bảo vệ ô chứa chuỗi metadata File Scan
     let projectName = "DEFAULT";
     const match = maHD.match(/HĐTCXD-([^\/\s]+)/i); 
     if (match) {
         projectName = match[1].trim().toUpperCase();
     }
 
-    // 2. TÌM THƯ MỤC THEO TÊN BÊN TRONG THƯ MỤC MẸ
     const rootFolder = DriveApp.getFolderById(ROOT_FOLDER_ID);
     const folderIterator = rootFolder.getFoldersByName(projectName);
     
@@ -370,8 +378,7 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
         targetFolder = rootFolder.createFolder(projectName);
     }
 
-    // --- NHẬN DIỆN MIME TYPE TỰ ĐỘNG ---
-    let mimeType = 'application/pdf'; // Mặc định là PDF
+    let mimeType = 'application/pdf'; 
     const lowerName = fileName.toLowerCase();
     if (lowerName.endsWith('.xlsx')) {
         mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -379,14 +386,12 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
         mimeType = 'application/vnd.ms-excel';
     }
     
-    // 3. Tạo Blob với MimeType tương ứng
     const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, fileName);
 
     const file = targetFolder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
     const fileId = file.getId();
 
-    // 4. Cập nhật dữ liệu vào Sheet
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const sheetX = ss.getSheetByName("X");
     const lastRow = sheetX.getLastRow();
@@ -406,6 +411,8 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
     return { success: true, id: fileId, fileName: fileName };
   } catch (e) { 
     return { success: false, error: e.toString() }; 
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
 }
 
@@ -421,7 +428,9 @@ function getFileFromDrive(fileId) {
 }
 
 function deleteContractRow_Backend(maHD) {
+  var lock = LockService.getScriptLock();
   try {
+    lock.waitLock(20000); // Khóa luồng 20 giây tránh tranh chấp trượt dòng với lệnh sửa
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const maClean = maHD.toString().trim().toUpperCase();
     let fileIds = [];
@@ -437,7 +446,7 @@ function deleteContractRow_Backend(maHD) {
             scanData.split(";;").forEach(e => fileIds.push(e.split("|")[0]));
           }
           sheetX.getRange(i + 1, 15, 1, 5).clearContent();
-          break; // EARLY EXIT: Đã tìm thấy và xử lý xong, dừng loop
+          break; 
         }
       }
     }
@@ -450,7 +459,7 @@ function deleteContractRow_Backend(maHD) {
       for (let j = dataE.length - 1; j >= 0; j--) {
         if (dataE[j][0].toString().trim().toUpperCase() === maClean && maClean !== "") {
           sheetLog.deleteRow(j + 1);
-          break; // EARLY EXIT: Đã xóa dòng, dừng loop
+          break; 
         }
       }
     }
@@ -462,23 +471,20 @@ function deleteContractRow_Backend(maHD) {
 
     SpreadsheetApp.flush();
     
-    // Kích hoạt đồng bộ realtime khi xóa dữ liệu hợp đồng thành công
     publishAblyContractUpdate("DELETE_DATA", maHD);
     
     return true;
   } catch (e) {
     throw new Error("Lỗi Backend xóa Cột E: " + e.message);
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
 }
 
-function getOrCreateSubFolder(parentFolder, folderName) {
-  const folders = parentFolder.getFoldersByName(folderName);
-  if (folders.hasNext()) return folders.next();
-  return parentFolder.createFolder(folderName);
-}
-
 function deleteScanFilePermanently(maHD, fileIdToDelete) {
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(20000); // Khóa luồng bảo vệ tránh ghi đè dữ liệu tệp tin khi xóa đồng thời
     if (!fileIdToDelete) throw new Error("ID không hợp lệ");
     Drive.Files.remove(fileIdToDelete);
 
@@ -501,43 +507,51 @@ function deleteScanFilePermanently(maHD, fileIdToDelete) {
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
 }
 
+function getOrCreateSubFolder(parentFolder, folderName) {
+  const folders = parentFolder.getFoldersByName(folderName);
+  if (folders.hasNext()) return folders.next();
+  return parentFolder.createFolder(folderName);
+}
+
 function optimizeDocSections(body, validSections) {
-    const paragraphs = body.getParagraphs();
-    let isDeleting = false;
-    let currentBlock = [];
-    let elementsToRemove = [];
+  const paragraphs = body.getParagraphs();
+  let isDeleting = false;
+  let currentBlock = [];
+  let elementsToRemove = [];
 
-    for (let i = 0; i < paragraphs.length; i++) {
-        let p = paragraphs[i];
-        let text = p.getText().trim();
+  for (let i = 0; i < paragraphs.length; i++) {
+    let p = paragraphs[i];
+    let text = p.getText().trim();
 
-        if (!isDeleting && text.includes("{")) {
-            isDeleting = true;
-            currentBlock = [p];
-        } 
-        else if (isDeleting) {
-            currentBlock.push(p);
-        }
-
-        if (isDeleting && text.includes("}")) {
-            let match = text.match(/\}\s*(\d+)/);
-            if (match && match[1]) {
-                if (!validSections.has(match[1].toString())) {
-                    elementsToRemove.push(...currentBlock);
-                }
-            }
-            isDeleting = false;
-            currentBlock = [];
-        }
+    if (!isDeleting && text.includes("{")) {
+      isDeleting = true;
+      currentBlock = [p];
+    } 
+    else if (isDeleting) {
+      currentBlock.push(p);
     }
 
-    elementsToRemove.forEach(el => {
-        try { el.removeFromParent(); } catch(e) {}
-    });
-
-    body.replaceText("\\{", "");
-    body.replaceText("\\}\\s*\\d+", "");
+    if (isDeleting && text.includes("}")) {
+      let match = text.match(/\}\s*(\d+)/);
+      if (match && match[1]) {
+        if (!validSections.has(match[1].toString())) {
+          elementsToRemove.push(...currentBlock);
+        }
+      }
+      isDeleting = false;
+      currentBlock = [];
+    }
   }
+
+  elementsToRemove.forEach(el => {
+    try { el.removeFromParent(); } catch(e) {}
+  });
+
+  body.replaceText("\\{", "");
+  body.replaceText("\\}\\s*\\d+", "");
+}

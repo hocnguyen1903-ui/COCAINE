@@ -633,6 +633,16 @@ async function loadSystemData(isSilent = false) {
         return;
     }
 
+    // 🚀 CHỐNG XUNG ĐỘT REAL-TIME: Nếu người dùng đang mở một trong các bảng điều khiển (Edit/Transfer/Scan),
+    // hoãn việc nạp lại dữ liệu im lặng (isSilent) để tránh ghi đè dữ liệu đang nhập hoặc mất tham chiếu con trỏ.
+    const isPanelActive = document.getElementById('edit-panel-pl')?.classList.contains('active') ||
+                          document.getElementById('transfer-panel-pl')?.classList.contains('active') ||
+                          document.getElementById('scan-panel-pl')?.classList.contains('active');
+    if (isPanelActive && isSilent) {
+        console.log("[Real-time] User is interacting with a panel. Postponing background sync.");
+        return;
+    }
+
     // Gán tên lên Header khi F5 tải lại trang
     const name = localStorage.getItem('bcons_staff_identity');
     const displayEl = document.getElementById('staffNameDisplay');
@@ -656,12 +666,19 @@ async function loadSystemData(isSilent = false) {
             if (typeof initTabPL === 'function') initTabPL();
             if (typeof initTabTB === 'function') initTabTB();
             if (typeof executeFilter_PL === 'function') executeFilter_PL(false);
+            
+            // Tự động tính toán lại STT Phụ lục khi đồng bộ dữ liệu mới (Hỗ trợ Real-time giật lùi STT khi máy khác xóa)
+            if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
 
             // 🚀 MỞ QUẢ CHUÔNG THÔNG BÁO CHO TẤT CẢ MỌI NGƯỜI ĐÃ ĐĂNG NHẬP THÀNH CÔNG
             if (name) {
                 const bellContainer = document.getElementById('bellNotificationContainer');
                 if (bellContainer) {
-                    bellContainer.style.setProperty('display', 'flex', 'important');
+                    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
+                    // Chỉ hiển thị quả chuông nếu vai trò là quản trị viên ADMIN
+                    if (currentRole.toUpperCase() === "ADMIN") {
+                        bellContainer.style.setProperty('display', 'flex', 'important');
+                    }
                 }
                 updateBellBadge();
                 initAblyRealtimeConnection(); // Mở cổng Socket lắng nghe
@@ -943,7 +960,7 @@ function initAblyRealtimeConnection() {
                     if (dropdown && dropdown.style.display === 'flex') {
                         renderBellList();
                     }
-                    showToast_PL(`🔔 Nhân viên <b>${newUser.name}</b> vừa gửi yêu cầu đăng ký tài khoản mới!`, "success");
+                    showToast_PL(`🔔 <b>${newUser.name}</b> vừa đăng ký tài khoản mới!`, "success");
                 }
             }
         });
@@ -960,9 +977,9 @@ function initAblyRealtimeConnection() {
                 
                 // Định hình thông báo dựa vào loại thao tác dữ liệu
                 let actionText = "vừa được cập nhật";
-                if (updateInfo.actionType === "CREATE_HD") actionText = "vừa được khởi tạo";
-                else if (updateInfo.actionType === "CREATE_PL") actionText = "vừa được tạo Phụ lục mới";
-                else if (updateInfo.actionType === "DELETE_DATA") actionText = "vừa bị xóa khỏi hệ thống";
+                if (updateInfo.actionType === "CREATE_HD") actionText = "vừa được tạo";
+                else if (updateInfo.actionType === "CREATE_PL") actionText = "vừa được tạo";
+                else if (updateInfo.actionType === "DELETE_DATA") actionText = "vừa bị xóa";
                 else if (updateInfo.actionType === "TRANSFER_STATUS") actionText = "vừa thay đổi trạng thái bàn giao";
 
                 showToast_PL(`📢 Hồ sơ <b>${updateInfo.contractNo}</b> ${actionText} bởi <b>${updateInfo.staffName}</b>!`, "success");

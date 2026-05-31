@@ -297,8 +297,9 @@ function executeActualDeleteData_PL() {
         SYSTEM_DATA.pl.field0 = SYSTEM_DATA.pl.field0.filter(item => (item.display || "").split(" | ")[0].trim() !== maToDelete);
         PRECOMPUTED_PL_DATA = null;
         
-        // 2. Cập nhật giao diện Dashboard ngay tức thì
+        // 2. Cập nhật giao diện Dashboard ngay tức thì và tự động tính toán giật lùi STT Phụ lục
         executeFilter_PL(false); 
+        if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
         closeEditPanel_PL();
         
         // 3. Hiển thị thông báo lập tức cho người dùng
@@ -317,6 +318,7 @@ function executeActualDeleteData_PL() {
                 }
                 PRECOMPUTED_PL_DATA = null;
                 executeFilter_PL(false);
+                if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
                 showToast_PL(`⚠️ Thao tác xóa ${maToDelete} thất bại trên hệ thống! Đã khôi phục dữ liệu.`, "error");
                 loadSystemData(true);
             });

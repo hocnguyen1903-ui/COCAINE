@@ -358,56 +358,62 @@ function apiDispatcher(payload) {
  * XỬ LÝ YÊU CẦU ĐĂNG KÝ TÀI KHOẢN TỪ NHÂN VIÊN (ĐỒNG BỘ REALTIME QUA ABLY)
  */
 function registerUser(mail, name) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  let sheet = ss.getSheetByName("User_Registry");
-  if (!sheet) {
-    sheet = ss.insertSheet("User_Registry");
-    sheet.appendRow(["Mail", "Name", "Status"]);
-  }
-  
-  const targetMail = mail.toLowerCase().trim();
-  const targetName = name.toUpperCase().trim();
-  const data = sheet.getDataRange().getValues();
-  
-  // 1. Kiểm tra trùng lặp Email đăng ký
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
-      throw new Error("Email này đã được sử dụng hoặc đang trong hàng chờ sếp duyệt!");
-    }
-  }
-  
-  // 2. Kiểm tra trùng lặp Tên viết tắt (Name) đăng ký
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][1]?.toString().toUpperCase().trim() === targetName) {
-      throw new Error(`Tên viết tắt "${targetName}" này đã tồn tại! Vui lòng chọn tên viết tắt khác.`);
-    }
-  }
-  
-  // Thêm dòng mới trạng thái PENDING
-  sheet.appendRow([targetMail, targetName, "PENDING"]);
-  
-  // 🚀 BẮN TÍN HIỆU THỜI GIAN THỰC SANG ABLY
+  const lock = LockService.getScriptLock();
   try {
-    const ablyUrl = "https://rest.ably.io/channels/bcons_notification/messages";
-    const ablyPayload = {
-      "name": "new_registration",
-      "data": { "mail": targetMail, "name": targetName }
-    };
-    const ablyOptions = {
-      "method": "POST",
-      "headers": {
-        "Authorization": "Basic " + Utilities.base64Encode(ABLY_API_KEY),
-        "Content-Type": "application/json"
-      },
-      "payload": JSON.stringify(ablyPayload),
-      "muteHttpExceptions": true
-    };
-    UrlFetchApp.fetch(ablyUrl, ablyOptions);
-  } catch (err) {
-    console.error("Lỗi bắn tín hiệu Ably Realtime: " + err.message);
+    lock.waitLock(20000); // Khóa luồng tránh xung đột chèn đè tài khoản đăng ký cùng thời điểm
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    let sheet = ss.getSheetByName("User_Registry");
+    if (!sheet) {
+      sheet = ss.insertSheet("User_Registry");
+      sheet.appendRow(["Mail", "Name", "Status"]);
+    }
+    
+    const targetMail = mail.toLowerCase().trim();
+    const targetName = name.toUpperCase().trim();
+    const data = sheet.getDataRange().getValues();
+    
+    // 1. Kiểm tra trùng lặp Email đăng ký
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+        throw new Error("Email này đã được sử dụng!");
+      }
+    }
+    
+    // 2. Kiểm tra trùng lặp Tên viết tắt (Name) đăng ký
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][1]?.toString().toUpperCase().trim() === targetName) {
+        throw new Error(`Tên "${targetName}" này đã tồn tại! Vui lòng chọn tên khác.`);
+      }
+    }
+    
+    // Thêm dòng mới trạng thái PENDING
+    sheet.appendRow([targetMail, targetName, "PENDING"]);
+    
+    // 🚀 BẮN TÍN HIỆU THỜI GIAN THỰC SANG ABLY
+    try {
+      const ablyUrl = "https://rest.ably.io/channels/bcons_notification/messages";
+      const ablyPayload = {
+        "name": "new_registration",
+        "data": { "mail": targetMail, "name": targetName }
+      };
+      const ablyOptions = {
+        "method": "POST",
+        "headers": {
+          "Authorization": "Basic " + Utilities.base64Encode(ABLY_API_KEY),
+          "Content-Type": "application/json"
+        },
+        "payload": JSON.stringify(ablyPayload),
+        "muteHttpExceptions": true
+      };
+      UrlFetchApp.fetch(ablyUrl, ablyOptions);
+    } catch (err) {
+      console.error("Lỗi bắn tín hiệu Ably Realtime: " + err.message);
+    }
+    
+    return { success: true };
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
-  
-  return { success: true };
 }
 
 function publishAblyContractUpdate(actionType, contractNo) {
