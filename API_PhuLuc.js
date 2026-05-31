@@ -250,7 +250,8 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
 
     if (targetIndex === -1) return false;
 
-    sheetX.getRange(targetIndex + 4, 16).setValue(isTransferred ? "x" : "");
+    // Ghi dấu "x" bàn giao vào đúng Cột 15 (Cột O)
+    sheetX.getRange(targetIndex + 4, 15).setValue(isTransferred ? "x" : "");
 
     const lastRowLog = logSheet.getLastRow();
     
@@ -311,6 +312,10 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
         }
       }
     }
+
+    // 🚀 BẮN REAL-TIME TRẠNG THÁI BÀN GIAO SANG ABLY KHI THAO TÁC THÀNH CÔNG
+    publishAblyContractUpdate("TRANSFER_STATUS", contractNumber);
+
     return true;
   } finally {
     lock.releaseLock(); 

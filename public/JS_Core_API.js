@@ -975,14 +975,14 @@ function initAblyRealtimeConnection() {
                 // Tải ngầm dữ liệu để cập nhật Dashboard
                 loadSystemData(true);
                 
-                // Định hình thông báo dựa vào loại thao tác dữ liệu
-                let actionText = "vừa được cập nhật";
-                if (updateInfo.actionType === "CREATE_HD") actionText = "vừa được tạo";
-                else if (updateInfo.actionType === "CREATE_PL") actionText = "vừa được tạo";
-                else if (updateInfo.actionType === "DELETE_DATA") actionText = "vừa bị xóa";
-                else if (updateInfo.actionType === "TRANSFER_STATUS") actionText = "vừa thay đổi trạng thái bàn giao";
+                // Định hình thông báo đặt Tên nhân sự lên trước
+                let actionText = "cập nhật";
+                if (updateInfo.actionType === "CREATE_HD") actionText = "tạo";
+                else if (updateInfo.actionType === "CREATE_PL") actionText = "tạo";
+                else if (updateInfo.actionType === "DELETE_DATA") actionText = "xóa";
+                else if (updateInfo.actionType === "TRANSFER_STATUS") actionText = "thay đổi trạng thái bàn giao";
 
-                showToast_PL(`📢 Hồ sơ <b>${updateInfo.contractNo}</b> ${actionText} bởi <b>${updateInfo.staffName}</b>!`, "success");
+                showToast_PL(`📢 <b>${updateInfo.staffName}</b> vừa <b>${actionText}</b> hồ sơ <b>${updateInfo.contractNo}</b>!`, "success");
             }
         });
         
