@@ -740,8 +740,6 @@ async function performLogin() {
     }
 }
 
-
-
 /**
  * Trình dựng danh sách chờ duyệt (Chỉ hiện nút APPROVE/REJECT đối với quyền ADMIN)
  */
