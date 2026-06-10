@@ -72,7 +72,13 @@ function formatInput_PL(input) {
  */
 function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback) {
     const drop = document.getElementById(dropId);
-    const isVisible = drop && (drop.classList.contains("show") || drop.style.display !== "none");
+    
+    // 🚀 SỬA LỖI: Nhận diện hiển thị dựa vào class hoạt động hoặc thuộc tính visibility thực tế của trình duyệt
+    const isVisible = drop && (
+        drop.classList.contains("show") || 
+        drop.classList.contains("open-smooth") || 
+        window.getComputedStyle(drop).visibility === "visible"
+    );
 
     if (!isVisible) {
         if (e.key === "Enter") {
@@ -86,7 +92,8 @@ function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback)
     if (items.length === 0) {
         if (e.key === "Enter") {
             e.preventDefault();
-            drop.classList.remove("show");
+            if (drop.classList.contains("show")) drop.classList.remove("show");
+            if (drop.classList.contains("open-smooth")) drop.classList.remove("open-smooth");
             document.getElementById(nextInputId)?.focus();
         }
         return;
@@ -112,11 +119,14 @@ function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback)
     } 
     else if (e.key === "Enter") {
         e.preventDefault();
+        
+        // Ngoại lệ cho dropdown bảo lãnh/tạm ứng nếu chưa chọn mục nào
         if (dropId === 'drop-field5-hd' && currentFocusIndex === -1) {
             drop.classList.remove("show");
             setTimeout(() => { document.getElementById(nextInputId)?.focus(); }, 100);
             return;
         }
+        
         const targetItem = (currentFocusIndex >= 0) ? items[currentFocusIndex] : items[0];
         if (targetItem) {
             setTimeout(() => {

@@ -145,15 +145,29 @@ function coreFilter(inputId, dropId, dataKey) {
     const input = document.getElementById(inputId), drop = document.getElementById(dropId);
     const data = (dataKey === 'warranty') ? SYSTEM_DATA.hd.warranty : (SYSTEM_DATA.hd[dataKey] || []);
     const query = input.value.toLowerCase().trim();
+    
+    // 1. Lọc dữ liệu theo từ khóa tìm kiếm
     const filtered = data.filter(item => {
         const str = (typeof item === 'object') ? (item.searchString || item.display || "") : item;
         return str.toString().toLowerCase().includes(query);
     });
 
-    if (filtered.length > 0) {
+    // 2. Loại bỏ trùng lặp hiển thị (Deduplicate)
+    const uniqueFiltered = [];
+    const seen = new Set();
+    for (const item of filtered) {
+        const uniqueKey = (typeof item === 'object') ? (item.searchString || item.display || "") : item;
+        const cleanKey = uniqueKey.toString().trim().toLowerCase();
+        if (!seen.has(cleanKey)) {
+            seen.add(cleanKey);
+            uniqueFiltered.push(item);
+        }
+    }
+
+    if (uniqueFiltered.length > 0) {
         // Tính toán độ rộng động cho prefix (Mã dự án/Mã nhà thầu)
         let maxChars = 0;
-        filtered.forEach(item => {
+        uniqueFiltered.forEach(item => {
             const val = (typeof item === 'object') ? (item.searchString || item.display) : item;
             if (val.includes(" | ")) {
                 const prefix = val.split(" | ")[0];
@@ -163,7 +177,8 @@ function coreFilter(inputId, dropId, dataKey) {
         const dynamicWidth = maxChars > 0 ? (maxChars * 8.5 + 2) : 0;
         drop.style.setProperty('--pw', dynamicWidth + 'px');
 
-        drop.innerHTML = filtered.slice(0, 50).map(item => {
+        // Bỏ hoàn toàn giới hạn .slice(0, 50) hiển thị theo yêu cầu
+        drop.innerHTML = uniqueFiltered.map(item => {
             const val = (typeof item === 'object') ? (item.searchString || item.display) : item;
             let displayHTML = val;
             if (val.includes(" | ")) {

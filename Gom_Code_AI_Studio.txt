@@ -1,5 +1,5 @@
 === BẮT ĐẦU DUMP DỮ LIỆU DỰ ÁN ===
-Thời gian tạo: Mon May 18 23:52:52 +07 2026
+Thời gian tạo: Wed Jun 10 22:55:19 +07 2026
 ==================================
 
 
@@ -17,7 +17,7 @@ const GEMINI_API_KEY = "AIzaSyCeqg1ed9VqEqBA3j1zIyoHtQJqOjKIua8";
  */
 function getMindmapData(projectCode) {
   try {
-    const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
+    const masterFoldßer = DriveApp.getFolderById(MASTER_FOLDER_ID);
     const projectFolders = masterFolder.getFoldersByName(projectCode);
     if (!projectFolders.hasNext()) return { projectCode: projectCode, files: [] };
     
@@ -82,11 +82,13 @@ function getAllTasksByProject(projectCode) {
   const data = sheet.getDataRange().getValues();
   return data
     .filter(r => r[0] === projectCode)
-    .map(r => ({ fileId: r[2], description: r[3] }));
+    .map(r => ({ taskId: r[1], fileId: r[2], description: r[3], team: r[4] }));
 }
 
 function batchAddTasksBackend(projectCode, fileId, tasksArray, isOverwrite = false) {
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(20000); // Khóa luồng 20 giây chống xung đột chèn Task_Log hàng loạt
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const sheet = ss.getSheetByName("Task_Log") || ss.insertSheet("Task_Log");
     if (sheet.getLastRow() === 0) sheet.appendRow(["Mã dự án", "Task_ID", "File_ID", "Description", "Team"]);
@@ -103,44 +105,72 @@ function batchAddTasksBackend(projectCode, fileId, tasksArray, isOverwrite = fal
     const rowsToInsert = tasksArray.map((t, i) => [projectCode, "T-" + now + "-" + i, fileId, t.note, t.dept]);
     sheet.getRange(sheet.getLastRow() + 1, 1, rowsToInsert.length, 5).setValues(rowsToInsert);
     return true;
-  } catch (e) { throw new Error(e.message); }
+  } catch (e) { 
+    throw new Error(e.message); 
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
+  }
 }
 
 function updateTasksOrderBackend(projectCode, fileId, orderedTasks) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
-  const data = sheet.getDataRange().getValues();
-  const header = ["Mã dự án", "Task_ID", "File_ID", "Description", "Team"];
-  const otherFiles = data.filter((row, idx) => idx > 0 && row[2] !== fileId);
-  const currentFile = orderedTasks.map(t => [projectCode, t.taskId, fileId, t.description, t.team]);
-  const final = [header, ...otherFiles, ...currentFile];
-  sheet.clearContents();
-  sheet.getRange(1, 1, final.length, 5).setValues(final);
-  return true;
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng 20 giây chống xung đột ghi đè Task_Log
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
+    const data = sheet.getDataRange().getValues();
+    const header = ["Mã dự án", "Task_ID", "File_ID", "Description", "Team"];
+    const otherFiles = data.filter((row, idx) => idx > 0 && row[2] !== fileId);
+    const currentFile = orderedTasks.map(t => [projectCode, t.taskId, fileId, t.description, t.team]);
+    const final = [header, ...otherFiles, ...currentFile];
+    sheet.clearContents();
+    sheet.getRange(1, 1, final.length, 5).setValues(final);
+    return true;
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
+  }
 }
 
 function editTaskBackend(taskId, newDesc, newTeam) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
-  const data = sheet.getDataRange().getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][1] === taskId) {
-      sheet.getRange(i + 1, 4, 1, 2).setValues([[newDesc, newTeam]]);
-      return true;
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng tránh xung đột trượt dòng Task_Log khi sửa đổi
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
+    const data = sheet.getDataRange().getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][1] === taskId) {
+        sheet.getRange(i + 1, 4, 1, 2).setValues([[newDesc, newTeam]]);
+        return true;
+      }
     }
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
 }
 
 function deleteTaskBackend(taskId) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
-  const data = sheet.getDataRange().getValues();
-  for (let i = data.length - 1; i >= 0; i--) {
-    if (data[i][1] === taskId) { sheet.deleteRow(i + 1); return true; }
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng tránh xung đột trượt dòng Task_Log khi xóa tác vụ
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
+    const data = sheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 0; i--) {
+      if (data[i][1] === taskId) { sheet.deleteRow(i + 1); return true; }
+    }
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
 }
 
 function addTaskBackend(projectCode, fileId, desc, team) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
-  sheet.appendRow([projectCode, "T-" + new Date().getTime(), fileId, desc, team]);
-  return true;
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng tránh tranh chấp dòng ghi khi thêm mới tác vụ bản vẽ
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
+    sheet.appendRow([projectCode, "T-" + new Date().getTime(), fileId, desc, team]);
+    return true;
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
+  }
 }
 
 /**
@@ -268,134 +298,14 @@ function getActiveProjectFolders_Backend() {
 ==================================================
 FILE [2]: ./API_PhuLuc.js
 ==================================================
-// 4. LOGIC XỬ LÝ PHỤ LỤC (PLHD) & BÀN GIAO HỒ SƠ
-// =========================================================================
-function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sheetX = ss.getSheetByName("X");
-  const logSheet = ss.getSheetByName("CHUYEN HO SO");
-  if (!sheetX || !logSheet) throw new Error("Hệ thống thiếu Sheet X hoặc CHUYEN HO SO");
-
-  const lastRowX = sheetX.getLastRow();
-  if (lastRowX < 4) return false;
-
-  // --- BATCH GET: Lấy toàn bộ dữ liệu cần thiết từ Sheet X (Cột A đến O) ---
-  // Cột 1 (A): Số HĐ, Cột 8 (H): Ngày ký, Cột 15 (O): Trạng thái chuyển
-  const rangeX = sheetX.getRange(4, 1, lastRowX - 3, 15);
-  const dataX = rangeX.getValues(); 
-
-  const targetMa = contractNumber.trim();
-  let targetIndex = -1;
-  let ngayKyStr = "";
-
-  for (let i = 0; i < dataX.length; i++) {
-    if (dataX[i][0]?.toString().trim() === targetMa) {
-      targetIndex = i;
-      // Lấy ngày ký từ cột H (index 7)
-      let rawDate = dataX[i][7];
-      if (rawDate instanceof Date) ngayKyStr = Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy");
-      else ngayKyStr = rawDate ? rawDate.toString() : "";
-      break;
-    }
-  }
-
-  if (targetIndex === -1) return false;
-
-  // 1. CẬP NHẬT TRẠNG THÁI TẠI SHEET X (CỘT O)
-  sheetX.getRange(targetIndex + 4, 15).setValue(isTransferred ? "x" : "");
-
-  // 2. XỬ LÝ LOG TẠI SHEET "CHUYEN HO SO"
-  const lastRowLog = logSheet.getLastRow();
-  
-  if (isTransferred) {
-    // --- TRƯỜNG HỢP THÊM MỚI (TRANSFER) ---
-    const senderName = getCurrentStaffName();
-    const now = new Date();
-    // Logic dịch ngày (Sau 17h hoặc cuối tuần)
-    if (now.getHours() >= 17) now.setDate(now.getDate() + 1);
-    if (now.getDay() === 6) now.setDate(now.getDate() + 2); // Thứ 7 -> Thứ 2
-    else if (now.getDay() === 0) now.setDate(now.getDate() + 1); // CN -> Thứ 2
-    
-    const timeString = Utilities.formatDate(now, "GMT+7", "dd/MM/yyyy");
-
-    let loaiHoSo = "HỢP ĐỒNG";
-    let soHopDongGoc = targetMa;
-    let maDuAn = "";
-
-    if (soHopDongGoc.match(/^PL\d{2}\s*-/)) {
-      const parts = soHopDongGoc.split(" - ");
-      loaiHoSo = parts[0].trim();
-      soHopDongGoc = parts.slice(1).join(" - ").trim();
-    }
-    const projectMatch = soHopDongGoc.match(/-(.*?)\//);
-    if (projectMatch && projectMatch[1]) maDuAn = projectMatch[1].trim();
-
-    const newRowData = [["", maDuAn, loaiHoSo, soHopDongGoc, ngayKyStr, senderName, timeString, "", docTypes]];
-    
-    // Tìm vị trí dòng trống cuối cùng để append (Batch Set)
-    let nextRow = 4;
-    if (lastRowLog >= 4) {
-      const existingDValues = logSheet.getRange(1, 4, lastRowLog, 1).getValues();
-      for (let i = existingDValues.length - 1; i >= 3; i--) {
-        if (existingDValues[i][0].toString().trim() !== "") {
-          nextRow = i + 2;
-          break;
-        }
-      }
-    }
-    logSheet.getRange(nextRow, 1, 1, 9).setValues(newRowData);
-
-  } else {
-    // --- TRƯỜNG HỢP HỦY (CANCEL) - TỐI ƯU BẰNG FILTER ARRAY ---
-    if (lastRowLog >= 4) {
-      const fullRangeLog = logSheet.getRange(4, 1, lastRowLog - 3, 9);
-      const allLogData = fullRangeLog.getValues();
-      
-      let contractToFind = targetMa;
-      if (contractToFind.match(/^PL\d{2}\s*-/)) {
-        contractToFind = contractToFind.split(" - ").slice(1).join(" - ").trim();
-      }
-
-      // Lọc sạch mảng trên RAM (Chỉ giữ lại những dòng KHÔNG khớp)
-      let isRemoved = false;
-      const filteredLogs = allLogData.filter(row => {
-        const valD = row[3]?.toString().trim() || "";
-        const loaiC = row[2]?.toString().trim() || "";
-        
-        const isMatchMa = (valD === contractToFind);
-        const isMatchLoai = targetMa.match(/^PL\d{2}\s*-/) ? loaiC.startsWith("PL") : loaiC === "HỢP ĐỒNG";
-        
-        if (isMatchMa && isMatchLoai && !isRemoved) {
-          isRemoved = true; // Chỉ xóa 1 dòng trùng khớp gần nhất (giống logic deleteRow cũ)
-          return false;
-        }
-        return true;
-      });
-
-      // Ghi đè lại toàn bộ vùng dữ liệu sạch
-      fullRangeLog.clearContent();
-      if (filteredLogs.length > 0) {
-        logSheet.getRange(4, 1, filteredLogs.length, 9).setValues(filteredLogs);
-      }
-    }
-  }
-  return true;
-}
-
-// --- 4.2 XUẤT FILE DOCS PHỤ LỤC ---
-function generateFileName_PL(field8) {
-  if (!field8) return "BDH_PLXX_XXX_TEN GOI THAU_XXX";
-  const parts = field8.split(" - ");
-  const annexNumber = parts[0]?.trim() || "PLXX"; 
-  const contractPart = parts[1]?.trim() || "160/2025/HĐTCXD-BDH/BCONS-TĐT"; 
-  const contractNumber = (contractPart.match(/^([^/]+)/) || [])[1] || "XXX";
-  const contractType = (contractPart.match(/-(.*?)\//) || [])[1] || "BDH";
-  const lastPart = (contractPart.match(/-([^/]+)$/) || [])[1] || "XXX";
-  return `${contractType}_${annexNumber}_${contractNumber}_TEN GOI THAU_${lastPart}`;
-}
+// ==========================================
+// --- PHÂN HỆ: PHỤ LỤC HỢP ĐỒNG (PLHD) ---
+// ==========================================
 
 function writeToSheetAndExportDoc_PL(data) {
+  var lock = LockService.getScriptLock();
   try {
+    lock.waitLock(20000); 
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const sheet = ss.getSheetByName("PLHD");
     if (!sheet) throw new Error("Không tìm thấy sheet PLHD!");
@@ -412,9 +322,9 @@ function writeToSheetAndExportDoc_PL(data) {
 
     // 2. GHI SỔ THEO DÕI
     const targetSheet = ss.getSheetByName("SO HDTCXD BCONS - NTP");
-    const targetRow = targetSheet.getRange("S1").getValue();
+    const targetRow = getNextRowAfterLastData_SO(targetSheet, 3, 2, 5);
 
-   const jValue = getCurrentStaffName();
+    const jValue = getCurrentStaffName();
 
     const valuesToWrite = [[
       row3Data[1], row3Data[51], "", data.field8, "", row3Data[6], row3Data[21], 
@@ -434,8 +344,10 @@ function writeToSheetAndExportDoc_PL(data) {
       sheetX.getRange(rowX + 4, 15, 1, 5).setValues(plStatus);
     }
 
+    publishAblyContractUpdate("CREATE_PL", data.field8);
+
     // 3. TẠO VÀ XỬ LÝ DOCS
-    const docTemplateId = "1u8zXn5BGzOtJkxtGvNIK__Sr225vM9CM3yElOY9Kybc";
+    const docTemplateId = "1S02EAglGKBo55f4TT_oMKawDyZcNF-Wl2GZRjO-e5G4";
     const selectedNDs = data.selectedNDs || [];
     const fileName = generateFileName_PL(data.field8);
 
@@ -445,7 +357,6 @@ function writeToSheetAndExportDoc_PL(data) {
     const copiedDoc = DocumentApp.openById(copiedFile.getId());
     const body = copiedDoc.getBody();
 
-    // 3.1 Replace Data [FIELD]
     const lastCol = sheet.getLastColumn();
     const dataRange = sheet.getRange(2, 2, 2, lastCol - 1).getDisplayValues();
     const placeholders = dataRange[0];
@@ -457,12 +368,10 @@ function writeToSheetAndExportDoc_PL(data) {
       }
     });
     
-    // 3.2 Logic xử lý ID (Bóc tách O(N) DOM Bottleneck)
     const rawIds = row3Data[63] || ""; 
     const computedIds = typeof computeAllActiveIds === "function" ? computeAllActiveIds(rawIds) : []; 
     const otherSections = row3Data.slice(64, 78).map(v => v.toString().trim()).filter(Boolean);
     
-    // Đẩy toàn bộ mảng ID hợp lệ vào Set để tra cứu O(1)
     const validSectionsSet = new Set([...computedIds, ...otherSections, ...selectedNDs].map(String));
 
     const paragraphs = body.getParagraphs();
@@ -470,7 +379,6 @@ function writeToSheetAndExportDoc_PL(data) {
     let deleteBuffer = [];
     let elementsToRemove = [];
 
-    // Lặp thuần túy để thu thập Node, không can thiệp API trong lúc duyệt
     for (let i = 0; i < paragraphs.length; i++) {
       let p = paragraphs[i];
       let text = p.getText();
@@ -485,7 +393,6 @@ function writeToSheetAndExportDoc_PL(data) {
       if (text.includes("}")) {
         let match = text.match(/\}\s*(\d+)/);
         if (match && match[1]) {
-          // Chỉ gom node nếu ID không tồn tại trong Set
           if (!validSectionsSet.has(match[1])) {
             elementsToRemove.push(...deleteBuffer);
           }
@@ -495,18 +402,15 @@ function writeToSheetAndExportDoc_PL(data) {
       }
     }
 
-    // 3.3 Batch Remove DOM Elements
     elementsToRemove.forEach(el => {
       try { el.removeFromParent(); } catch(e) {}
     });
 
-    // 3.4 Global Regex Cleanup (Nhanh gấp 10 lần việc dùng editAsText().deleteText() ở vòng lặp trên)
     body.replaceText("\\{", "");
     body.replaceText("\\}\\s*\\d+", "");
 
     copiedDoc.saveAndClose();
 
-    // 3.5 Kiểm tra Doc rỗng
     if (DocumentApp.openById(copiedFile.getId()).getBody().getText().trim() === "") {
       DriveApp.getFileById(copiedFile.getId()).setTrashed(true);
       return { link: "" };
@@ -516,31 +420,56 @@ function writeToSheetAndExportDoc_PL(data) {
 
   } catch (error) { 
     throw new Error("Lỗi xử lý Phụ lục: " + error.message); 
+  } finally {
+    lock.releaseLock(); 
   }
 }
 
-function computeAllActiveIds(rawIdsString) {
-  if (!rawIdsString) return [];
-  
-  const selected = rawIdsString.toString().split(",").map(id => id.trim());
-  const set = new Set(selected);
-  let finalIds = [...selected];
+function updateContractData_PL(maHD, editType, newValue) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng 20 giây tránh tranh chấp trượt dòng với lệnh xóa
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sheetLog = ss.getSheetByName("SO HDTCXD BCONS - NTP");
+    if (!sheetLog) throw new Error("Không tìm thấy Sổ gốc!");
 
-  const hasA = set.has("1") || set.has("2");
-  // 🔥 Thêm ID 5 vào cụm logic của Bên B
-  const hasB = set.has("3") || set.has("4") || set.has("5"); 
+    const lastRow = sheetLog.getLastRow();
+    const dataE = sheetLog.getRange(1, 5, lastRow, 1).getValues(); 
+    const maClean = maHD.trim().toUpperCase();
+    
+    let targetRow = -1;
+    for (let i = dataE.length - 1; i >= 0; i--) {
+        if (dataE[i][0].toString().trim().toUpperCase() === maClean) {
+            targetRow = i + 1;
+            break;
+        }
+    }
 
-  if (hasA && hasB) finalIds.push("200");
-  else if (hasA) finalIds.push("201");
-  else if (hasB) finalIds.push("202");
+    if (targetRow === -1) return false; 
 
-  if (hasA) finalIds.push("300");
-  if (hasB) finalIds.push("301");
+    if (editType === "DATE") {
+        sheetLog.getRange(targetRow, 2).setValue(newValue); 
+    } 
+    else if (editType === "PACKAGE") {
+        sheetLog.getRange(targetRow, 9).setValue(newValue); 
+    } 
+    else if (editType === "VALUE") {
+        const num = Number(newValue.toString().replace(/\./g, ""));
+        sheetLog.getRange(targetRow, 11).setValue(num); 
+    }
+    else if (editType === "CONTRACT_NO") {
+        sheetLog.getRange(targetRow, 5).setValue(newValue.trim()); 
+    }
 
-  return finalIds;
+    SpreadsheetApp.flush(); 
+    return true;
+  } catch (e) { 
+    throw new Error("Lỗi Backend: " + e.message); 
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
+  }
 }
 
-// --- 4.3 XUẤT DATA SANG SHEET MỚI (CHỨC NĂNG BÔI ĐEN XUẤT) ---
 function exportToNewSpreadsheet_PL(filteredA) {
   try {
     const newSS = SpreadsheetApp.create("DATA HỢP ĐỒNG");
@@ -586,66 +515,160 @@ function exportToNewSpreadsheet_PL(filteredA) {
   } catch (e) { throw new Error("Lỗi xuất Sheet: " + e.message); }
 }
 
-// --- 4.4 HÀM MỚI: CẬP NHẬT DỮ LIỆU TỪ WEB (EDIT DATA VÀO SO HDTCXD) ---
-function updateContractData_PL(maHD, editType, newValue) {
+function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
+  var lock = LockService.getScriptLock();
   try {
+    lock.waitLock(20000); 
     const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sheetLog = ss.getSheetByName("SO HDTCXD BCONS - NTP");
-    if (!sheetLog) throw new Error("Không tìm thấy Sổ gốc!");
+    const sheetX = ss.getSheetByName("X");
+    const logSheet = ss.getSheetByName("CHUYEN HO SO");
+    if (!sheetX || !logSheet) throw new Error("Hệ thống thiếu Sheet X hoặc CHUYEN HO SO");
 
-    const lastRow = sheetLog.getLastRow();
-    // Tối ưu RAM: Bỏ .flat()
-    const dataE = sheetLog.getRange(1, 5, lastRow, 1).getValues(); 
-    const maClean = maHD.trim().toUpperCase();
+    const lastRowX = sheetX.getLastRow();
+    if (lastRowX < 4) return false;
+
+    const rangeX = sheetX.getRange(4, 1, lastRowX - 3, 15);
+    const dataX = rangeX.getValues(); 
+
+    const targetMa = contractNumber.trim();
+    let targetIndex = -1;
+    let ngayKyStr = "";
+
+    for (let i = 0; i < dataX.length; i++) {
+      if (dataX[i][0]?.toString().trim() === targetMa) {
+        targetIndex = i;
+        let rawDate = dataX[i][7];
+        if (rawDate instanceof Date) ngayKyStr = Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy");
+        else ngayKyStr = rawDate ? rawDate.toString() : "";
+        break;
+      }
+    }
+
+    if (targetIndex === -1) return false;
+
+    // Ghi dấu "x" bàn giao vào đúng Cột 15 (Cột O)
+    sheetX.getRange(targetIndex + 4, 15).setValue(isTransferred ? "x" : "");
+
+    const lastRowLog = logSheet.getLastRow();
     
-    let targetRow = -1;
-    // Duyệt ngược từ dưới lên để tìm dòng mới nhất (phòng trường hợp trùng mã)
-    for (let i = dataE.length - 1; i >= 0; i--) {
-        if (dataE[i][0].toString().trim().toUpperCase() === maClean) {
-            targetRow = i + 1;
-            break;
+    if (isTransferred) {
+      const senderName = getCurrentStaffName();
+      const now = new Date();
+      if (now.getHours() >= 17) now.setDate(now.getDate() + 1);
+      if (now.getDay() === 6) now.setDate(now.getDate() + 2); 
+      else if (now.getDay() === 0) now.setDate(now.getDate() + 1); 
+      
+      const timeString = Utilities.formatDate(now, "GMT+7", "dd/MM/yyyy");
+
+      let loaiHoSo = "HỢP ĐỒNG";
+      let soHopDongGoc = targetMa;
+      let maDuAn = "";
+
+      if (soHopDongGoc.match(/^PL\d{2}\s*-/)) {
+        const parts = soHopDongGoc.split(" - ");
+        loaiHoSo = parts[0].trim();
+        soHopDongGoc = parts.slice(1).join(" - ").trim();
+      }
+      const projectMatch = soHopDongGoc.match(/-(.*?)\//);
+      if (projectMatch && projectMatch[1]) maDuAn = projectMatch[1].trim();
+
+      const newRowData = [["", maDuAn, loaiHoSo, soHopDongGoc, ngayKyStr, senderName, timeString, "", docTypes]];
+      
+      const nextRow = getNextRowAfterLastData_SO(logSheet, 4, 2, 4);
+      logSheet.getRange(nextRow, 1, 1, 9).setValues(newRowData);
+
+    } else {
+      if (lastRowLog >= 4) {
+        const fullRangeLog = logSheet.getRange(4, 1, lastRowLog - 3, 9);
+        const allLogData = fullRangeLog.getValues();
+        
+        let contractToFind = targetMa;
+        if (contractToFind.match(/^PL\d{2}\s*-/)) {
+          contractToFind = contractToFind.split(" - ").slice(1).join(" - ").trim();
         }
+
+        let isRemoved = false;
+        const filteredLogs = allLogData.filter(row => {
+          const valD = row[3]?.toString().trim() || "";
+          const loaiC = row[2]?.toString().trim() || "";
+          
+          const isMatchMa = (valD === contractToFind);
+          const isMatchLoai = targetMa.match(/^PL\d{2}\s*-/) ? loaiC.startsWith("PL") : loaiC === "HỢP ĐỒNG";
+          
+          if (isMatchMa && isMatchLoai && !isRemoved) {
+            isRemoved = true; 
+            return false;
+          }
+          return true;
+        });
+
+        fullRangeLog.clearContent();
+        if (filteredLogs.length > 0) {
+          logSheet.getRange(4, 1, filteredLogs.length, 9).setValues(filteredLogs);
+        }
+      }
     }
 
-    if (targetRow === -1) return false; 
+    // 🚀 BẮN REAL-TIME TRẠNG THÁI BÀN GIAO SANG ABLY KHI THAO TÁC THÀNH CÔNG
+    publishAblyContractUpdate("TRANSFER_STATUS", contractNumber);
 
-    // THỰC THI GHI DỮ LIỆU
-    if (editType === "DATE") {
-        sheetLog.getRange(targetRow, 2).setValue(newValue); // Cột B
-    } 
-    else if (editType === "PACKAGE") {
-        sheetLog.getRange(targetRow, 9).setValue(newValue); // 🔥 ĐÃ SỬA: Cột I (Cột số 9)
-    } 
-    else if (editType === "VALUE") {
-        const num = Number(newValue.toString().replace(/\./g, ""));
-        sheetLog.getRange(targetRow, 11).setValue(num); // Cột K
-    }
-    else if (editType === "CONTRACT_NO") {
-        sheetLog.getRange(targetRow, 5).setValue(newValue.trim()); // Cột E
-    }
-
-    SpreadsheetApp.flush(); 
     return true;
-  } catch (e) { throw new Error("Lỗi Backend: " + e.message); }
+  } finally {
+    lock.releaseLock(); 
+  }
 }
 
-// =========================================================================
-// QUẢN LÝ FILE DRIVE & SCAN UTILITIES
-// =========================================================================
+// ==========================================
+// --- NHÓM HÀM HỖ TRỢ PHỤ LỤC (HELPERS) ---
+// ==========================================
 
-// CHỈ CẦN CUNG CẤP ID CỦA THƯ MỤC MẸ (Nơi chứa tất cả các thư mục dự án)
+function generateFileName_PL(field8) {
+  if (!field8) return "BDH_PLXX_XXX_TEN GOI THAU_XXX";
+  const parts = field8.split(" - ");
+  const annexNumber = parts[0]?.trim() || "PLXX"; 
+  const contractPart = parts[1]?.trim() || "160/2025/HĐTCXD-BDH/BCONS-TĐT"; 
+  const contractNumber = (contractPart.match(/^([^/]+)/) || [])[1] || "XXX";
+  const contractType = (contractPart.match(/-(.*?)\//) || [])[1] || "BDH";
+  const lastPart = (contractPart.match(/-([^/]+)$/) || [])[1] || "XXX";
+  return `${contractType}_${annexNumber}_${contractNumber}_TEN GOI THAU_${lastPart}`;
+}
+
+function computeAllActiveIds(rawIdsString) {
+  if (!rawIdsString) return [];
+  
+  const selected = rawIdsString.toString().split(",").map(id => id.trim());
+  const set = new Set(selected);
+  let finalIds = [...selected];
+
+  const hasA = set.has("1") || set.has("2");
+  const hasB = set.has("3") || set.has("4") || set.has("5"); 
+
+  if (hasA && hasB) finalIds.push("200");
+  else if (hasA) finalIds.push("201");
+  else if (hasB) finalIds.push("202");
+
+  if (hasA) finalIds.push("300");
+  if (hasB) finalIds.push("301");
+
+  return finalIds;
+}
+
+// ==========================================
+// --- PHÂN HỆ: QUẢN LÝ FILE & SCAN UTILITIES ---
+// ==========================================
+
 const ROOT_FOLDER_ID = "1SmlwbdIfTTQAaGTl2sEtRU-KFEYmx9Xc";
 
 function uploadScanToDrive(base64Data, maHD, fileName) {
+  const lock = LockService.getScriptLock();
   try {
-    // 1. Trích xuất Tên dự án từ maHD
+    lock.waitLock(20000); // Khóa luồng bảo vệ ô chứa chuỗi metadata File Scan
     let projectName = "DEFAULT";
     const match = maHD.match(/HĐTCXD-([^\/\s]+)/i); 
     if (match) {
         projectName = match[1].trim().toUpperCase();
     }
 
-    // 2. TÌM THƯ MỤC THEO TÊN BÊN TRONG THƯ MỤC MẸ
     const rootFolder = DriveApp.getFolderById(ROOT_FOLDER_ID);
     const folderIterator = rootFolder.getFoldersByName(projectName);
     
@@ -656,8 +679,7 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
         targetFolder = rootFolder.createFolder(projectName);
     }
 
-    // --- NHẬN DIỆN MIME TYPE TỰ ĐỘNG ---
-    let mimeType = 'application/pdf'; // Mặc định là PDF
+    let mimeType = 'application/pdf'; 
     const lowerName = fileName.toLowerCase();
     if (lowerName.endsWith('.xlsx')) {
         mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -665,14 +687,12 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
         mimeType = 'application/vnd.ms-excel';
     }
     
-    // 3. Tạo Blob với MimeType tương ứng
     const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, fileName);
 
     const file = targetFolder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
     const fileId = file.getId();
 
-    // 4. Cập nhật dữ liệu vào Sheet
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const sheetX = ss.getSheetByName("X");
     const lastRow = sheetX.getLastRow();
@@ -692,6 +712,8 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
     return { success: true, id: fileId, fileName: fileName };
   } catch (e) { 
     return { success: false, error: e.toString() }; 
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
 }
 
@@ -707,7 +729,9 @@ function getFileFromDrive(fileId) {
 }
 
 function deleteContractRow_Backend(maHD) {
+  var lock = LockService.getScriptLock();
   try {
+    lock.waitLock(20000); // Khóa luồng 20 giây tránh tranh chấp trượt dòng với lệnh sửa
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const maClean = maHD.toString().trim().toUpperCase();
     let fileIds = [];
@@ -723,7 +747,7 @@ function deleteContractRow_Backend(maHD) {
             scanData.split(";;").forEach(e => fileIds.push(e.split("|")[0]));
           }
           sheetX.getRange(i + 1, 15, 1, 5).clearContent();
-          break; // EARLY EXIT: Đã tìm thấy và xử lý xong, dừng loop
+          break; 
         }
       }
     }
@@ -736,7 +760,7 @@ function deleteContractRow_Backend(maHD) {
       for (let j = dataE.length - 1; j >= 0; j--) {
         if (dataE[j][0].toString().trim().toUpperCase() === maClean && maClean !== "") {
           sheetLog.deleteRow(j + 1);
-          break; // EARLY EXIT: Đã xóa dòng, dừng loop
+          break; 
         }
       }
     }
@@ -747,20 +771,21 @@ function deleteContractRow_Backend(maHD) {
     }
 
     SpreadsheetApp.flush();
+    
+    publishAblyContractUpdate("DELETE_DATA", maHD);
+    
     return true;
   } catch (e) {
     throw new Error("Lỗi Backend xóa Cột E: " + e.message);
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
 }
 
-function getOrCreateSubFolder(parentFolder, folderName) {
-  const folders = parentFolder.getFoldersByName(folderName);
-  if (folders.hasNext()) return folders.next();
-  return parentFolder.createFolder(folderName);
-}
-
 function deleteScanFilePermanently(maHD, fileIdToDelete) {
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(20000); // Khóa luồng bảo vệ tránh ghi đè dữ liệu tệp tin khi xóa đồng thời
     if (!fileIdToDelete) throw new Error("ID không hợp lệ");
     Drive.Files.remove(fileIdToDelete);
 
@@ -783,46 +808,54 @@ function deleteScanFilePermanently(maHD, fileIdToDelete) {
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
 }
 
+function getOrCreateSubFolder(parentFolder, folderName) {
+  const folders = parentFolder.getFoldersByName(folderName);
+  if (folders.hasNext()) return folders.next();
+  return parentFolder.createFolder(folderName);
+}
+
 function optimizeDocSections(body, validSections) {
-    const paragraphs = body.getParagraphs();
-    let isDeleting = false;
-    let currentBlock = [];
-    let elementsToRemove = [];
+  const paragraphs = body.getParagraphs();
+  let isDeleting = false;
+  let currentBlock = [];
+  let elementsToRemove = [];
 
-    for (let i = 0; i < paragraphs.length; i++) {
-        let p = paragraphs[i];
-        let text = p.getText().trim();
+  for (let i = 0; i < paragraphs.length; i++) {
+    let p = paragraphs[i];
+    let text = p.getText().trim();
 
-        if (!isDeleting && text.includes("{")) {
-            isDeleting = true;
-            currentBlock = [p];
-        } 
-        else if (isDeleting) {
-            currentBlock.push(p);
-        }
-
-        if (isDeleting && text.includes("}")) {
-            let match = text.match(/\}\s*(\d+)/);
-            if (match && match[1]) {
-                if (!validSections.has(match[1].toString())) {
-                    elementsToRemove.push(...currentBlock);
-                }
-            }
-            isDeleting = false;
-            currentBlock = [];
-        }
+    if (!isDeleting && text.includes("{")) {
+      isDeleting = true;
+      currentBlock = [p];
+    } 
+    else if (isDeleting) {
+      currentBlock.push(p);
     }
 
-    elementsToRemove.forEach(el => {
-        try { el.removeFromParent(); } catch(e) {}
-    });
-
-    body.replaceText("\\{", "");
-    body.replaceText("\\}\\s*\\d+", "");
+    if (isDeleting && text.includes("}")) {
+      let match = text.match(/\}\s*(\d+)/);
+      if (match && match[1]) {
+        if (!validSections.has(match[1].toString())) {
+          elementsToRemove.push(...currentBlock);
+        }
+      }
+      isDeleting = false;
+      currentBlock = [];
+    }
   }
+
+  elementsToRemove.forEach(el => {
+    try { el.removeFromParent(); } catch(e) {}
+  });
+
+  body.replaceText("\\{", "");
+  body.replaceText("\\}\\s*\\d+", "");
+}
 
 
 ==================================================
@@ -833,7 +866,8 @@ FILE [3]: ./index.html
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no">
-    <title>The Contract Hub_V2</title>
+    <title>KEN</title>
+    <link rel="icon" type="image/png" href="https://i.postimg.cc/W4v0Vv2C/logo.png">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -857,9 +891,10 @@ FILE [3]: ./index.html
     <link rel="stylesheet" href="public/Drawing.css">
 
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
+    <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 </head>
 <body>
-    <!-- 1. LOADERS -->
+    <!-- 1. LOADERS & LOGIN OVERLAY -->
     <div id="loadingSystem" class="luxury-loader">
         <div class="loader-content">
             <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">
@@ -867,16 +902,89 @@ FILE [3]: ./index.html
             <p class="loader-text">SYSTEM INITIALIZING</p>
         </div>
     </div>
+
+    <!-- KHUNG ĐĂNG NHẬP / ĐĂNG KÝ THIẾT BỊ (GLASSMORPHISM) -->
+    <!-- KHUNG ĐĂNG NHẬP / ĐĂNG KÝ THIẾT BỊ (GLASSMORPHISM) -->
+    <div id="loginOverlay" class="luxury-loader" style="display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 100000000 !important;">
+        <div class="form-container" style="width: 500px; text-align: center; transform: none; animation: popIn_PL 0.4s ease-out; background: rgba(34, 56, 68, 0.4); border: 1.5px solid rgba(255, 186, 8, 0.4); padding: 30px;">
+            <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" style="width: 90px; margin-bottom: 20px;">
+            <h2 id="loginTitle" style="color: #FFBA08; font-size: 15px; font-weight: 800; letter-spacing: 2px; margin-bottom: 25px; text-transform: uppercase;">MEMBER SIGN IN</h2>
+            
+            <div id="loginInputFields" style="display: flex; flex-direction: column; gap: 15px; text-align: left; margin-bottom: 25px;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <label style="line-height: 1; font-size: 11px;"><i class="bi bi-envelope-fill"></i> Email</label>
+                    <input type="email" id="loginEmail" placeholder="example@gmail.com" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: left;" required>
+                </div>
+                <!-- VÙNG PASSWORD (ẨN KHI ĐĂNG KÝ) -->
+                <div id="passwordFieldContainer" style="display: flex; flex-direction: column; gap: 4px;">
+                    <label style="line-height: 1; font-size: 11px;"><i class="bi bi-lock-fill"></i> Password</label>
+                    <input type="password" id="loginPassword" placeholder="••••" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: left;" required>
+                </div>
+                <!-- VÙNG NHẬP HỌ TÊN (HIỆN KHI ĐĂNG KÝ) - HỖ TRỢ GÕ TIẾNG VIỆT -->
+                <div id="nameFieldContainer" style="display: none; flex-direction: column; gap: 4px;">
+                    <label style="line-height: 1; font-size: 11px;"><i class="bi bi-person-fill"></i> Name</label>
+                    <input type="text" id="registerName" placeholder="HỌC" style="border-radius: 8px; padding: 10px 15px; font-size: 14px; text-align: left; text-transform: uppercase; border: 1.5px solid rgba(255, 186, 8, 0.4);" oninput="clearNameWarning()" onblur="this.value = this.value.toUpperCase()" required>
+                    <!-- DÒNG CẢNH BÁO TRÙNG TÊN IN NGHIÊNG MÀU ĐỎ -->
+                    <span id="nameWarningText" style="display: none; color: #ff4d4d; font-size: 11.5px; font-style: italic; margin-top: 4px; line-height: 1.3;"></span>
+                </div>
+            </div>
+            
+            <button type="button" id="loginSubmitBtn" class="submit-button" onclick="performLogin()" style="width: 100%; height: 40px; border-radius: 8px !important; margin-bottom: 20px;">SIGN IN</button>
+            
+            <!-- LIÊN KẾT CHUYỂN TRẠNG THÁI -->
+            <div id="toggleLoginView" style="font-size: 11px; color: #95A1AF; cursor: pointer; text-decoration: underline;" onclick="toggleLoginMode()">Chưa có tài khoản? Đăng ký ngay</div>
+        </div>
+    </div>
     <div id="contractLoading" class="luxury-loader" style="display: none;"><div class="loader-content"><img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse"><div class="shimmer-bar"></div><p class="loader-text">CRAFTING DOCUMENT</p></div></div>
 
-    <!-- 2. HEADER -->
-    <div class="header">
+    <!-- 2. HEADER (TÍCH HỢP QUẢ CHUÔNG DUYỆT REAL-TIME) -->
+    <div class="header" style="justify-content: space-between !important; padding: 0 30px !important;">
+        <!-- KHU VỰC TRÁI: LOGOUT & QUẢ CHUÔNG THÔNG BÁO -->
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <a href="javascript:void(0)" id="btn-logout" onclick="performLogout()" 
+   style="text-decoration: none; display: flex; align-items: center; gap: 8px; font-size: 14px; transition: all 0.2s ease-in-out;" 
+   onmouseover="this.querySelector('i').style.color='#ffffff'; this.querySelector('.logout-txt').style.color='#ffffff';" 
+   onmouseout="this.querySelector('i').style.color='rgba(255,255,255,0.4)'; this.querySelector('.logout-txt').style.color='rgba(255,255,255,0.6)';">
+   
+    <!-- Icon đăng xuất (Mặc định mờ nhẹ, khi hover sáng màu trắng đồng bộ) -->
+    <i class="bi bi-box-arrow-left" style="font-size: 15px; color: rgba(255, 255, 255, 0.4); transition: color 0.2s; position: relative; top: 0.5px;"></i>
+    
+    <!-- Chữ Log out mờ nhẹ -->
+    <span class="logout-txt" style="color: rgba(255, 255, 255, 0.6); font-weight: 500; transition: color 0.2s; letter-spacing: 0.3px;">Log out,</span>
+    
+    <!-- Tên Admin giữ tông vàng Gold thương hiệu sắc nét -->
+    <strong id="staffNameDisplay" style="color: #FFBA08; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px; padding-left: 2px;"></strong>
+</a>
+            
+            <!-- BIỂU TƯỢNG QUẢ CHUÔNG THÔNG BÁO (CHỈ HIỂN THỊ CHO SẾP "HỌC") -->
+            <div id="bellNotificationContainer" style="display: none; position: relative; cursor: pointer; align-items: center; height: 100%;" onclick="toggleBellDropdown(event)">
+                <i class="bi bi-bell-fill" id="bellIcon" style="color: #FFBA08; font-size: 15px; transition: transform 0.2s;"></i>
+                <!-- CHẤM ĐỎ NHẢY SỐ LƯỢNG -->
+                <span id="bellBadge" style="display: none; position: absolute; top: -7px; right: -8px; background-color: #ff4d4d; color: white; font-size: 9px; font-weight: bold; border-radius: 50%; padding: 1.5px 4.5px; line-height: 1;">0</span>
+                
+                <!-- DROPDOWN DANH SÁCH CHỜ DUYỆT (ĐÃ KHẮC PHỤC XUNG ĐỘT CSS) -->
+                <div id="bellDropdown" style="position: absolute !important; top: 100% !important; left: 0 !important; width: 320px; padding: 12px; border: 1px solid rgba(255, 186, 8, 0.3) !important; border-top: 2px solid #FFBA08 !important; transform: translateY(10px); display: none; flex-direction: column; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.85); background: rgba(3, 24, 48, 0.95); border-radius: 8px; box-sizing: border-box; z-index: 100000005 !important;" onclick="event.stopPropagation()">
+                    <div style="color: #FFBA08; font-size: 11px; font-weight: bold; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px; margin-bottom: 4px; letter-spacing: 0.5px;">DANH SÁCH CHỜ PHÊ DUYỆT</div>
+                    <div id="bellListContent" style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;">
+                        <div style="color: #505966; font-size: 11px; font-style: italic; text-align: center; padding: 15px 0;">Không có yêu cầu chờ duyệt</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <div class="menu">
             <a href="javascript:void(0)" id="btn-about" onclick="openTab('tab-about')" class="active"><b>ABOUT</b></a>
             <a href="javascript:void(0)" id="btn-hd" onclick="openTab('tab-hdtcxd')">CONTRACT</a>
             <a href="javascript:void(0)" id="btn-pl" onclick="openTab('tab-plhd')">EXTENSIONS</a>
             <a href="javascript:void(0)" id="btn-tbkq" onclick="openTab('tab-tbkq')">NOTICES</a>
             <a href="javascript:void(0)" id="btn-drawing" onclick="openTab('tab-drawing')">DRAWING</a>
+            <div class="header-dropdown">
+                <a href="javascript:void(0)"><b>RESOURCE</b></a>
+                <div class="dropdown-menu-content">
+                    <a href="https://docs.google.com/spreadsheets/d/1y73SqPevgBN7s0_uhUhYQoGD1OXDbDgvHHXbLQD1EH0" target="_blank">DATABASE</a>
+                    <a href="https://drive.google.com/drive/folders/1htNonpBgm12Rs5rEpn2r_67Gmd1N7utQ" target="_blank">DRIVE</a>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -887,20 +995,195 @@ FILE [3]: ./index.html
             <p>Hệ thống quản lý hợp đồng đã sẵn sàng.</p>
         </div>
     </div>
-    <!-- index.html -->
-<div id="tab-hdtcxd" class="tab-content" style="display: none;">
-    <div class="form-container">
-        <h1>HỢP ĐỒNG TCXD</h1>
-        <!-- Để trống hoàn toàn, Engine sẽ tự vẽ vào đây -->
-        <form id="dataForm-hd" class="metadata-grid"></form>
-        
-        <div class="button-container" style="margin-top: 30px;">
-            <button type="button" class="clear-button" onclick="loadSystemData(true)">REFRESH CONFIG</button>
-            <button type="button" class="submit-button" onclick="submitMetadataForm()">SUBMIT INJECTION</button>
+    <div id="tab-hdtcxd" class="tab-content" style="display: none;">
+        <div class="form-container">
+    <div class="location-date-container">
+        <select id="locationDropdown-hd" class="location-dropdown"></select>
+        <span id="dateDisplay-hd" class="date-display"></span>
+    </div>
+
+    <form id="dataForm-hd">
+        <!-- Ô TÌM KIẾM CHÍNH: GÓI THẦU -->
+        <div class="dropdown-container">
+            <input type="text" name="field0-hd" id="field0-hd" placeholder="-- Search for Bidding Package --" 
+                   oninput="coreFilter('field0-hd', 'drop-field0-hd', 'pack')" 
+                   onkeydown="masterKeyboardNav(event, 'drop-field0-hd', 'div:not(.disable-hover)', 'field2-hd', (el) => el.onmousedown())"
+                   onclick="this.select(); coreFilter('field0-hd', 'drop-field0-hd', 'pack'); event.stopPropagation();" 
+                   style="border-radius: 35px" autocomplete="off">
+            <div id="drop-field0-hd" class="smooth-dropdown"></div>
         </div>
+
+        <h1>SOẠN THẢO HỢP ĐỒNG</h1>
+
+        <!-- CATEGORY -->
+        <label>
+            <div>
+                <span><i class="bi bi-intersect"></i> Item Category </span>
+            </div>
+            <div id="cont-field1-hd" class="dropdown-container" style="display: none;">
+                <input type="text" name="field1-hd" id="field1-hd" placeholder="-- Tên hạng mục (Tự động) --">
+            </div>
+        </label>
+
+        <!-- PROJECT CODE -->
+        <label>
+            <div style="margin-bottom: 4px;">
+                <span><i class="bi bi-buildings-fill"></i> Project Code</span>
+            </div>
+            <div id="cont-field2-hd" class="dropdown-container" style="display: none;">
+                <input type="text" name="field2-hd" id="field2-hd" placeholder="-- Nhập mã hoặc tên dự án (VD: BCT, BBT, ...) --" 
+                       oninput="coreFilter('field2-hd', 'drop-field2-hd', 'project')" 
+                       onkeydown="masterKeyboardNav(event, 'drop-field2-hd', 'div:not(.disable-hover)', 'field3-hd', (el) => el.onmousedown())"
+                       onclick="this.select(); coreFilter('field2-hd', 'drop-field2-hd', 'project'); event.stopPropagation();" autocomplete="off">
+                <span class="dropdown-icon">⏷</span>
+                <div id="drop-field2-hd" class="smooth-dropdown"></div>
+            </div>
+        </label>
+
+        <!-- CONTRACTOR -->
+        <label>
+            <div style="margin-bottom: 4px;">
+                <span><i class="bi bi-people-fill"></i> Contractor</span>
+            </div>
+            <div id="cont-field3-hd" class="dropdown-container" style="display: none;">
+                <input type="text" name="field3-hd" id="field3-hd" placeholder="-- Nhập tên hoặc mã Nhà thầu --" 
+                       oninput="coreFilter('field3-hd', 'drop-field3-hd', 'contractor')" 
+                       onkeydown="masterKeyboardNav(event, 'drop-field3-hd', 'div:not(.disable-hover)', 'field4-hd', (el) => el.onmousedown())"
+                       onclick="this.select(); coreFilter('field3-hd', 'drop-field3-hd', 'contractor'); event.stopPropagation();" autocomplete="off">
+                <span class="dropdown-icon">⏷</span>
+                <div id="drop-field3-hd" class="smooth-dropdown"></div>
+            </div>
+        </label>
+
+        <!-- ==========================================================================
+             VÙNG KẾT HỢP 2 TRƯỜNG TRÊN 1 HÀNG (GIÁ TRỊ & TẠM ỨNG)
+             ========================================================================== -->
+        <!-- Đã đảo ngược logic: Chữ luôn hiện, chỉ ẩn ô nhập liệu bên trong -->
+        <div style="display: flex; gap: 15px; align-items: flex-start; width: 100%; position: relative; z-index: 900;">
+
+            <!-- 1. Ô GIÁ TRỊ HỢP ĐỒNG -->
+            <label style="flex: 7; margin-bottom: 0;">
+                <div style="margin-bottom: 4px;">
+                    <span><i class="bi bi-coin"></i> Contract Value</span>
+                </div>
+                <!-- Ẩn ở đây -->
+                <div id="cont-field4-hd" class="dropdown-container" style="display: none;">
+                    <input type="text" name="field4-hd" id="field4-hd" placeholder="-- Nhập giá trị hợp đồng --" 
+                           onclick="this.select()" oninput="formatInput_HD(this)" 
+                           onkeydown="if(event.key === 'Enter') { event.preventDefault(); document.getElementById('field5-hd').focus(); }" autocomplete="off">
+                </div>
+            </label>
+
+            <!-- 2. Ô TẠM ỨNG -->
+            <label style="flex: 3; margin-bottom: 0;">
+                <div style="margin-bottom: 4px;">
+                    <span><i class="bi bi-cash-coin"></i> Advance</span>
+                </div>
+                <!-- Ẩn ở đây -->
+                <div id="cont-field5-hd" class="dropdown-container" style="display: none;">
+                    <input type="text" id="field5-hd" placeholder="-- % --" 
+                           oninput="filterAdvance_HD(this)" 
+                           onkeydown="masterKeyboardNav(event, 'drop-field5-hd', 'div:not(.disable-hover)', 'field6-hd', (el) => el.onmousedown())"
+                           onclick="this.select(); filterAdvance_HD(this); event.stopPropagation();" 
+                           style="text-align: center !important;" autocomplete="off">
+                    <span class="dropdown-icon" style="right: 5px;">⏷</span>
+                    <div id="drop-field5-hd" class="smooth-dropdown"></div>
+                </div>
+            </label>
+
+        </div>
+        <!-- ========================================================================== -->
+
+        <!-- GUARANTEE -->
+        <div id="radio-guarantee-container-hd" style="display: none;">
+            <label style="margin-bottom: 4px;">Guarantee <i class="bi bi-shield-check"></i></label>
+            <div class="radio-container">
+                <label class="radio-label">
+                    <input type="radio" name="option-hd" value="BLTU" onclick="toggleRadio_HD(this)">
+                    <span class="custom-radio"></span><span class="radio-text">Bảo lãnh tạm ứng</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="option-hd" value="BLHD" onclick="toggleRadio_HD(this)">
+                    <span class="custom-radio"></span><span class="radio-text">Bảo lãnh hợp đồng</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- PAYMENT -->
+        <div id="radio-payment-container-hd" style="display: none;">
+            <label style="margin-bottom: 4px;">Payment <i class="bi bi-credit-card-2-back"></i></label>
+            <div class="radio-container">
+                <label class="radio-label">
+                    <input type="radio" name="option2-hd" value="TT85" onclick="toggleRadio_HD(this)">
+                    <span class="custom-radio"></span><span class="radio-text">Thanh toán đợt 85%</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="option2-hd" value="TT90" onclick="toggleRadio_HD(this)">
+                    <span class="custom-radio"></span><span class="radio-text">Thanh toán đến 90%</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- ==========================================================================
+             VÙNG KẾT HỢP 2 TRƯỜNG TRÊN 1 HÀNG (BẢO HÀNH & TIẾN ĐỘ) - TỶ LỆ 7:3
+             ========================================================================== -->
+        <div style="display: flex; gap: 15px; align-items: flex-start; width: 100%; position: relative; z-index: 800; margin-top: 5px;">
+
+            <!-- 1. Ô BẢO HÀNH (Chiếm 7 phần - Thẳng cột với Giá trị) -->
+            <label style="flex: 7; margin-bottom: 0;">
+                <div style="margin-bottom: 4px;">
+                    <span><i class="bi bi-tools"></i> Settlement / Warranty</span>
+                </div>
+                <div id="cont-field6-hd" class="dropdown-container" style="display: none;">
+                    <!-- Đã trả lại placeholder gốc, bỏ căn giữa -->
+                    <input type="text" name="field6-hd" id="field6-hd" placeholder="-- Hình thức bảo hành --" 
+                           oninput="coreFilter('field6-hd', 'drop-field6-hd', 'warranty')" 
+                           onkeydown="masterKeyboardNav(event, 'drop-field6-hd', 'div:not(.disable-hover)', 'field7-hd', (el) => el.onmousedown())"
+                           onclick="this.select(); coreFilter('field6-hd', 'drop-field6-hd', 'warranty'); event.stopPropagation();" autocomplete="off">
+                    <span class="dropdown-icon">⏷</span>
+                    <div id="drop-field6-hd" class="smooth-dropdown"></div>
+                </div>
+            </label>
+
+            <!-- 2. Ô TIẾN ĐỘ THI CÔNG (Chiếm 3 phần - Thẳng cột với Tạm ứng) -->
+            <label style="flex: 3; margin-bottom: 0;">
+                <div style="margin-bottom: 4px;">
+                    <span><i class="bi bi-hourglass-split"></i> Progress</span>
+                </div>
+                <div id="cont-field7-hd" class="dropdown-container" style="display: none;">
+                    <!-- Đã trả lại placeholder gốc, ép căn giữa giống ô Tạm ứng cho đẹp -->
+                    <input type="text" name="field7-hd" id="field7-hd" placeholder="-- Days --" 
+                           onclick="this.select()" oninput="formatInput_HD(this)" 
+                           style="text-align: center !important;" autocomplete="off">
+                </div>
+            </label>
+
+        </div>
+        <!-- ========================================================================== -->
+
+        <!-- CONTRACT NUMBER -->
+        <label>
+            <div style="margin-bottom: 4px;">
+                <i class="bi bi-view-list"></i> Contract Number
+            </div>
+            <input type="text" name="field8-hd" id="field8-hd" class="readonly-dark" style="border-radius: 35px; text-align: center;" placeholder="Difference in confidence" readonly>
+        </label>
+    </form>
+
+    <div class="button-container">
+        <div class="checkbox-container">
+            <input type="checkbox" id="draftContractCheckbox-hd" onchange="toggleHD_Draft(this)">
+            <label for="draftContractCheckbox-hd">Dự thảo</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="pl01Checkbox-hd">
+            <label for="pl01Checkbox-hd">PL01</label>
+        </div>
+        <button type="button" class="clear-button" onclick="clearForm_HD();">Cancel</button>
+        <button type="button" id="submitButton-hd" class="submit-button" onclick="submitData_HD()">Export File</button>
     </div>
 </div>
-
+    </div>
     <div id="tab-plhd" class="tab-content" style="display: none;">
         <div class="form-container">
     <div class="location-date-container"> 
@@ -1317,20 +1600,85 @@ FILE [3]: ./index.html
     <!-- 4. GLOBAL ELEMENTS (BẮT BUỘC Ở ĐÂY) -->
     <div id="customContextMenu-pl"></div>
     <div id="toastContainer"></div>
-    <div id="infoModal-pl" class="info-modal-overlay" onclick="closeSearchGuide_PL()"></div>
+    <div id="infoModal-pl" class="info-modal-overlay" onclick="closeSearchGuide_PL()">
+    <div class="info-modal-content" onclick="event.stopPropagation()">
+        <div class="info-modal-header">
+            <i class="bi bi-info-circle-fill" style="color: #FFBA08; font-size: 32px;"></i>
+            <span>SYSTEM GUIDELINES</span>
+        </div>
+        
+  <div class="info-modal-body">
+    <!-- PHẦN 1: SOẠN THẢO PHỤ LỤC (MỚI BỔ SUNG) -->
+    <div class="info-section-title">CREATE ANNEX (PLHD)</div>
+    <div class="info-row">
+        <div class="info-key"><i class="bi bi-file-earmark-plus-fill"></i></div>
+        <div class="info-desc">
+    <b>CÁC BƯỚC SOẠN PHỤ LỤC HỢP ĐỒNG:</b>
+    <p>1. Đối chiếu dữ liệu hệ thống với Hợp đồng gốc và các Phụ lục đã ký.</p>
+    <p>2. Chỉ chọn mã Hợp đồng gốc (không chọn mã Phụ lục).</p>
+    <p>3. Tick chọn "PL01" nếu đây là Phụ lục số 01.</p>
+    <p>4. Chọn nội dung cần điều chỉnh và Xuất file.</p>
+    
+    <div class="info-example" style="margin-top: 12px; padding: 10px;">
+        <b style="color: #FFBA08;">Lưu ý:</b> Đảm bảo dữ liệu của Phụ lục gần nhất đã được nhập vào hệ thống. Đặc biệt, nếu soạn Phụ lục thay đổi GIÁ TRỊ, bắt buộc phải cập nhật FULL các Phụ lục thay đổi GIÁ TRỊ trước đó.
+    </div>
+</div>
+    </div>
 
-    <script>
-        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzG7aVeSXeXm0KgIIouCYXM1h4JXtUbV2TmT2qPdvDd7o7cuE0by0GzHIVG7cyD1ZFM/exec";
-        async function callBackend(action, data = {}) {
-            const resp = await fetch(GAS_API_URL, { method: 'POST', mode: 'cors', body: JSON.stringify({ action, data }) });
-            const res = await resp.json();
-            if (res.status === "error") throw new Error(res.message);
-            return res.data;
-        }
-    </script>
+    <!-- PHẦN 2: TÌM KIẾM (GIỮ NGUYÊN CODE SẾP GỬI) -->
+    <div class="info-section-title" style="margin-top: 25px;">ADVANCED SEARCH</div>
+    
+    <div class="info-row">
+        <div class="info-key">+</div>
+        <div class="info-desc">
+            <b>TÌM KIẾM ĐA ĐIỀU KIỆN</b>
+            <p>Kết hợp nhiều từ khóa (Số HĐ, Gói thầu, Nhà thầu).</p>
+            <span class="info-example">Ví dụ: 2026 + Sơn nước + APT</span>
+        </div>
+    </div>
+
+    <div class="info-row">
+        <div class="info-key">'</div>
+        <div class="info-desc">
+            <b>TÌM KIẾM NHÂN SỰ</b>
+            <p>Lọc hồ sơ theo người phụ trách.</p>
+            <span class="info-example">Ví dụ: 'học + 2026</span>
+        </div>
+    </div>
+
+    <!-- PHẦN 3: QUẢN LÝ (GIỮ NGUYÊN CODE SẾP GỬI) -->
+    <div class="info-section-title" style="margin-top: 25px;">DATA MANAGEMENT</div>
+    
+    <div class="info-row">
+        <div class="info-key"><i class="bi bi-mouse2-fill"></i></div>
+        <div class="info-desc">
+            <b>MỞ BẢNG CHỌN (RIGHT-CLICK)</b>
+            <p>Click chuột phải hoặc Nhấn giữ vào dòng dữ liệu.</p>
+            
+            <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+                <!-- Dòng 1: Transfer -->
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span class="info-tag-fixed">Transfer Records</span>
+                    <span class="info-tag-desc">Chuyển giao hợp đồng qua phòng Thanh toán.</span>
+                </div>
+                <!-- Dòng 2: Edit -->
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span class="info-tag-fixed">Edit Data</span>
+                    <span class="info-tag-desc">Cập nhật: Mã số, Ngày ký, Tên gói thầu, Giá trị hoặc Xoá dữ liệu.</span>
+                </div>
+                <!-- Dòng 3: Scan -->
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span class="info-tag-fixed">Upload Files</span>
+                    <span class="info-tag-desc">Quản lý File.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+</div>
     <script src="public/JS_Variables.js"></script>
     <script src="public/JS_Utils.js"></script>
-    <script src="public/JS_Metadata_Engine.js"></script>
     <script src="public/JS_Core_API.js"></script>
     <script src="public/JS_Tab_HD.js"></script>
     <script src="public/JS_Tab_PL_Core.js"></script>
@@ -1342,43 +1690,110 @@ FILE [3]: ./index.html
 </html>
 
 
+
 ==================================================
 FILE [4]: ./API_HopDong.js
 ==================================================
-// 3. LOGIC XUẤT FILE HỢP ĐỒNG GỐC (HDTCXD)
 // =========================================================================
-function getLatestContractNumber_HD() {
+// 3. LOGIC XUẤT FILE HỢP ĐỒNG GỐC (HDTCXD) & THÔNG BÁO KẾT QUẢ (TBKQ)
+// =========================================================================
+
+// ==========================================
+// --- NHÓM HÀM HỖ TRỢ DÙNG CHUNG (HELPERS) ---
+// ==========================================
+
+function extractYearFromDateString(dateStr) {
+  if (!dateStr) return new Date().getFullYear().toString();
+  const match = dateStr.match(/\b(20\d{2})\b/);
+  if (match) return match[1];
+  return new Date().getFullYear().toString();
+}
+
+function getNextRowAfterLastData_SO(sheet, startRow, colB, colE) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < startRow) return startRow;
+  const maxCol = Math.max(colB, colE);
+  const values = sheet.getRange(startRow, 1, lastRow - startRow + 1, maxCol).getValues();
+  
+  let lastDataRowOffset = -1;
+  for (let i = 0; i < values.length; i++) {
+    const valB = values[i][colB - 1].toString().trim();
+    const valE = values[i][colE - 1].toString().trim();
+    if (valB !== "" || valE !== "") {
+      lastDataRowOffset = i; 
+    }
+  }
+  return lastDataRowOffset === -1 ? startRow : startRow + lastDataRowOffset + 1;
+}
+
+function getContractTemplateId_HD(type) {
+  const ids = {
+    "BCONS": "1DghIQwP3P5YmsHPKjyw1Uw1ZnOskLKAN3yR18TAgkZM",
+    "DBCONS": "1gQ1RqteS09IURX4O63KcQZ1BbpHMBMiEtD7jtO31l3Y"
+  };
+  return ids[type];
+}
+
+function createContractFile_HD(id, name) {
+  const file = DriveApp.getFileById(id).makeCopy(name);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+  return file;
+}
+
+function escapeSpecialChars(s) { 
+  return s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'); 
+}
+
+// ==========================================
+// --- PHÂN HỆ: HỢP ĐỒNG GỐC (HDTCXD) ---
+// ==========================================
+
+function getLatestContractNumber_HD(targetYear) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("SO HDTCXD BCONS - NTP");
-  return sheet ? sheet.getRange("R1").getValue().toString().trim() : "01";
+  if (!sheet) return "00";
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 3) return "00";
+  const data = sheet.getRange(3, 5, lastRow - 2, 1).getValues(); 
+  let maxStt = 0;
+  const regex = new RegExp("^(\\d+)\\/" + targetYear + "\\/HĐTCXD", "i");
+  for (let i = 0; i < data.length; i++) {
+    const val = data[i][0].toString().trim();
+    const match = val.match(regex);
+    if (match) {
+      const stt = parseInt(match[1], 10);
+      if (stt > maxStt) maxStt = stt;
+    }
+  }
+  return String(maxStt).padStart(2, '0');
 }
 
 function handleFullExportProcess_HD(formData) {
+  var lock = LockService.getScriptLock();
   try {
-    var currentYear = new Date().getFullYear();
-    // field2 là Dự án
+    lock.waitLock(20000); 
+    var targetYear = extractYearFromDateString(formData.date);
     var extractedField2 = formData.field2.includes(" | ") ? formData.field2.split(" | ")[0].trim() : formData.field2;
-    // field3 là Nhà thầu (bản cũ là field0)
     var extractedField3 = formData.field3.includes(" | ") ? formData.field3.split(" | ")[0].trim() : formData.field3;
 
     if (!formData.draftContract) {
-      var lastNumber = getLatestContractNumber_HD(); 
+      var lastNumber = getLatestContractNumber_HD(targetYear); 
       var nextNo = String(parseInt(lastNumber, 10) + 1).padStart(2, '0');
 
-      // field8 là Số hợp đồng (bản cũ là field1)
-      formData.field8 = `${nextNo}/${currentYear}/HĐTCXD-${extractedField2}/${formData.location}-${extractedField3}`;
+      formData.field8 = `${nextNo}/${targetYear}/HĐTCXD-${extractedField2}/${formData.location}-${extractedField3}`;
       
-      // field0 là Gói thầu (bản cũ là field3)
       var packageNameRaw = formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0;
       var packageName = packageNameRaw.toUpperCase().replace(/[^A-Z0-9\sĐƯÁÀẢÃẠÂẤẦẨẪẬĂẮẰẲẴẶÉÈẺẼẸÊẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴ]/g, "");
-      formData.fileName = `${extractedField2}_${nextNo}_${currentYear}_${packageName}_${extractedField3}`;
+      formData.fileName = `${extractedField2}_${nextNo}_${targetYear}_${packageName}_${extractedField3}`;
     } else {
-      formData.field8 = `.../${currentYear}/HĐTCXD-${extractedField2}/${formData.location}-${extractedField3}`;
+      formData.field8 = `.../${targetYear}/HĐTCXD-${extractedField2}/${formData.location}-${extractedField3}`;
       formData.fileName = "Dự thảo hợp đồng";
     }
 
     return writeToSheetAndExportDoc_HD(formData);
   } catch (e) {
     throw new Error(e.message);
+  } finally {
+    lock.releaseLock(); 
   }
 }
 
@@ -1401,7 +1816,7 @@ function writeToSheetAndExportDoc_HD(data) {
         ]];
         sourceSheet.getRange("BH4:BJ4").setValues(radioValues);
 
-        SpreadsheetApp.flush(); // Bắt buộc giữ lại để GS tính toán 78 cột công thức
+        SpreadsheetApp.flush(); 
 
         const lastCol = sourceSheet.getLastColumn();
         const allRow3Values = sourceSheet.getRange(3, 1, 1, lastCol).getValues()[0];
@@ -1411,15 +1826,16 @@ function writeToSheetAndExportDoc_HD(data) {
         // 2. GHI SỔ THEO DÕI VÀ ĐÁNH DẤU SHEET X
         if (!data.draftContract) {
             const targetSheet = spreadsheet.getSheetByName("SO HDTCXD BCONS - NTP");
-            const targetRow = targetSheet.getRange("S1").getValue();
+            const targetRow = getNextRowAfterLastData_SO(targetSheet, 3, 2, 5);
             const jValue = getCurrentStaffName();
 
+            // Sửa lỗi: Cung cấp đầy đủ 13 phần tử mảng khớp hoàn hảo với dải ô Range(13)
             const logValues = [[
                 allRow3Values[49], allRow3Values[8], "", data.field8, "",
                 allRow3Values[45], allRow3Values[21], allRow3Values[26], jValue,
-                allRow3Values[5], allRow3Values[6], "", allRow3Values[18]
+                allRow3Values[5], allRow3Values[6], ""
             ]];
-            targetSheet.getRange(targetRow, 2, 1, 13).setValues(logValues);
+            targetSheet.getRange(targetRow, 2, 1, 12).setValues(logValues);
 
             const valH3 = allRow3Values[7]; 
             const valBI3 = allRow3Values[60]; 
@@ -1429,11 +1845,9 @@ function writeToSheetAndExportDoc_HD(data) {
             const tickR = (valBI3 == 303) ? "x" : "";
             const tickS = (valBJ3 == 309) ? "x" : "";
 
-            // XÓA BỎ SpreadsheetApp.flush() DƯ THỪA TẠI ĐÂY
             const sheetX = spreadsheet.getSheetByName("X");
             const dataA = sheetX.getRange(4, 1, sheetX.getLastRow() - 3, 1).getValues();
             
-            // Tối ưu RAM: Bỏ .flat(), duyệt trực tiếp mảng 2 chiều để tìm kiếm
             let rowX = -1;
             const targetMa = data.field8.trim();
             for (let i = 0; i < dataA.length; i++) {
@@ -1449,7 +1863,7 @@ function writeToSheetAndExportDoc_HD(data) {
             }
         }
 
-        // 3. TẠO VÀ XỬ LÝ DOCS (ĐÃ TỐI ƯU CỔ CHAI)
+        // 3. TẠO VÀ XỬ LÝ DOCS
         const docTemplateId = getContractTemplateId_HD(data.location);
         if (!docTemplateId) throw new Error("Không tìm thấy mẫu hợp đồng: " + data.location);
 
@@ -1457,7 +1871,6 @@ function writeToSheetAndExportDoc_HD(data) {
         const doc = DocumentApp.openById(copiedFile.getId());
         const body = doc.getBody();
 
-        // 3.1 Replace Text
         const replaceKeys = placeholders.slice(1);
         const replaceVals = allRow3Displays.slice(1);
 
@@ -1467,63 +1880,64 @@ function writeToSheetAndExportDoc_HD(data) {
             }
         });
 
-        // 3.2 Remove Unused Sections (Sử dụng Engine Native thay vì lặp DOM)
         const sectionData = allRow3Values.slice(54, 76);
         const validSections = new Set(sectionData.map(v => v ? v.toString().trim() : null).filter(Boolean));
         
         optimizeDocSections(body, validSections);
 
         doc.saveAndClose();
+        
+        publishAblyContractUpdate("CREATE_HD", data.field8);
+        
         return { link: copiedFile.getUrl() };
 
     } catch (error) {
-        Logger.log("Lỗi tại writeToSheetAndExportDoc_HD: " + error.stack);
         throw new Error("Hệ thống không thể xuất file: " + error.message);
     }
 }
 
-// --- HÀM HỖ TRỢ DÙNG CHUNG ---
-function getContractTemplateId_HD(type) {
-  const ids = {
-    "BCONS": "1CogZ-5vyYQcsfp7tQsmclrcx7SNBJuI5bso2PrfZORE",
-    "DBCONS": "1gQ1RqteS09IURX4O63KcQZ1BbpHMBMiEtD7jtO31l3Y"
-  };
-  return ids[type];
-}
+// ==========================================
+// --- PHÂN HỆ: THÔNG BÁO KẾT QUẢ (TBKQ) ---
+// ==========================================
 
-function createContractFile_HD(id, name) {
-  const file = DriveApp.getFileById(id).makeCopy(name);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
-  return file;
-}
-
-function escapeSpecialChars(s) { return s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'); }
-
-// =========================================================================
-// 5. LOGIC XUẤT FILE THÔNG BÁO KẾT QUẢ (TBKQ)
-// =========================================================================
-
-function getLatestContractNumber_TB() {
+function getLatestContractNumber_TB(targetYear) {
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME_SO_TB);
-  if (!sheet) return "01";
-  return sheet.getRange("R1").getValue().toString().trim() || "01";
+  if (!sheet) return "00";
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 3) return "00";
+  const data = sheet.getRange(3, 3, lastRow - 2, 1).getValues(); 
+  let maxStt = 0;
+  const regex = new RegExp("^(\\d+)\\/" + targetYear + "\\/TB", "i");
+  for (let i = 0; i < data.length; i++) {
+    const val = data[i][0].toString().trim();
+    const match = val.match(regex);
+    if (match) {
+      const stt = parseInt(match[1], 10);
+      if (stt > maxStt) maxStt = stt;
+    }
+  }
+  return String(maxStt).padStart(2, '0');
 }
 
 function handleFullExportProcess_TB(formData) {
+  var lock = LockService.getScriptLock();
   try {
-    const currentYear = new Date().getFullYear();
-    const lastNumber = getLatestContractNumber_TB();
+    lock.waitLock(20000); 
+    const targetYear = extractYearFromDateString(formData.date);
+    const lastNumber = getLatestContractNumber_TB(targetYear);
     const nextNo = String(parseInt(lastNumber, 10) + 1).padStart(2, '0');
 
-    // Tạo số TBKQ chuẩn (Sử dụng field6)
-    formData.field6 = `${nextNo}/${currentYear}/TB/KĐT-BCONS`;
+    formData.field6 = `${nextNo}/${targetYear}/TB/KĐT-BCONS`;
     
-    // Tạo tên file chuẩn (Sử dụng field1 - Dự án 1)
     const projectName = formData.field1.includes(" | ") ? formData.field1.split(" | ")[0] : formData.field1;
     formData.fileName = `TBKQTT_${formData.field6.replace(/\//g, '-')}_${projectName}`;
 
     return writeToSheetAndExportDoc_TB(formData);
-  } catch (e) { throw new Error(e.message); }
+  } catch (e) { 
+    throw new Error(e.message); 
+  } finally {
+    lock.releaseLock(); 
+  }
 }
 
 function writeToSheetAndExportDoc_TB(data) {
@@ -1531,44 +1945,37 @@ function writeToSheetAndExportDoc_TB(data) {
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const sourceSheet = ss.getSheetByName(SHEET_NAME_TBKQ);
     
-    // 1. GHI SHEET MỒI (Né ô J3 để sếp đặt công thức hoặc giữ dữ liệu)
     sourceSheet.getRange("A3:I3").setValues([[
       data.location, data.date, data.field6, data.field1, 
       data.field2, data.field3, data.field0, data.field4, data.field5
     ]]);
     
-    // Ghi tên hạng mục đầy đủ vào ô K3
     sourceSheet.getRange("K3").setValue(data.fieldPkgName);
 
-    // Ép hệ thống tính toán để ô J3 cập nhật kết quả mới nhất
     SpreadsheetApp.flush(); 
 
-    // LẤY DỮ LIỆU BATCH
     const lastCol = sourceSheet.getLastColumn();
     const batchData = sourceSheet.getRange(2, 2, 2, lastCol - 1).getDisplayValues();
     const placeholders = batchData[0];
     const rowValues = batchData[1];
 
-    // 2. GHI SỔ THEO DÕI (SO THONG BAO)
+    // GHI SỔ THEO DÕI (SO THONG BAO)
     const targetSheet = ss.getSheetByName(SHEET_NAME_SO_TB);
-    const targetRow = targetSheet.getRange("S1").getValue();
+    const targetRow = getNextRowAfterLastData_SO(targetSheet, 3, 2, 3);
     const sender = getCurrentStaffName();
 
-    // Gộp danh sách các dự án (Dự án 1, 2, 3)
     const combinedProjects = [rowValues[15], rowValues[18], rowValues[21]].filter(Boolean).join(", ");
-    
-    // 🔥 LOGIC MỚI: Thêm tiền tố cố định vào trước giá trị lấy từ ô J3 (rowValues[8])
     const logContent = "TB TRÚNG THẦU + THƯ CẢM ƠN VÀ THÔNG BÁO KẾT QUẢ GÓI THẦU: " + rowValues[8];
 
     targetSheet.getRange(targetRow, 2, 1, 5).setValues([[
-      rowValues[13],        // Cột B (Sổ): Ngày ký (lấy từ O3)
-      data.field6,          // Cột C (Sổ): Số TBKQ
-      combinedProjects,     // Cột D (Sổ): Mã các dự án
-      logContent,           // Cột E (Sổ): Đầu ngữ + Nội dung ô J3
-      sender                // Cột F (Sổ): Người thực hiện
+      rowValues[13],
+      data.field6,
+      combinedProjects,
+      logContent,
+      sender
     ]]);
 
-    // 3. TẠO VÀ XỬ LÝ DOCS
+    // TẠO VÀ XỬ LÝ DOCS
     const docTemplateId = "1oyp4fMSu-AJuLY6Dvb7zZX6R1FjYLDreLBaoOsEDhEc";
     const copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(data.fileName);
     copiedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
@@ -1576,14 +1983,12 @@ function writeToSheetAndExportDoc_TB(data) {
     const doc = DocumentApp.openById(copiedFile.getId());
     const body = doc.getBody();
 
-    // 3.1 Replace các thẻ [FIELD] trong văn bản
     placeholders.forEach((key, i) => {
       if (key && key.trim().startsWith("[")) {
         body.replaceText(escapeSpecialChars(key.trim()), rowValues[i] || "");
       }
     });
 
-    // Xử lý ẩn/hiện các đoạn văn bản (nếu có)
     const validSectionsArray = rowValues.slice(24, 28).map(v => v ? v.toString().trim() : null).filter(Boolean);
     const validSections = new Set(validSectionsArray);
     
@@ -1596,215 +2001,392 @@ function writeToSheetAndExportDoc_TB(data) {
 
   } catch (e) { 
     throw new Error("Lỗi Backend TBKQ: " + e.message); 
-  }}
+  }
+}
 
 
 
 ==================================================
 FILE [5]: ./Code.js
 ==================================================
-const SHEET_ID = "1_whNLrEL5x1Kk3Fheq8-AgTE425LnWkvbGVmhXMlL1I";
+const SHEET_ID = "1y73SqPevgBN7s0_uhUhYQoGD1OXDbDgvHHXbLQD1EH0";
 const SHEET_NAME_TBKQ = "TBKQTT";
 const SHEET_NAME_SO_TB = "SO THONG BAO";
 const MASTER_FOLDER_ID = '1zStGfH5eitVgbxHF-bhrQGE4NWoKlCpw';
-const CONFIG_SHEET_NAME = "WEB_CONFIG";
 
-// --- KHU VỰC CẤU HÌNH HỆ THỐNG ---
-const STAFF_CONFIG = {
-    "hocnguyen1903@gmail.com": "HỌC",
-    "ngocchaulhtst@gmail.com": "CHÂU"
-};
+// --- ĐỊNH DANH TOÀN CỤC CHO THIẾT BỊ ĐANG GỌI API ---
+var GLOBAL_STAFF_NAME = "UNKNOWN";
+var GLOBAL_STAFF_ROLE = "USER"; // Mặc định quyền của phiên làm việc là USER
 
 /**
- * Hàm lấy tên nhân sự dựa trên Email đang đăng nhập
+ * Xử lý xác thực Token qua kiến trúc Hybrid (Bóc tách phân quyền Name|Role)
  */
-function getCurrentStaffName() {
-    const email = Session.getActiveUser().getEmail();
-    return STAFF_CONFIG[email] || email || "UNKNOWN";
+function authenticateAndGetName(token) {
+  if (!token) return "UNKNOWN";
+  
+  const cache = CacheService.getScriptCache();
+  let cachedVal = cache.get(token);
+  
+  if (!cachedVal) {
+    const props = PropertiesService.getScriptProperties();
+    cachedVal = props.getProperty(token);
+    if (cachedVal) cache.put(token, cachedVal, 21600);
+  }
+  
+  if (cachedVal && cachedVal.includes("|")) {
+    const parts = cachedVal.split("|");
+    GLOBAL_STAFF_NAME = parts[0].toUpperCase().trim();
+    GLOBAL_STAFF_ROLE = parts[1] ? parts[1].toUpperCase().trim() : "USER"; 
+    return GLOBAL_STAFF_NAME;
+  }
+  return "UNKNOWN";
 }
 
-// =========================================================================
-// 1. TẠO KHUNG WEB APP (SINGLE PAGE APPLICATION)
-// =========================================================================
-// Thay thế đoạn code cũ bằng API Router này
+// --- CẤU HÌNH KHÓA TRUYỀN TIN THỜI GIAN THỰC ABLY ---
+const ABLY_API_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8RU";
+
 /**
- * GAS - File: Code.js
- * Cập nhật hàm doPost để đăng ký API Metadata
+ * Xác thực thông tin đăng nhập từ Sheet "User_Registry"
+ */
+function loginUser(mail, password) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName("User_Registry");
+  if (!sheet) throw new Error("Không tìm thấy Sheet danh sách User 'User_Registry'!");
+  
+  const data = sheet.getDataRange().getValues();
+  const targetMail = mail.toLowerCase().trim();
+  let matchedName = "";
+  let storedPassword = "";
+  let status = "PENDING";
+  let role = "USER"; 
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+      matchedName = data[i][1]?.toString().toUpperCase().trim();
+      storedPassword = data[i][2]?.toString().trim(); // Cột C (Password)
+      status = data[i][3] ? data[i][3].toString().toUpperCase().trim() : "PENDING"; // Cột D (Status)
+      role = data[i][4] ? data[i][4].toString().toUpperCase().trim() : "USER"; // Cột E (Role)
+      break;
+    }
+  }
+  
+  if (!matchedName) {
+    throw new Error("Email của sếp chưa được đăng ký trong hệ thống!");
+  }
+
+  // Xác thực mật khẩu cá nhân của từng user
+  if (password !== storedPassword) {
+    throw new Error("Sai mật khẩu đăng nhập hệ thống!");
+  }
+  
+  if (status !== "ACTIVE") {
+    throw new Error("Tài khoản đang chờ sếp phê duyệt hoặc đã bị khóa!");
+  }
+  
+  const token = "TOKEN-" + Utilities.getUuid();
+  const tokenValue = matchedName + "|" + role; 
+  
+  PropertiesService.getScriptProperties().setProperty(token, tokenValue);
+  CacheService.getScriptCache().put(token, tokenValue, 21600);
+  
+  return { success: true, token: token, name: matchedName, role: role }; 
+}
+
+/**
+ * Hàm phê duyệt nhanh tài khoản ACTIVE ngay trong Web App
+ */
+function approveUser_InApp(mail) {
+  if (GLOBAL_STAFF_ROLE !== "ADMIN") {
+    throw new Error("BẢO MẬT: Sếp không có quyền quản trị để thực hiện hành động này!");
+  }
+
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName("User_Registry");
+  if (!sheet) return false;
+  
+  const data = sheet.getDataRange().getValues();
+  const targetMail = mail.toLowerCase().trim();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+      sheet.getRange(i + 1, 4).setValue("ACTIVE"); // Cột D là cột Status
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * CHUYẾN XE TẢI DỮ LIỆU TỔNG - KHẮC PHỤC TRỄ ĐỒNG BỘ CÔNG THỨC BẢNG X
+ */
+function getSystemData(token) {
+  if (token) {
+    authenticateAndGetName(token); 
+  }
+
+  // 1. GHI ĐÈ LỆNH ĐỌC BẢNG X QUA SPREADSHEETAPP ĐỂ ÉP GOOGLE SHTEETS ĐỒNG BỘ CÔNG THỨC LẬP TỨC
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheetX = ss.getSheetByName("X");
+  const lastRowX = sheetX.getLastRow();
+  const dataX = lastRowX >= 4 ? sheetX.getRange(4, 1, lastRowX - 3, 22).getValues() : [];
+
+  // 2. GỌI BATCH GET TRUY VẤN ĐỒNG THỜI 6 BẢNG STATIC CÒN LẠI ĐỂ TỐI ƯU HÓA TỐC ĐỘ TẢI
+  const response = Sheets.Spreadsheets.Values.batchGet(SHEET_ID, {
+    ranges: [
+      "User_Registry!A2:E",
+      "DATABCONS!A3:B",
+      "DATAGOITHAU!B12:T",
+      "DATAGOITHAU!N3:N",
+      "DATANTP!C3:D",
+      "SO HDTCXD BCONS - NTP!B3:V"
+    ]
+  });
+
+  const valueRanges = response.valueRanges || [];
+  const userRegistryData = valueRanges[0]?.values || [];
+  const dataBcons = valueRanges[1]?.values || [];
+  const dataGoiThau = valueRanges[2]?.values || [];
+  const dataWarranty = valueRanges[3]?.values || [];
+  const dataNTP = valueRanges[4]?.values || [];
+  const logData = valueRanges[5]?.values || [];
+
+  // 3. LẤY DANH SÁCH USER CHỜ PHÊ DUYỆT (PENDING)
+  const pendingUsers = [];
+  userRegistryData.forEach(row => {
+    const uMail = (row[0] || "").toString().toLowerCase().trim();
+    const uName = (row[1] || "").toString().toUpperCase().trim();
+    const uStatus = row[3] ? row[3].toString().toUpperCase().trim() : "PENDING";
+    if (uMail && uStatus === "PENDING") {
+      pendingUsers.push({ mail: uMail, name: uName });
+    }
+  });
+
+  // 4. LẤY DATA DỰ ÁN
+  const reversedBcons = [...dataBcons].reverse();
+  const projectHD = reversedBcons.map(r => {
+    if (!r[0]) return null;
+    return {
+      display: r[0].toString().trim(),
+      searchString: r[1] ? `${r[0]} | ${r[1]}`.trim() : r[0].toString().trim()
+    };
+  }).filter(i => i && i.display);
+
+  // 5. LẤY DATA GÓI THẦU & BẢO HÀNH
+  const packHD = dataGoiThau.filter(r => r[18] && r[18].toString().trim() !== "").map(r => ({
+    searchString: r[18].toString().trim(),
+    category: r[0] ? r[0].toString().trim() : ""
+  }));
+  const warrantyHD = dataWarranty.map(r => r[0]).filter(Boolean).map(v => v.toString().trim());
+
+  // 6. LẤY DATA NHÀ THẦU
+  const contractorHD = dataNTP.map(r => {
+    if (!r[0]) return null;
+    return {
+      display: r[0].toString().trim(),
+      searchString: r[1] ? `${r[1]} | ${r[0]}`.trim() : r[0].toString().trim()
+    };
+  }).filter(i => i && i.display);
+
+  // 7. LẤY DATA PHỤ LỤC (BẢNG X)
+  const field0PL = dataX.map(r => {
+    const valA = (r[0] || "").toString().trim();
+    if (!valA) return null;
+    const scanRaw = (r[15] || "").toString().trim();
+    let rawDate = r[7];
+    let strDate = (rawDate instanceof Date) ? Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy") : (rawDate ? rawDate.toString().trim() : "");
+
+    return {
+      maHD: valA,
+      display: `${valA} | ${(r[6] || "").toString().trim()} | ${(r[2] || "").toString().trim() || (r[3] || "").toString().trim() || ""}`,
+      note: (r[1] || "").toString().trim(),
+      searchK: (r[10] || "").toString().trim(), 
+      dateH: strDate, 
+      packageI: (r[1] || "").toString().trim(),
+      valueK: (r[2] || "").toString().trim(),
+      searchM: (r[12] || "").toString().trim(),
+      transferred: (r[14] || "").toString().trim() !== "",
+      scanId: scanRaw, 
+      fileName: scanRaw.includes("|") ? scanRaw.split(";;")[0].split("|")[1].trim() : "", 
+      c: (r[2] || "").toString().trim(),
+      hasQ: (r[16] || "").toString().trim().toLowerCase() === "x",
+      hasR: (r[17] || "").toString().trim().toLowerCase() === "x",
+      hasS: (r[18] || "").toString().trim().toLowerCase() === "x"
+    };
+  }).filter(Boolean);
+
+  // 8. LẤY DỮ LIỆU SỔ THEO DÕI
+  const transferMap = {};
+  logData.forEach(r => {
+    const contractNo = (r[2] || "").toString().trim();
+    if (contractNo) {
+      transferMap[contractNo] = {
+        isTransferred: r[13] !== undefined && (r[13] || "").toString().trim() !== "",                                       
+        t: (r[18] || "").toString().trim().toLowerCase().startsWith("x"),         
+        u: (r[19] || "").toString().trim() !== "" && r[19] != 0,                  
+        v: (r[20] || "").toString().trim() !== "" && r[20] != 0                   
+      };
+    }
+  });
+
+  return {
+    hd: { project: projectHD, pack: packHD, warranty: warrantyHD, contractor: contractorHD },
+    pl: { field0: field0PL },
+    transferMap: transferMap,
+    pendingUsers: pendingUsers, 
+    currentUserRole: GLOBAL_STAFF_ROLE ? GLOBAL_STAFF_ROLE.toUpperCase().trim() : "USER" 
+  };
+}
+
+/**
+ * XỬ LÝ YÊU CẦU ĐĂNG KÝ TÀI KHOẢN TỪ NHÂN VIÊN (ĐỒNG BỘ REALTIME QUA ABLY)
+ */
+function registerUser(mail, name, password) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); 
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    let sheet = ss.getSheetByName("User_Registry");
+    if (!sheet) {
+      sheet = ss.insertSheet("User_Registry");
+      sheet.appendRow(["Mail", "Name", "Password", "Status", "Role"]);
+    }
+    
+    const targetMail = mail.toLowerCase().trim();
+    const targetName = name.toUpperCase().trim();
+    const cleanPassword = password ? password.toString().trim() : "";
+
+    if (cleanPassword.length < 4) {
+      throw new Error("Mật khẩu đăng ký phải chứa tối thiểu 4 ký tự!");
+    }
+
+    const data = sheet.getDataRange().getValues();
+    
+    // 1. Kiểm tra trùng lặp Email đăng ký
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+        throw new Error("Email này đã được sử dụng!");
+      }
+    }
+    
+    // 2. Kiểm tra trùng lặp Tên viết tắt (Name) đăng ký
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][1]?.toString().toUpperCase().trim() === targetName) {
+        throw new Error(`Tên viết tắt "${targetName}" này đã tồn tại! Vui lòng chọn tên viết tắt khác.`);
+      }
+    }
+    
+    // Thêm dòng mới trạng thái PENDING, mật khẩu lưu vào Cột C, Status cột D, Role cột E
+    sheet.appendRow([targetMail, targetName, cleanPassword, "PENDING", "USER"]);
+    
+    // 🚀 BẮN TÍN HIỆU THỜI GIAN THỰC SANG ABLY
+    try {
+      const ablyUrl = "https://rest.ably.io/channels/bcons_notification/messages";
+      const ablyPayload = {
+        "name": "new_registration",
+        "data": { "mail": targetMail, "name": targetName }
+      };
+      const ablyOptions = {
+        "method": "POST",
+        "headers": {
+          "Authorization": "Basic " + Utilities.base64Encode(ABLY_API_KEY),
+          "Content-Type": "application/json"
+        },
+        "payload": JSON.stringify(ablyPayload),
+        "muteHttpExceptions": true
+      };
+      UrlFetchApp.fetch(ablyUrl, ablyOptions);
+    } catch (err) {
+      console.error("Lỗi bắn tín hiệu Ably Realtime: " + err.message);
+    }
+    
+    return { success: true };
+  } finally {
+    lock.releaseLock(); 
+  }
+}
+
+/**
+ * ĐỊNH TUYẾN WEB APP API
  */
 function doPost(e) {
   if (!e || !e.postData) return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "No post data" })).setMimeType(ContentService.MimeType.JSON);
   
-  var request;
+  let request;
   try {
     request = JSON.parse(e.postData.contents);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "JSON Parse error" })).setMimeType(ContentService.MimeType.JSON);
   }
 
-  const { action, data: payload } = request;
+  const { action, data: payload, token } = request;
 
-  // BẢNG ĐỊNH TUYẾN CHUẨN (Khớp 100% với các file API_*.gs của mày)
+  if (token && action !== "loginUser" && action !== "registerUser") {
+    authenticateAndGetName(token); 
+  }
+
+  if (action === "loginUser") {
+    try {
+      const res = loginUser(payload.mail, payload.password);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+  
+  if (action === "registerUser") {
+    try {
+      const res = registerUser(payload.mail, payload.name, payload.password);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   const routes = {
-    // --- CORE & SYSTEM ---
+    "batchRequest": () => apiDispatcher(payload),
     "getSystemData": () => getSystemData(),
     "getActiveProjectFolders_Backend": () => getActiveProjectFolders_Backend(),
-
-    // --- HỢP ĐỒNG (HDTCXD) ---
     "handleFullExportProcess_HD": () => handleFullExportProcess_HD(payload),
-
-    // --- THÔNG BÁO KẾT QUẢ (TBKQ) ---
     "handleFullExportProcess_TB": () => handleFullExportProcess_TB(payload),
-
-    // --- PHỤ LỤC & BÀN GIAO (PLHD) ---
     "writeToSheetAndExportDoc_PL": () => writeToSheetAndExportDoc_PL(payload),
-    "updateContractData_PL": () => updateContractData_PL(payload[0], payload[1], payload[2]),
-    "updateTransferStatus_PL": () => updateTransferStatus_PL(payload[0], payload[1], payload[2]),
+    "updateContractData_PL": () => updateContractData_PL(payload?.[0], payload?.[1], payload?.[2]),
+    "updateTransferStatus_PL": () => updateTransferStatus_PL(payload?.[0], payload?.[1], payload?.[2]),
     "exportToNewSpreadsheet_PL": () => exportToNewSpreadsheet_PL(payload),
     "deleteContractRow_Backend": () => deleteContractRow_Backend(payload),
-    "uploadScanToDrive": () => uploadScanToDrive(payload[0], payload[1], payload[2]),
-    "deleteScanFilePermanently": () => deleteScanFilePermanently(payload[0], payload[1]),
-
-    // --- DRAWING & MINDMAP ---
+    "uploadScanToDrive": () => uploadScanToDrive(payload?.[0], payload?.[1], payload?.[2]),
+    "deleteScanFilePermanently": () => deleteScanFilePermanently(payload?.[0], payload?.[1]),
     "getMindmapData": () => getMindmapData(payload),
     "getTasksByFileId": () => getTasksByFileId(payload),
     "getAllTasksByProject": () => getAllTasksByProject(payload),
-    "updateTasksOrderBackend": () => updateTasksOrderBackend(payload[0], payload[1], payload[2]),
-
-    // --- AI EXTRACTION ---
+    "updateTasksOrderBackend": () => updateTasksOrderBackend(payload?.[0], payload?.[1], payload?.[2]),
     "getFileBase64ForAI": () => getFileBase64ForAI(payload),
-    "extractDataOnly": () => extractDataOnly(payload[0], payload[1], payload[2]),
-    "batchAddTasksBackend": () => batchAddTasksBackend(payload[0], payload[1], payload[2], payload[3]),
-
-    // 🔥 API METADATA MỚI CỦA MÀY ĐÂY 🔥
-    "getMetadataSync": () => getMetadataSync(),
-    "processInjection": () => processInjection(payload)
+    "extractDataOnly": () => extractDataOnly(payload?.[0], payload?.[1], payload?.[2]),
+    "batchAddTasksBackend": () => batchAddTasksBackend(payload?.[0], payload?.[1], payload?.[2], payload?.[3]),
+    "approveUser_InApp": () => approveUser_InApp(payload), 
+    "rejectUser_InApp": () => rejectUser_InApp(payload)    
   };
 
   try {
-    if (!routes[action]) throw new Error("Action '" + action + "' not found in Backend Routing.");
-    
-    // Thực thi hàm tương ứng dựa trên action
+    if (!routes[action]) throw new Error(`Action '${action}' not found in Backend Routing.`);
     const result = routes[action]();
-    
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result })).setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+    console.error(`[API ERROR] Action: ${action} | Msg: ${error.message}`);
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
-// Hàm bổ trợ bắt buộc phải có để tránh lỗi khi truy cập link trực tiếp
-function doGet() {
-  return HtmlService.createHtmlOutput("Backend API is Online. Please use Frontend from GitHub.");
+function getCurrentStaffName() {
+  return GLOBAL_STAFF_NAME;
 }
 
-// =========================================================================
-// 2. CHUYẾN XE TẢI DỮ LIỆU TỔNG (ĐÃ NÂNG CẤP LẤY CỘT K ĐỂ SEARCH)
-// =========================================================================
-function getSystemData() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  
-  // 1. LẤY DATA DỰ ÁN (Dùng chung cho HD và TBKQ)
-  const dataBcons = ss.getSheetByName("DATABCONS").getRange("A3:B").getValues().reverse();
-  const projectHD = dataBcons.map(r => ({
-    display: r[0].toString().trim(),
-    searchString: r[1] ? `${r[0]} | ${r[1]}`.trim() : r[0].toString().trim()
-  })).filter(i => i.display);
-
-  // 2. LẤY DATA GÓI THẦU (DATAGOITHAU)
-  const sheetGoiThau = ss.getSheetByName("DATAGOITHAU");
-  const lastRowGT = sheetGoiThau.getLastRow();
-  
-  let packHD = []; 
-  let warrantyHD = []; 
-
-  if (lastRowGT >= 12) {
-    const dataGT = sheetGoiThau.getRange(12, 2, lastRowGT - 11, 19).getValues();
-    packHD = dataGT.filter(r => r[18] !== "").map(r => ({
-      searchString: r[18].toString().trim(),
-      category: r[0].toString().trim()
-    }));
-    warrantyHD = sheetGoiThau.getRange("N3:N").getValues().flat().filter(String);
-  }
-
-  // 3. LẤY DATA NHÀ THẦU (DATANTP)
-  const dataNTP = ss.getSheetByName("DATANTP").getRange("C3:D").getValues();
-  const contractorHD = dataNTP.map(r => ({
-    display: r[0].toString().trim(),
-    searchString: r[1] ? `${r[1]} | ${r[0]}`.trim() : r[0].toString().trim()
-  })).filter(i => i.display);
-
-  // 4. LẤY DATA PHỤ LỤC (Sheet X) - ĐÃ BỔ SUNG CỘT K
-  const sheetX = ss.getSheetByName("X");
-  const lastRowX = sheetX.getLastRow();
-  let field0PL = [];
-  
-  if (lastRowX >= 4) {
-    // Lấy đến cột V (Index 21) để đảm bảo bao phủ hết các trường Q, R, S
-    const dataX = sheetX.getRange(`A4:V${lastRowX}`).getValues(); 
-    
-    field0PL = dataX.map(r => {
-      const valA = r[0]?.toString().trim() || ""; // Cột A: Số HĐ
-      if (!valA) return null;
-
-      const scanRaw = r[15]?.toString().trim() || ""; // Cột P: Scan ID
-      let rawDate = r[7]; // Cột H: Ngày ký
-      let strDate = rawDate instanceof Date ? Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy") : (rawDate?.toString().trim() || "");
-
-      return {
-        maHD: valA, // Cột A
-        display: `${valA} | ${r[6]?.toString().trim() || ""} | ${r[2]?.toString().trim() || r[3]?.toString().trim() || ""}`,
-        note: r[1]?.toString().trim() || "", // Cột B: Tên gói thầu
-        
-        // 🔥 BỔ SUNG: LẤY DỮ LIỆU CỘT K (Index 10) ĐỂ SEARCH
-        searchK: r[10]?.toString().trim() || "", 
-        
-        dateH: strDate, 
-        packageI: r[1]?.toString().trim() || "",
-        valueK: r[2]?.toString().trim() || "",
-        searchM: r[12]?.toString().trim() || "",
-        transferred: r[14]?.toString().trim() !== "", // Cột O: CHUYỂN HS
-        scanId: scanRaw, 
-        fileName: scanRaw.includes("|") ? scanRaw.split(";;")[0].split("|")[1].trim() : "", 
-        c: r[2]?.toString().trim() || "",
-        
-        // ĐỌC DỮ LIỆU TỪ CỘT Q, R, S (Index 16, 17, 18)
-        hasQ: r[16]?.toString().trim().toLowerCase() === "x", // Đề nghị tạm ứng
-        hasR: r[17]?.toString().trim().toLowerCase() === "x", // Bảo lãnh tạm ứng
-        hasS: r[18]?.toString().trim().toLowerCase() === "x"  // Bảo lãnh HĐ
-      };
-    }).filter(Boolean);
-  }
-
-  // 5. LẤY DỮ LIỆU SỔ THEO DÕI ĐỂ TICK CHUYỂN GIAO UI
-  const logSheet = ss.getSheetByName("SO HDTCXD BCONS - NTP");
-  const logLastRow = logSheet.getLastRow();
-  const transferMap = {};
-
-  if (logLastRow >= 3) {
-    const logData = logSheet.getRange(3, 2, logLastRow - 2, 21).getValues(); 
-    logData.forEach(r => {
-      const contractNo = r[2]?.toString().trim(); // Cột D (index 2 tính từ B)
-      if (contractNo) {
-        transferMap[contractNo] = {
-          isTransferred: r[13] !== "",                                       
-          t: r[18]?.toString().trim().toLowerCase().startsWith("x"),         
-          u: r[19]?.toString().trim() !== "" && r[19] != 0,                  
-          v: r[20]?.toString().trim() !== "" && r[20] != 0                   
-        };
-      }
-    });
-  }
-
-  return {
-    hd: { project: projectHD, pack: packHD, warranty: warrantyHD, contractor: contractorHD },
-    pl: { field0: field0PL },
-    transferMap: transferMap 
-  };
+/**
+ * Trả về trạng thái online của Backend
+ */
+function doGet(e) {
+  return HtmlService.createHtmlOutput("<h3>Backend API is Online.</h3>");
 }
 
-// THÊM VÀO CUỐI FILE Code.gs
 function apiDispatcher(payload) {
   const results = {};
   for (const key in payload) {
@@ -1822,9 +2404,9 @@ function apiDispatcher(payload) {
         case 'getLatestTBNo':
           results[key] = getLatestContractNumber_TB();
           break;
-        // Mày có thể thêm các case khác ở đây nếu muốn gộp thêm
         default:
           results[key] = null;
+          break;
       }
     } catch (e) {
       results[key] = { error: e.toString() };
@@ -1833,77 +2415,30 @@ function apiDispatcher(payload) {
   return results;
 }
 
-function getMetadataSync() {
+function publishAblyContractUpdate(actionType, contractNo) {
   try {
-    const ss = SpreadsheetApp.openById(SHEET_ID);
-    const configSheet = ss.getSheetByName(CONFIG_SHEET_NAME);
-    if (!configSheet) throw new Error("Thiếu sheet WEB_CONFIG");
-
-    const lastRow = configSheet.getLastRow();
-    if (lastRow < 2) return { metadata: [], sources: {} };
-
-    // Lấy đúng 12 cột (A-L) tương ứng Index 0-11
-    const data = configSheet.getRange(2, 1, lastRow - 1, 12).getValues();
-    const metadata = data.map(r => ({
-      id: r[3],           // Cột D: Field_ID
-      label: r[1],        // Cột B: Label
-      placeholder: r[2],  // Cột C: Placeholder
-      type: r[4],         // Cột E: Input_Type
-      row: r[5],          // Cột F: Row
-      width: r[6],        // Cột G: Width
-      source: r[7],       // Cột H: Source_Data
-      dependsOn: r[8],    // Cột I: Depends_On
-      lookupCol: r[9],    // Cột J: Lookup_Col
-      targetS: r[10],     // Cột K: Target_Sheet
-      targetC: r[11]      // Cột L: Target_Cell
-    })).filter(x => x.id); // Bỏ qua dòng trống không có Field_ID
-
-    // Logic lấy Source Data (Giữ nguyên thuật toán $O(K)$)
-    const sources = {};
-    metadata.forEach(f => {
-      if (f.source && f.source.toString().includes("!")) {
-        try {
-          const range = ss.getRange(f.source);
-          sources[f.id] = range.getValues().filter(r => r[0] !== "" && r[0] !== null);
-        } catch (e) { 
-          console.warn("Lỗi Range: " + f.source);
-          sources[f.id] = []; 
-        }
-      } else if (f.source && f.source.toString().startsWith("[")) {
-        try {
-          sources[f.id] = JSON.parse(f.source).map(x => [x]);
-        } catch (e) { sources[f.id] = []; }
+    const ablyUrl = "https://rest.ably.io/channels/bcons_notification/messages";
+    const ablyPayload = {
+      "name": "contract_update",
+      "data": {
+        "actionType": actionType,
+        "contractNo": contractNo,
+        "staffName": getCurrentStaffName()
       }
-    });
-
-    return { 
-      version: ss.getLastUpdated() ? ss.getLastUpdated().getTime() : new Date().getTime(), 
-      metadata, 
-      sources 
     };
+    const ablyOptions = {
+      "method": "POST",
+      "headers": {
+        "Authorization": "Basic " + Utilities.base64Encode(ABLY_API_KEY),
+        "Content-Type": "application/json"
+      },
+      "payload": JSON.stringify(ablyPayload),
+      "muteHttpExceptions": true
+    };
+    UrlFetchApp.fetch(ablyUrl, ablyOptions);
   } catch (err) {
-    throw new Error("Backend Error: " + err.message);
+    console.error("Lỗi gửi tín hiệu cập nhật Ably Realtime: " + err.message);
   }
-}
-
-function processInjection(payload) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  // Đồng bộ Range A2:L để giữ index chuẩn từ 0-11
-  const config = ss.getSheetByName(CONFIG_SHEET_NAME).getRange("A2:L").getValues();
-  const mapping = {};
-  
-  // r[3] = Field_ID, r[10] = Target_Sheet, r[11] = Target_Cell
-  config.forEach(r => { 
-    if(r[3] && r[10] && r[11]) mapping[r[3]] = { s: r[10], c: r[11] }; 
-  });
-
-  Object.keys(payload).forEach(id => {
-    if (mapping[id]) {
-      const target = mapping[id];
-      ss.getSheetByName(target.s).getRange(target.c).setValue(payload[id]);
-    }
-  });
-  return { success: true };
 }
 
 
@@ -1918,6 +2453,11 @@ FILE [6]: ./appsscript.json
         "userSymbol": "Drive",
         "serviceId": "drive",
         "version": "v3"
+      },
+      {
+        "userSymbol": "Sheets",
+        "serviceId": "sheets",
+        "version": "v4"
       }
     ]
   },
@@ -2080,15 +2620,29 @@ function coreFilter(inputId, dropId, dataKey) {
     const input = document.getElementById(inputId), drop = document.getElementById(dropId);
     const data = (dataKey === 'warranty') ? SYSTEM_DATA.hd.warranty : (SYSTEM_DATA.hd[dataKey] || []);
     const query = input.value.toLowerCase().trim();
+    
+    // 1. Lọc dữ liệu theo từ khóa tìm kiếm
     const filtered = data.filter(item => {
         const str = (typeof item === 'object') ? (item.searchString || item.display || "") : item;
         return str.toString().toLowerCase().includes(query);
     });
 
-    if (filtered.length > 0) {
+    // 2. Loại bỏ trùng lặp hiển thị (Deduplicate)
+    const uniqueFiltered = [];
+    const seen = new Set();
+    for (const item of filtered) {
+        const uniqueKey = (typeof item === 'object') ? (item.searchString || item.display || "") : item;
+        const cleanKey = uniqueKey.toString().trim().toLowerCase();
+        if (!seen.has(cleanKey)) {
+            seen.add(cleanKey);
+            uniqueFiltered.push(item);
+        }
+    }
+
+    if (uniqueFiltered.length > 0) {
         // Tính toán độ rộng động cho prefix (Mã dự án/Mã nhà thầu)
         let maxChars = 0;
-        filtered.forEach(item => {
+        uniqueFiltered.forEach(item => {
             const val = (typeof item === 'object') ? (item.searchString || item.display) : item;
             if (val.includes(" | ")) {
                 const prefix = val.split(" | ")[0];
@@ -2098,7 +2652,8 @@ function coreFilter(inputId, dropId, dataKey) {
         const dynamicWidth = maxChars > 0 ? (maxChars * 8.5 + 2) : 0;
         drop.style.setProperty('--pw', dynamicWidth + 'px');
 
-        drop.innerHTML = filtered.slice(0, 50).map(item => {
+        // Bỏ hoàn toàn giới hạn .slice(0, 50) hiển thị theo yêu cầu
+        drop.innerHTML = uniqueFiltered.map(item => {
             const val = (typeof item === 'object') ? (item.searchString || item.display) : item;
             let displayHTML = val;
             if (val.includes(" | ")) {
@@ -2435,6 +2990,7 @@ let currentScanFiles = [];
 let fileIdToProcess = "";
 let lastTap_Scan = 0;
 
+let pendingUsersList_PL = [];
 // ==========================================================================
 // 2. HẰNG SỐ CẤU HÌNH (CONSTANTS)
 // ==========================================================================
@@ -2469,9 +3025,7 @@ let tooltipTimeout;
 document.addEventListener("DOMContentLoaded", () => {
     // Đọc Tab đã lưu từ máy, mặc định là 'tab-about'
     const lastTab = localStorage.getItem('bcons_hub_last_tab') || 'tab-about';
-    
-    // THAY ĐỔI TẠI ĐÂY: Đổi false thành true để kích hoạt bung ngày tháng ngay khi load
-    openTab(lastTab, true); 
+    openTab(lastTab, false); 
     
     loadSystemData();
 
@@ -2538,15 +3092,28 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
+// Bộ lắng nghe sự kiện Focus an toàn (Chống lặp vô hạn)
 document.addEventListener('focusin', function(e) {
     const activeField = e.target;
     const isHDorTB = activeField.closest('#tab-hdtcxd, #tab-tbkq');
     if (isHDorTB && activeField.tagName === 'INPUT') {
-        if (activeField.hasAttribute('onclick')) {
+        // Chỉ kích hoạt tự động Click nếu ô này chưa từng được kích hoạt click trong phiên focus hiện tại
+        if (activeField.hasAttribute('onclick') && !activeField.dataset.focusTriggered) {
+            activeField.dataset.focusTriggered = "true"; // Đánh dấu đã kích hoạt click an toàn
             setTimeout(() => {
-                activeField.click();
+                if (document.activeElement === activeField) {
+                    activeField.click();
+                }
             }, 100);
         }
+    }
+});
+
+// Giải phóng cờ bảo vệ khi người dùng rời khỏi ô nhập liệu
+document.addEventListener('focusout', function(e) {
+    const activeField = e.target;
+    if (activeField.tagName === 'INPUT') {
+        delete activeField.dataset.focusTriggered; // Reset trạng thái để sẵn sàng cho lần focus tiếp theo
     }
 });
 
@@ -2997,30 +3564,22 @@ async function startUploadScan_PL() {
             const baseProgress = (i / currentScanFiles.length) * 100;
             const fileWeight = 100 / currentScanFiles.length;
             let base64Data = "";
-            const isExcel = file.name.toLowerCase().match(/\.(xls|xlsx)$/);
 
-            if (isExcel) {
-                statusText.textContent = `[${i+1}/${currentScanFiles.length}] PROCESSING EXCEL...`;
-                base64Data = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result.split(',')[1]);
-                    reader.onerror = e => reject(e);
-                    reader.readAsDataURL(file);
-                });
-                let fakeP = Math.round(baseProgress + fileWeight);
-                progressBar.style.width = fakeP + "%";
-                percentText.textContent = fakeP + "%";
-            } else {
-                base64Data = await compressPDFEngine(file, (p) => {
-                    const overallP = Math.round(baseProgress + (p / 100 * fileWeight));
-                    statusText.textContent = `[${i+1}/${currentScanFiles.length}] COMPRESSING: ${p}%`;
-                    progressBar.style.width = overallP + "%";
-                    percentText.textContent = overallP + "%";
-                    progressBar.style.backgroundColor = "#FFBA08";
-                });
-            }
+            statusText.textContent = `[${i+1}/${currentScanFiles.length}] READING ORIGINAL FILE...`;
+            
+            // Đọc trực tiếp tệp tin gốc nguyên bản sang Base64 không qua nén ảnh
+            base64Data = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = e => reject(e);
+                reader.readAsDataURL(file);
+            });
 
-            statusText.textContent = `[${i+1}/${currentScanFiles.length}] UPLOADING...`;
+            let fakeP = Math.round(baseProgress + fileWeight * 0.5); // 50% hoàn tất tiến trình đọc tệp cục bộ
+            progressBar.style.width = fakeP + "%";
+            percentText.textContent = fakeP + "%";
+
+            statusText.textContent = `[${i+1}/${currentScanFiles.length}] UPLOADING TO DRIVE...`;
             
             const res = await callBackend('uploadScanToDrive', [base64Data, currentScanMaHD, file.name]);
             if (res && res.success) {
@@ -3045,7 +3604,7 @@ async function startUploadScan_PL() {
         progressBar.classList.add('finished'); 
         progressBar.style.backgroundColor = "#2ECC71"; 
         
-        showToast_PL(`🚀 UPLOADED ${currentScanFiles.length} FILE(S)!`, "success");
+        showToast_PL(`🚀 UPLOADED ${currentScanFiles.length} FILE(S) SUCCESSFULLY!`, "success");
         removeScanFile_PL();
         setTimeout(() => { progressContainer.style.display = 'none'; }, 2000);
     } catch (e) {
@@ -3089,24 +3648,42 @@ function closeDataDeleteModal() {
 function executeActualDeleteData_PL() {
     closeDataDeleteModal(); 
     const maToDelete = editingMaHD_PL;
-    const loading = document.getElementById("contractLoading");
-    if (loading) {
-        loading.style.display = "flex";
-        loading.querySelector('p').textContent = "SYSTEM DELETING DATA...";
+    
+    // Sao lưu dữ liệu để phục vụ trường hợp cần phục hồi khi xảy ra lỗi mạng/server
+    const backupItem = SYSTEM_DATA.pl.field0.find(item => (item.display || "").split(" | ")[0].trim() === maToDelete);
+    const backupIndex = SYSTEM_DATA.pl.field0.indexOf(backupItem);
+
+    if (backupItem) {
+        // 1. CẬP NHẬT GIẢ ĐỊNH (Optimistic UI Update): Xóa lập tức trên RAM máy khách
+        SYSTEM_DATA.pl.field0 = SYSTEM_DATA.pl.field0.filter(item => (item.display || "").split(" | ")[0].trim() !== maToDelete);
+        PRECOMPUTED_PL_DATA = null;
+        
+        // 2. Cập nhật giao diện Dashboard ngay tức thì và tự động tính toán giật lùi STT Phụ lục
+        executeFilter_PL(false); 
+        if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
+        closeEditPanel_PL();
+        
+        // 3. Hiển thị thông báo lập tức cho người dùng
+        showToast_PL(`🗑️ Đã xóa dữ liệu: <b style="color:white">${maToDelete}`, "success");
+
+        // 4. Gửi lệnh xử lý ngầm lên máy chủ
+        callBackend("deleteContractRow_Backend", maToDelete)
+            .then(() => {
+                // Đồng bộ hóa trạng thái ngầm để nhận cập nhật mới từ các user khác
+                loadSystemData(true); 
+            })
+            .catch(err => {
+                // Khôi phục dữ liệu nguyên trạng (Rollback) nếu ghi nhận lỗi máy chủ
+                if (backupIndex !== -1) {
+                    SYSTEM_DATA.pl.field0.splice(backupIndex, 0, backupItem);
+                }
+                PRECOMPUTED_PL_DATA = null;
+                executeFilter_PL(false);
+                if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
+                showToast_PL(`⚠️ Thao tác xóa ${maToDelete} thất bại trên hệ thống! Đã khôi phục dữ liệu.`, "error");
+                loadSystemData(true);
+            });
     }
-    callBackend("deleteContractRow_Backend", maToDelete)
-        .then(() => {
-            if (loading) loading.style.display = "none";
-            SYSTEM_DATA.pl.field0 = SYSTEM_DATA.pl.field0.filter(item => (item.display || "").split(" | ")[0].trim() !== maToDelete);
-            PRECOMPUTED_PL_DATA = null;
-            executeFilter_PL(false); closeEditPanel_PL();
-            showToast_PL(`🗑️ Đã xóa dữ liệu số: ${maToDelete}`, "success");
-            loadSystemData(true); 
-        })
-        .catch(err => {
-            if (loading) loading.style.display = "none";
-            showToast_PL("⚠️ Lỗi xóa dữ liệu!", "error");
-        });
 }
 
 /**
@@ -3270,6 +3847,7 @@ function handleFilesSelected(files) {
 }
 
 
+
 ==================================================
 FILE [14]: ./public/JS_Drawing.js
 ==================================================
@@ -3300,29 +3878,51 @@ function loadDrawingModule() {
     if (!isDrawingListLoaded) fetchActiveProjectsForDrawing();
     if (selectedProjectDrawing) {
         if (cyInstance && selectedProjectDrawing === currentlyRenderedProject) {
-            setTimeout(() => { cyInstance.resize(); cyInstance.fit(null, 50); }, 300);
+            setTimeout(() => { cyInstance.resize(); cyInstance.fit(null, 20); }, 300);
         } else { renderMindmap(selectedProjectDrawing); }
     }
 }
 
-function fetchActiveProjectsForDrawing() {
-    if (isDrawingListLoaded && activeDrawingProjects.length > 0) return;
-    
-    const syncBtnIcon = document.querySelector("#btn-sync-drawing i");
-    if (syncBtnIcon && syncBtnIcon.classList.contains('spinning')) return;
+/* --- public/JS_Drawing.js --- */
+
+/* --- public/JS_Drawing.js --- */
+
+function fetchActiveProjectsForDrawing(forceRefresh = false) {
+    // 1. Chỉ chạy quét nếu chưa tải lần nào, hoặc khi người dùng chủ động nhấn nút Sync (forceRefresh = true)
+    if (!forceRefresh && isDrawingListLoaded && activeDrawingProjects.length > 0) return;
 
     const input = document.getElementById("drawing-project-search");
-    if (input) input.placeholder = "Loading...";
+    const syncBtnIcon = document.querySelector("#btn-sync-drawing i");
+
+    // Ngăn chặn việc bấm Sync liên tục khi tiến trình đang chạy
+    if (syncBtnIcon && syncBtnIcon.classList.contains('spinning')) return;
+
+    // Hiển thị trạng thái tải cho người dùng thấy rõ
+    if (input) {
+        input.disabled = true;
+        input.placeholder = "Loading projects from Drive...";
+    }
     if (syncBtnIcon) syncBtnIcon.classList.add('spinning');
-    
+
+    // 2. Gọi Backend quét trực tiếp tên các thư mục dự án trên Google Drive
     callBackend("getActiveProjectFolders_Backend").then(folderNames => {
-        activeDrawingProjects = folderNames || []; 
+        activeDrawingProjects = folderNames || [];
         isDrawingListLoaded = true;
-        if (input) { input.disabled = false; input.placeholder = "Project"; }
+        
+        // Trả lại trạng thái sẵn sàng cho ô nhập liệu
+        if (input) {
+            input.disabled = false;
+            input.placeholder = "Project";
+        }
         if (syncBtnIcon) syncBtnIcon.classList.remove('spinning');
     }).catch(err => {
+        console.error("Lỗi tải danh sách thư mục từ Drive:", err);
+        isDrawingListLoaded = false; // Cho phép thử lại lần sau
+        if (input) {
+            input.disabled = false;
+            input.placeholder = "Failed to load projects";
+        }
         if (syncBtnIcon) syncBtnIcon.classList.remove('spinning');
-        console.error("Lỗi tải danh sách dự án:", err);
     });
 }
 
@@ -3517,10 +4117,38 @@ function renderMindmap(projectCode) {
     if(localLoader) localLoader.style.display = "flex";
     cyArea.style.opacity = "0";
 
-    callBackend("getMindmapData", projectCode).then(data => {
+    // Thực hiện tải song song cấu trúc bản vẽ từ Drive và toàn bộ tác vụ trong Sheet
+    Promise.all([
+        callBackend("getMindmapData", projectCode),
+        callBackend("getAllTasksByProject", projectCode)
+    ]).then(([mindmapData, projectTasks]) => {
         if(localLoader) localLoader.style.display = "none";
         currentlyRenderedProject = projectCode; 
-        if (!data || !data.files || data.files.length === 0) {
+
+        // Khởi tạo và đồng bộ dữ liệu vào Cache trên RAM Client
+        drawingTaskCache = {};
+        
+        // 1. Khởi tạo mảng trống cho tất cả FileID thuộc dự án để tránh gọi mạng đơn lẻ
+        if (mindmapData && mindmapData.files) {
+            mindmapData.files.forEach(f => {
+                drawingTaskCache[f.fileId] = [];
+            });
+        }
+
+        // 2. Điền dữ liệu tác vụ thực tế tải hàng loạt từ server vào Cache
+        if (projectTasks && Array.isArray(projectTasks)) {
+            projectTasks.forEach(task => {
+                if (drawingTaskCache[task.fileId] !== undefined) {
+                    drawingTaskCache[task.fileId].push({
+                        taskId: task.taskId,
+                        description: task.description,
+                        team: task.team
+                    });
+                }
+            });
+        }
+
+        if (!mindmapData || !mindmapData.files || mindmapData.files.length === 0) {
             cyArea.style.opacity = "1";
             cyArea.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#FFBA08;font-style:italic;">Dự án [${projectCode}] chưa có bản vẽ!</div>`;
             return;
@@ -3530,7 +4158,7 @@ function renderMindmap(projectCode) {
 
         setTimeout(() => {
             cyInstance = cytoscape({
-                container: cyArea, elements: buildCytoscapeElements(data), pixelRatio: 2,
+                container: cyArea, elements: buildCytoscapeElements(mindmapData), pixelRatio: 2,
                 autoungrabify: true, userPanningEnabled: true, userZoomingEnabled: true,
                 style: [
                     { selector: 'node', style: { 'background-color': '#021a31', 'label': 'data(label)', 'color': '#fff', 'font-family': 'Poppins, sans-serif', 'font-size': 18, 'text-valign': 'center', 'text-halign': 'center', 'width': 220, 'height': 68, 'shape': 'round-rectangle', 'border-width': 1.5, 'border-color': '#FFBA08', 'text-wrap': 'wrap', 'text-max-width': 180, 'line-height': 1.4, 'overlay-opacity': 0 } },
@@ -3833,7 +4461,19 @@ function resetAIZoneUI() {
  * 8. CORE UTILS
  */
 
-function syncManual() { if (!selectedProjectDrawing) return; document.getElementById("drawing-local-loader").style.display = "flex"; drawingTaskCache = {}; currentlyRenderedProject = ""; renderMindmap(selectedProjectDrawing); }
+function syncManual() {
+    // 1. Buộc quét lại danh sách dự án mới nhất từ Drive (Force Refresh)
+    fetchActiveProjectsForDrawing(true);
+    
+    // 2. Đồng bộ và vẽ lại Mindmap của dự án hiện tại đang chọn
+    if (selectedProjectDrawing) {
+        const localLoader = document.getElementById("drawing-local-loader");
+        if (localLoader) localLoader.style.display = "flex";
+        drawingTaskCache = {};
+        currentlyRenderedProject = "";
+        renderMindmap(selectedProjectDrawing);
+    }
+}
 
 function resetMindmapView() { if (cyInstance) cyInstance.animate({ fit: { padding: 20 }, duration: 400 }); }
 
@@ -3966,12 +4606,24 @@ function addNewTaskItem() {
     // Render lại UI để hiện field trống
     displayTasksHTML(drawingTaskCache[currentFileId]);
     
-    // Tự động focus vào ô input vừa tạo
+    // Tự động focus vào ô input vừa tạo và cuộn nội bộ an toàn (Chống giật khung hình tổng)
     setTimeout(() => {
         const newInput = document.querySelector(`#task-${tempId} .task-desc-edit`);
         if (newInput) {
             newInput.focus();
-            newInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Tính toán tọa độ và cuộn nội bộ bằng scrollTo (Không dùng scrollIntoView gây lệch layout)
+            const scrollContainer = document.querySelector("#dp-content-state > div");
+            if (scrollContainer) {
+                const containerRect = scrollContainer.getBoundingClientRect();
+                const inputRect = newInput.getBoundingClientRect();
+                const relativeTop = inputRect.top - containerRect.top + scrollContainer.scrollTop;
+                
+                scrollContainer.scrollTo({
+                    top: relativeTop - (containerRect.height / 2) + (inputRect.height / 2),
+                    behavior: 'smooth'
+                });
+            }
         }
     }, 100);
 }
@@ -4240,12 +4892,29 @@ FILE [15]: ./public/CSS_Modals.css
 .ctx-main-action { flex: 1; border: none !important; } 
 
 .ctx-gear-action { 
-    width: 46px !important; display: flex !important; align-items: center !important; 
-    justify-content: center !important; cursor: pointer; color: #ADADAD;
-    border-left: 1px solid rgba(255, 255, 255, 0.05) !important; transition: transform 0.3s ease;
+    width: 46px !important; 
+    display: flex !important; 
+    align-items: center !important; 
+    justify-content: center !important; 
+    cursor: pointer; 
+    color: #ADADAD;
+    border-left: 1px solid rgba(255, 255, 255, 0.05) !important;
+    background: transparent !important;
+    transition: background-color 0.2s ease;
 }
+
+.ctx-gear-action i {
+    display: inline-block;
+    color: #ADADAD;
+    transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1), color 0.2s ease;
+}
+
+.ctx-gear-action:hover i { 
+    transform: rotate(90deg) scale(1.15) !important; /* Xoay 90 độ và phóng to 1.15 lần mượt mà */
+    color: #FFBA08 !important; /* Đổi sang màu vàng Gold nhã nhặn khi hover */
+}
+
 .ctx-gear-action:hover { background: transparent !important; color: #ADADAD !important; }
-.ctx-gear-action:hover i { transform: rotate(90deg); }
 
 .ctx-menu-item::before, .ctx-main-action::before { font-family: "bootstrap-icons" !important; font-size: 17px; width: 22px !important; text-align: center; display: inline-block; flex-shrink: 0; }
 
@@ -4255,7 +4924,7 @@ FILE [15]: ./public/CSS_Modals.css
 
 /* 1. Bàn giao: Máy bay phóng đi rồi xuất hiện lại */
 .ctx-success:hover::before { 
-    animation: planeFullSequence 1.5s cubic-bezier(0.45, 0.05, 0.55, 0.95) forwards; 
+    animation: planeFullSequence 0.8s cubic-bezier(0.25, 0.8, 0.25, 1) forwards; 
     color: #2ECC71 !important; 
 }
 
@@ -4276,12 +4945,6 @@ FILE [15]: ./public/CSS_Modals.css
 .ctx-main-action:hover::before { 
     transform: scale(1.2) !important; 
     transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
-}
-
-/* 5. Bánh răng (Settings): Xoay tròn */
-.ctx-gear-action:hover i { 
-    transform: rotate(45deg) scale(1.2) !important; 
-    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
 }
 
 /* --- 5.4. SCAN DELETE CONFIRM & GLOBAL TOOLTIP --- */
@@ -4332,6 +4995,25 @@ FILE [15]: ./public/CSS_Modals.css
 .form-container.dim-overlay-active.show-overlay::after {
     opacity: 1;
     visibility: visible;
+}
+
+/* 🚀 THÊM MỚI: Hiệu ứng Hover cao cấp cho nút duyệt nhanh */
+.btn-bell-approve:hover {
+    background-color: #27ae60 !important; /* Xanh đậm hơn */
+    transform: translateY(-1.5px);
+    box-shadow: 0 3px 10px rgba(46, 204, 113, 0.4);
+}
+.btn-bell-approve:active {
+    transform: translateY(0.5px) scale(0.97); /* Nhấn lún nút nhẹ */
+}
+
+.btn-bell-reject:hover {
+    background-color: #c0392b !important; /* Đỏ đậm hơn */
+    transform: translateY(-1.5px);
+    box-shadow: 0 3px 10px rgba(231, 76, 60, 0.4);
+}
+.btn-bell-reject:active {
+    transform: translateY(0.5px) scale(0.97);
 }
 
 
@@ -4692,45 +5374,6 @@ span.flatpickr-weekday {
     to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* VS Code - File: public/CSS_Forms.css */
-
-.metadata-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    width: 100%;
-}
-
-.m-row {
-    display: flex;
-    flex-wrap: wrap; /* Tự xuống hàng trên Mobile */
-    gap: 15px;
-    width: 100%;
-    margin-bottom: 5px;
-}
-
-.m-col {
-    display: flex;
-    flex-direction: column;
-    min-width: 250px; /* Đảm bảo trên Mobile không bị quá bé */
-    flex-grow: 1;    /* Lấp đầy khoảng trống */
-}
-
-/* Style cho label và input của Metadata */
-.m-label {
-    font-size: 11.5px !important;
-    color: #95A1AF !important;
-    margin-bottom: 4px !important;
-    font-weight: 600 !important;
-    text-transform: uppercase;
-}
-
-.metadata-grid input, 
-.metadata-grid select {
-    width: 100% !important;
-    box-sizing: border-box;
-}
-
 
 ==================================================
 FILE [17]: ./public/JS_Tab_PL_Actions.js
@@ -4906,29 +5549,63 @@ function selectEditCategory_PL(type, labelName) {
  */
 function submitEdit_PL() {
     const val = document.getElementById('ep-input-val').value.trim();
-    const loading = document.getElementById("contractLoading"); 
-    if(loading) loading.style.display = "flex";
+    const oldMaHD = editingMaHD_PL;
 
-    // Đóng gói payload mảng 3 tham số
-    callBackend("updateContractData_PL", [editingMaHD_PL, currentEditType, val])
+    // 1. Sao lưu dữ liệu cũ của dòng để phục vụ Rollback nếu gặp lỗi mạng
+    const originalValues = {
+        maHD: currentEditItemData.maHD,
+        dateH: currentEditItemData.dateH,
+        packageI: currentEditItemData.packageI,
+        note: currentEditItemData.note,
+        valueK: currentEditItemData.valueK,
+        c: currentEditItemData.c,
+        display: currentEditItemData.display
+    };
+
+    // 2. CẬP NHẬT GIẢ ĐỊNH (Optimistic UI Update) trên RAM
+    if (currentEditType === "CONTRACT_NO") {
+        currentEditItemData.maHD = val;
+    } else if (currentEditType === "DATE") {
+        currentEditItemData.dateH = val;
+    } else if (currentEditType === "PACKAGE") {
+        currentEditItemData.packageI = val; 
+        currentEditItemData.note = val;
+    } else if (currentEditType === "VALUE") {
+        currentEditItemData.valueK = val; 
+        currentEditItemData.c = val;
+    }
+
+    // Định dạng lại hiển thị dòng tiền tệ tương thích
+    let formattedMoney = (currentEditItemData.valueK || "").toString().replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    currentEditItemData.display = `${currentEditItemData.maHD} | ${currentEditItemData.packageI} | ${formattedMoney}`;
+
+    // 3. Cập nhật Dashboard giao diện lập tức và đóng biểupanel nhập liệu
+    PRECOMPUTED_PL_DATA = null; 
+    executeFilter_PL(false); 
+    closeEditPanel_PL();
+
+    showToast_PL(`🟢 Đã lưu thay đổi!`, 'success');
+
+    // 4. Gửi lệnh xử lý ngầm lên máy chủ
+    callBackend("updateContractData_PL", [oldMaHD, currentEditType, val])
         .then(res => {
-            if(loading) loading.style.display = "none";
             if (res) {
-                showToast_PL(`🟢 Đã cập nhật thành công: ${editingMaHD_PL}`, 'success');
-                if (currentEditType === "CONTRACT_NO") currentEditItemData.maHD = val;
-                else if (currentEditType === "DATE") currentEditItemData.dateH = val;
-                else if (currentEditType === "PACKAGE") { currentEditItemData.packageI = val; currentEditItemData.note = val; } 
-                else if (currentEditType === "VALUE") { currentEditItemData.valueK = val; currentEditItemData.c = val; }
-
-                let formattedMoney = (currentEditItemData.valueK || "").toString().replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-                currentEditItemData.display = `${currentEditItemData.maHD} | ${currentEditItemData.packageI} | ${formattedMoney}`;
-
-                PRECOMPUTED_PL_DATA = null; executeFilter_PL(false); closeEditPanel_PL(); 
+                // Nếu đổi mã số hợp đồng, cập nhật lại tham chiếu toàn cục
+                if (currentEditType === "CONTRACT_NO") {
+                    editingMaHD_PL = val;
+                }
+                loadSystemData(true); // đồng bộ ngầm dữ liệu sạch
+            } else {
+                throw new Error("Không có phản hồi xác thực từ máy chủ.");
             }
         })
         .catch(err => {
-            if(loading) loading.style.display = "none";
-            alert("Lỗi Server: " + (err.message || err));
+            // Khôi phục dữ liệu gốc nếu cập nhật ngầm xảy ra lỗi
+            Object.assign(currentEditItemData, originalValues);
+            PRECOMPUTED_PL_DATA = null;
+            executeFilter_PL(false);
+            showToast_PL(`⚠️ Đồng bộ chỉnh sửa dữ liệu ${oldMaHD} thất bại! Đã khôi phục dữ liệu gốc.`, "error");
+            loadSystemData(true);
         });
 }
 
@@ -5029,6 +5706,11 @@ function finalSubmitTransfer_PL() {
 ==================================================
 FILE [18]: ./public/JS_Core_API.js
 ==================================================
+// Quản lý hàng chờ duyệt gom lô 3 giây
+let pendingApprovalBatch_PL = [];
+let approvalBatchTimer_PL = null;
+let countdownInterval_PL = null;
+let countdownSeconds_PL = 3;
 
 // ==========================================================================
 // 1. NHÓM CORE / GLOBAL UI LOGIC
@@ -5043,47 +5725,135 @@ const serverCall = async (serverMethodName, ...args) => {
         throw error;
     }
 };
+
 /**
- * Điều hướng Tab (Slide Transition & Intro Animation)
+ * Hàm tạo ID an toàn từ Email (Tránh lỗi Crash btoa khi gặp Tiếng Việt/Ký tự đặc biệt)
  */
-function openTab(tabId, triggerIntro = true) {
+function getSafeId_PL(mail) {
+    if (!mail) return "unknown";
+    return mail.toLowerCase().replace(/[^a-z0-9]/g, ""); // Lọc sạch chỉ giữ lại chữ cái và số
+}
+
+async function openTab(tabId, triggerIntro = true) {
     if (tabId === activeTabId && !isInitialLoad) return;
+
+    // 🚀 1. GIẢI PHÓNG HÀNG CHỜ ĐANG CHẠY (Triệt tiêu hoàn toàn lỗi biến mất Form khi click nhanh)
+    if (tabTimeout) {
+        clearTimeout(tabTimeout);
+        tabTimeout = null;
+    }
+
     localStorage.setItem('bcons_hub_last_tab', tabId);
-    
     const targetTab = document.getElementById(tabId);
     if (!targetTab) return;
 
-    // 1. Reset trạng thái intro và ẩn các tab khác
-    document.querySelectorAll('.location-date-container').forEach(c => c.classList.remove('active-intro'));
-    document.querySelectorAll('.tab-content').forEach(t => {
-        t.style.display = 'none';
-        t.classList.remove('slide-in-right', 'slide-in-left');
-    });
+    let isTabJustFetched = false; // Cờ kiểm soát chống gọi trùng lặp (Race Condition)
 
-    // 2. Hiển thị tab mục tiêu
-    const newTabOrder = TAB_MAP[tabId];
-    const isForward = newTabOrder >= currentTabOrder;
-    targetTab.style.display = 'flex';
-    targetTab.classList.add(isForward ? 'slide-in-right' : 'slide-in-left');
-
-    activeTabId = tabId;
-    currentTabOrder = newTabOrder;
-
-    // 3. Kích hoạt hiệu ứng bung ngày tháng (Intro Animation)
-    if (tabId !== 'tab-about' && triggerIntro) {
-        const container = targetTab.querySelector(".location-date-container");
-        if (container) {
-            setTimeout(() => { container.classList.add("active-intro"); }, 150); 
+    // 1. Chỉ nạp HTML nếu Tab rỗng và không phải là tab-about
+    if (targetTab.innerHTML.trim() === "" && tabId !== 'tab-about') {
+        isTabJustFetched = true; // Đánh dấu tab này đang được tải bất đồng bộ lần đầu
+        const fileMap = {
+            'tab-hdtcxd': 'Tab_HDTCXD.html',
+            'tab-plhd': 'Tab_PLHD.html',
+            'tab-tbkq': 'Tab_TBKQ.html',
+            'tab-drawing': 'Tab_Drawing.html'
+        };
+        try {
+            const resp = await fetch('./' + fileMap[tabId]);
+            if (resp.ok) {
+                targetTab.innerHTML = await resp.text();
+                // Kích hoạt logic khởi tạo riêng của từng Tab
+                if (tabId === 'tab-hdtcxd') initTabHD();
+                if (tabId === 'tab-plhd') initTabPL();
+                if (tabId === 'tab-tbkq') initTabTB();
+                
+                // CHỈ gọi loadDrawingModule sau khi HTML đã được ghi đè hoàn tất vào DOM
+                if (tabId === 'tab-drawing') loadDrawingModule();
+            }
+        } catch (e) { 
+            console.error("Lỗi nạp Tab:", e); 
         }
     }
 
-    // 4. Update Menu UI
-    document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
-    const btnMap = {'tab-hdtcxd':'btn-hd','tab-plhd':'btn-pl','tab-tbkq':'btn-tbkq','tab-drawing':'btn-drawing','tab-about':'btn-about'};
-    document.getElementById(btnMap[tabId])?.classList.add('active');
+    const allTabs = document.querySelectorAll('.tab-content');
+    const currentTab = document.getElementById(activeTabId);
 
-    if (tabId === 'tab-drawing' && typeof loadDrawingModule === 'function') loadDrawingModule();
+    // 2. Xử lý Hoạt ảnh Chuyển Tab (Transitions) dựa vào vị trí trong TAB_MAP
+    if (currentTab && !isInitialLoad) {
+        const currentIndex = TAB_MAP[activeTabId] || 0;
+        const targetIndex = TAB_MAP[tabId] || 0;
+
+        // Xóa triệt để các class hoạt ảnh cũ trên TẤT CẢ các tab để tránh xung đột
+        allTabs.forEach(t => {
+            t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
+            
+            // Nâng cao bảo vệ: Nếu click quá nhanh, lập tức ẩn các tab trung gian để tránh đè giao diện
+            if (t.id !== activeTabId && t.id !== tabId) {
+                t.style.display = 'none';
+            }
+        });
+
+        if (currentIndex < targetIndex) {
+            currentTab.classList.add('slide-out-left');
+            targetTab.classList.add('slide-in-right');
+        } else {
+            currentTab.classList.add('slide-out-right');
+            targetTab.classList.add('slide-in-left');
+        }
+
+        targetTab.style.display = 'flex';
+
+        // 🚀 2. GÁN TIMEOUT MỚI VÀO BIẾN TOÀN CỤC ĐỂ QUẢN LÝ
+        tabTimeout = setTimeout(() => {
+            allTabs.forEach(t => {
+                if (t.id !== tabId) {
+                    t.style.display = 'none';
+                    t.classList.remove('slide-out-left', 'slide-out-right');
+                }
+            });
+            tabTimeout = null; // Giải phóng bộ nhớ hàng chờ sau khi hoàn tất hoạt ảnh
+        }, 400);
+
+    } else {
+        allTabs.forEach(t => {
+            t.style.display = 'none';
+            t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
+        });
+        targetTab.classList.add('instant-fade');
+        targetTab.style.display = 'flex';
+    }
+
+    activeTabId = tabId;
+    
+    // 3. Đồng bộ trạng thái Menu Navigation
+    document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
+    const btnId = tabId === 'tab-hdtcxd' ? 'btn-hd' : tabId === 'tab-plhd' ? 'btn-pl' : tabId === 'tab-tbkq' ? 'btn-tbkq' : tabId === 'tab-drawing' ? 'btn-drawing' : 'btn-about';
+    const menuBtn = document.getElementById(btnId);
+    if (menuBtn) menuBtn.classList.add('active');
+
     if (isInitialLoad) isInitialLoad = false;
+
+    // 4. LOGIC BUNG NGÀY THÁNG TỰ ĐỘNG
+    allTabs.forEach(t => {
+        if (t.id !== tabId) {
+            const otherContainer = t.querySelector('.location-date-container');
+            if (otherContainer) otherContainer.classList.remove('active-intro');
+        }
+    });
+    const currentLocDateContainer = targetTab.querySelector('.location-date-container');
+    if (currentLocDateContainer) {
+        setTimeout(() => { currentLocDateContainer.classList.add('active-intro'); }, 150);
+    }
+
+    // 5. KÍCH HOẠT MÔ-ĐUN DRAWING KHI CHUYỂN TAB ĐÃ ĐƯỢC TẢI SẴN (CÓ KIỂM SOÁT)
+    if (!isTabJustFetched && tabId === 'tab-drawing' && typeof loadDrawingModule === 'function') {
+        loadDrawingModule();
+    }
+
+    // 6. Cập nhật thanh cuộn của trình duyệt
+    if (typeof updateAppScrollState === 'function') {
+        updateAppScrollState();
+    }
 }
 
 function showFieldSmoothly(id) {
@@ -5119,14 +5889,14 @@ function showToast_PL(message, type) {
     let toast = document.getElementById("toastNotification-pl");
     if (!toast) { 
         toast = document.createElement("div"); toast.id = "toastNotification-pl"; 
-        toast.style.cssText = `position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #222831; color: white; padding: 12px 25px; border-radius: 8px; font-size: 14.5px; font-weight: 500; z-index: 1000000; opacity: 0; visibility: hidden; transition: all 0.3s ease-in-out; text-align: center;`;
+        toast.style.cssText = `position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #222831; color: white; padding: 12px 25px; border-radius: 8px; font-size: 14.5px; font-weight: 500; z-index: 100000005 !important; opacity: 0; visibility: hidden; transition: all 0.3s ease-in-out; text-align: center;`;
         document.body.appendChild(toast); 
     }
     toast.innerHTML = message; 
     if (type === 'success') { toast.style.border = "1px solid #2ECC71"; toast.style.boxShadow = "0 0 15px rgba(46, 204, 113, 0.3)"; }
     else { toast.style.border = "1px solid #ff4d4d"; toast.style.boxShadow = "0 0 15px rgba(255, 77, 77, 0.3)"; }
     setTimeout(() => { toast.style.opacity = "1"; toast.style.visibility = "visible"; toast.style.bottom = "50px"; }, 10);
-    setTimeout(() => { toast.style.opacity = "0"; toast.style.visibility = "hidden"; toast.style.bottom = "20px"; }, 3500);
+    setTimeout(() => { toast.style.opacity = "0"; toast.style.visibility = "hidden"; toast.style.bottom = "20px"; }, 5000);
 }
 
 function showSearchGuide_PL() {
@@ -5141,13 +5911,31 @@ function closeSearchGuide_PL() {
 
 function updateAppScrollState() {
     const activeTab = document.querySelector('.tab-content[style*="display: flex"]');
-    if (!activeTab || activeTab.id === 'tab-about') { document.body.style.overflowY = "hidden"; return; }
+    if (!activeTab || activeTab.id === 'tab-about') { 
+        document.body.style.overflowY = "hidden"; 
+        return; 
+    }
     const form = activeTab.querySelector('.form-container');
     if (form) {
         const contentHeight = form.offsetHeight + 120; 
         const viewportHeight = window.innerHeight;
-        if (contentHeight > viewportHeight) document.body.style.overflowY = "auto";
-        else { document.body.style.overflowY = "hidden"; window.scrollTo(0, 0); }
+        
+        // 🚀 THIẾT LẬP VÙNG ĐỆM TRỄ 25PX CHỐNG RUNG LẮC (HYSTERESIS)
+        const threshold = 25; 
+        const currentOverflow = document.body.style.overflowY;
+
+        if (contentHeight > viewportHeight) {
+            // Chỉ đổi trạng thái nếu thực sự cần cuộn và trạng thái cũ chưa phải là auto
+            if (currentOverflow !== "auto") {
+                document.body.style.overflowY = "auto";
+            }
+        } else if (contentHeight < (viewportHeight - threshold)) {
+            // Chỉ ẩn thanh cuộn nếu chiều cao Form hụt hẳn dưới màn hình quá 25px
+            if (currentOverflow !== "hidden") {
+                document.body.style.overflowY = "hidden";
+                window.scrollTo(0, 0);
+            }
+        }
     }
 }
 
@@ -5158,58 +5946,232 @@ function updateAppScrollState() {
 /**
  * 2. TẢI DỮ LIỆU BẤT ĐỒNG BỘ SONG SONG (PARALLEL FETCH)
  */
-async function loadSystemData(isSilent = false) {
-    const loading = document.getElementById("loadingSystem");
-    if (loading && !isSilent) {
-        loading.style.display = "flex";
-        loading.style.opacity = "1"; 
+/* --- public/JS_Core_API.js --- */
+
+// --- CẤU HÌNH LIÊN KẾT BACKEND API ---
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0kGCpcGHAX2WgC9qQ6Mdh6eCXA4hwzbHCfhkmphOf-uxYKg0/exec";
+
+/**
+ * Thực thi gọi API đính kèm bảo mật Token
+ */
+async function callBackend(action, data = {}) {
+    const token = localStorage.getItem('bcons_session_token');
+    
+    // Cho phép cả hành động đăng nhập (loginUser) và đăng ký (registerUser) bỏ qua màng lọc Token khi chưa đăng nhập
+    if (!token && action !== "loginUser" && action !== "registerUser") {
+        showLoginUI();
+        throw new Error("UNAUTHORIZED: Yêu cầu đăng nhập!");
     }
 
+    const resp = await fetch(GAS_API_URL, { 
+        method: 'POST', 
+        mode: 'cors', 
+        body: JSON.stringify({ action, data, token }) 
+    });
+    const res = await resp.json();
+    
+    if (res.status === "error") {
+        if (res.message.includes("UNAUTHORIZED")) {
+            localStorage.removeItem('bcons_session_token');
+            localStorage.removeItem('bcons_staff_identity');
+            showLoginUI();
+        }
+        throw new Error(res.message);
+    }
+    return res.data;
+}
+
+/**
+ * Hiển thị khung đăng nhập chặn tương tác
+ */
+function showLoginUI() {
+    const overlay = document.getElementById('loginOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        // Khắc phục xung đột CSS mặc định opacity: 0 của lớp .form-container
+        const formContainer = overlay.querySelector('.form-container');
+        if (formContainer) {
+            formContainer.style.setProperty('opacity', '1', 'important');
+        }
+        // Tắt loading hệ thống nếu có để nhường không gian tương tác
+        const loader = document.getElementById('loadingSystem');
+        if (loader) loader.style.display = 'none';
+    }
+}
+
+
+/**
+ * Xử lý sự kiện ĐĂNG XUẤT TÀI KHOẢN (LOG OUT)
+ */
+function performLogout() {
+    localStorage.removeItem('bcons_session_token');
+    localStorage.removeItem('bcons_staff_identity');
+    // Reload trang để xóa sạch toàn bộ RAM state lưu tạm trên thiết bị
+    window.location.reload();
+}
+
+// Biến trạng thái đăng ký của giao diện
+let isRegisterMode = false;
+
+/**
+ * Chuyển đổi trạng thái giao diện giữa ĐĂNG NHẬP và ĐĂNG KÝ
+ */
+function toggleLoginMode() {
+    const title = document.getElementById('loginTitle');
+    const passContainer = document.getElementById('passwordFieldContainer');
+    const nameContainer = document.getElementById('nameFieldContainer');
+    const submitBtn = document.getElementById('loginSubmitBtn');
+    const toggleLink = document.getElementById('toggleLoginView');
+
+    isRegisterMode = !isRegisterMode;
+    clearNameWarning(); 
+
+    if (isRegisterMode) {
+        title.textContent = "CREATE AN ACCOUNT";
+        passContainer.style.setProperty('display', 'flex', 'important'); // HIỂN THỊ TRƯỜNG PASSWORD KHI ĐĂNG KÝ
+        nameContainer.style.setProperty('display', 'flex', 'important');
+        submitBtn.textContent = "REGISTER";
+        submitBtn.setAttribute('onclick', 'performRegister()');
+        toggleLink.textContent = "Đã có tài khoản? Đăng nhập ngay";
+    } else {
+        title.textContent = "MEMBER SIGN IN";
+        passContainer.style.setProperty('display', 'flex', 'important');
+        nameContainer.style.setProperty('display', 'none', 'important');
+        submitBtn.textContent = "SIGN IN";
+        submitBtn.setAttribute('onclick', 'performLogin()');
+        toggleLink.textContent = "Chưa có tài khoản? Đăng ký ngay";
+    }
+}
+
+/**
+ * Xử lý hiển thị cảnh báo trùng tên ngay dưới ô nhập và đổi màu viền input sang đỏ
+ */
+function showNameWarning(name) {
+    const warningEl = document.getElementById('nameWarningText');
+    if (warningEl) {
+        warningEl.textContent = `(Tên "${name}" đã được đăng ký, vui lòng chọn tên khác)`;
+        warningEl.style.display = 'block';
+    }
+    const inputEl = document.getElementById('registerName');
+    if (inputEl) {
+        inputEl.style.setProperty('border-color', '#ff4d4d', 'important');
+    }
+}
+
+/**
+ * Xóa bỏ cảnh báo đỏ và trả lại màu viền mặc định cho ô nhập
+ */
+function clearNameWarning() {
+    const warningEl = document.getElementById('nameWarningText');
+    if (warningEl) {
+        warningEl.style.display = 'none';
+        warningEl.textContent = '';
+    }
+    const inputEl = document.getElementById('registerName');
+    if (inputEl) {
+        inputEl.style.setProperty('border-color', 'rgba(255, 186, 8, 0.4)', 'important');
+    }
+}
+
+/**
+ * Xử lý sự kiện đăng ký tài khoản mới lên hệ thống
+ */
+async function performRegister() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    const name = document.getElementById('registerName').value.trim().toUpperCase();
+    const password = document.getElementById('loginPassword').value.trim();
+
+    if (!mail || !name || !password) {
+        alert("Sếp vui lòng điền đầy đủ Email, Name và Password!");
+        return;
+    }
+
+    if (password.length < 4) {
+        alert("Mật khẩu đăng ký phải chứa tối thiểu 4 ký tự!");
+        return;
+    }
+
+    const registerBtn = document.getElementById('loginSubmitBtn');
+    registerBtn.disabled = true;
+    registerBtn.textContent = "REGISTERING...";
+
+    let isSuccess = false; 
+
     try {
-        // Đã đổi sang hàm chuẩn callBackend được định nghĩa ở index.html
-        const sysData = await callBackend('getSystemData');
-
-        if (sysData) {
-            SYSTEM_DATA = sysData;
-            PRECOMPUTED_PL_DATA = null;
-
-            // Bọc try-catch độc lập: Một tab lỗi không làm chết cả hệ thống
-            try { if (typeof initTabHD === 'function') initTabHD(); } catch(e) { console.error("Lỗi init HD:", e); }
-            try { if (typeof initTabPL === 'function') initTabPL(); } catch(e) { console.error("Lỗi init PL:", e); }
-            try { if (typeof initTabTB === 'function') initTabTB(); } catch(e) { console.error("Lỗi init TB:", e); }
-            
-            // Build DOM Dashboard sau khi đã có dữ liệu
-            try { if (typeof executeFilter_PL === 'function') executeFilter_PL(false); } catch(e) { console.error("Lỗi build DOM PL:", e); }
+        const res = await callBackend("registerUser", { mail, name, password });
+        if (res) {
+            showToast_PL("🚀 Gửi yêu cầu đăng ký thành công! Hãy liên hệ với Admin để được duyệt!", "success");
+            document.getElementById('registerName').value = "";
+            document.getElementById('loginPassword').value = "";
+            isSuccess = true; 
+            toggleLoginMode();
         }
-
-        if (loading && !isSilent) {
-            // Ép transition bằng JS để đảm bảo hiệu ứng fade mượt mà 100%
-            loading.style.transition = "opacity 0.5s ease";
-            loading.style.opacity = "0";
-            setTimeout(() => { loading.style.display = "none"; }, 500);
-        }
-        await initMetadataEngine();
-        } catch (error) {
-        if (loading) {
-            loading.style.display = "none";
-            loading.style.opacity = "1";
-        }
-        console.error("Lỗi khởi tạo hệ thống:", error);
-        
-        // Fallback an toàn cho Toast
-        if (typeof showToast_PL === 'function') {
-            showToast_PL("⚠️ Lỗi kết nối dữ liệu!", "error");
+    } catch (err) {
+        if (err.message.includes("đã tồn tại")) {
+            showNameWarning(name);
         } else {
-            alert("⚠️ Lỗi kết nối dữ liệu!");
+            alert(err.message || "Đăng ký thất bại!");
+        }
+    } finally {
+        registerBtn.disabled = false;
+        if (!isSuccess) {
+            registerBtn.textContent = "REGISTER";
         }
     }
 }
+
 
 function submitData_HD() {
     const btn = document.getElementById("submitButton-hd");
     const loading = document.getElementById("contractLoading");
     const f0 = document.getElementById("field0-hd").value; 
-    if (!f0) return alert("Sếp chưa nhập tên gói thầu!");
+    
+    if (!f0) {
+        showToast_PL("⚠️ Sếp chưa chọn tên gói thầu!", "error");
+        return;
+    }
+
+    // 1. KIỂM TRA TRÙNG LẶP ĐỒNG THỜI: MÃ DỰ ÁN + ITEM CATEGORY + GIÁ TRỊ + MÃ NHÀ THẦU
+    const f2Raw = document.getElementById("field2-hd").value;
+    const f2 = f2Raw.includes(" | ") ? f2Raw.split(" | ")[0].trim() : f2Raw.trim(); // Mã dự án
+    const f1 = document.getElementById("field1-hd").value; // Tên đầy đủ (Item Category)
+    const f3Raw = document.getElementById("field3-hd").value;
+    const f3 = f3Raw.includes(" | ") ? f3Raw.split(" | ")[0].trim() : f3Raw.trim(); // Mã nhà thầu
+    const f4Raw = document.getElementById("field4-hd").value; // Giá trị hợp đồng
+
+    if (f2 && f1 && f3 && f4Raw && SYSTEM_DATA.pl && SYSTEM_DATA.pl.field0) {
+        const currentCategory = f1.trim().toUpperCase();
+        const currentProj = f2.toUpperCase();
+        const currentContractor = f3.toUpperCase();
+        const currentValClean = f4Raw.replace(/\D/g, ""); // Chuỗi số sạch của Giá trị nhập vào
+
+        // Quét tìm hợp đồng trùng khớp đồng thời cả 4 yếu tố định danh
+        const duplicateContract = SYSTEM_DATA.pl.field0.find(item => {
+            // a. Khớp mã dự án
+            const isMatchProj = item.maHD.toUpperCase().includes("HĐTCXD-" + currentProj);
+            
+            // b. Khớp tên đầy đủ hạng mục (Item Category)
+            const isMatchCategory = (item.packageI || "").trim().toUpperCase() === currentCategory;
+            
+            // c. Khớp giá trị hợp đồng (so sánh dạng số nguyên sạch)
+            const itemValClean = (item.valueK || item.c || "").toString().replace(/\D/g, "");
+            const isMatchValue = (itemValClean === currentValClean);
+            
+            // d. Khớp mã nhà thầu (quét đuôi số HĐ hoặc quét chéo thông tin nhà thầu)
+            const isMatchContractor = item.maHD.toUpperCase().endsWith("-" + currentContractor) || 
+                                      item.maHD.toUpperCase().includes("-" + currentContractor + "/") ||
+                                      (item.searchK || "").toUpperCase().includes(currentContractor);
+
+            return isMatchProj && isMatchCategory && isMatchValue && isMatchContractor;
+        });
+
+        if (duplicateContract) {
+            showToast_PL("⚠️ Hợp đồng này đã được tạo trước đó, vui lòng kiểm tra lại DATA!", "error");
+            return; // Ngừng tiến trình xuất file hoàn toàn
+        }
+    }
+
+    // 2. TIẾP TỤC TIẾN TRÌNH XUẤT FILE NẾU KHÔNG TRÙNG KHỚP
     btn.disabled = true; loading.style.display = "flex";
     const formData = {
         location: document.getElementById("locationDropdown-hd").value,
@@ -5230,26 +6192,6 @@ function submitData_HD() {
     });
 }
 
-function submitEdit_PL() {
-    const val = document.getElementById('ep-input-val').value.trim();
-    const loading = document.getElementById("contractLoading"); 
-    if(loading) loading.style.display = "flex";
-    // Lưu ý: Đóng gói 3 biến thành array [editingMaHD_PL, currentEditType, val]
-    callBackend("updateContractData_PL", [editingMaHD_PL, currentEditType, val]).then(res => {
-        if(loading) loading.style.display = "none";
-        if (res) {
-            showToast_PL(`🟢 Đã cập nhật thành công: ${editingMaHD_PL}`, 'success');
-            if (currentEditType === "CONTRACT_NO") currentEditItemData.maHD = val;
-            else if (currentEditType === "DATE") currentEditItemData.dateH = val;
-            else if (currentEditType === "PACKAGE") { currentEditItemData.packageI = val; currentEditItemData.note = val; } 
-            else if (currentEditType === "VALUE") { currentEditItemData.valueK = val; currentEditItemData.c = val; }
-            currentEditItemData.display = `${currentEditItemData.maHD} | ${currentEditItemData.packageI} | ${(currentEditItemData.valueK || "").toString().replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
-            PRECOMPUTED_PL_DATA = null; executeFilter_PL(false); closeEditPanel_PL();
-        }
-    }).catch(err => {
-        if(loading) loading.style.display = "none"; alert("Lỗi Server: " + (err.message || err));
-    });
-}
 
 function submitData_PL() {
     const loading = document.getElementById("contractLoading");
@@ -5271,21 +6213,45 @@ function submitData_PL() {
     });
 }
 
+// Khai báo bộ nhớ tạm để khóa các yêu cầu bàn giao đang xử lý ngầm (Client-side Race Lock)
+let activeTransferRequests_PL = new Set();
+
 function executeTransferScript_PL(docTypesString) {
     const { maHD, isTransferred } = currentTransferData_PL;
+    
+    // Chặn đứng hành động nếu yêu cầu trước đó của mã hồ sơ này chưa hoàn tất
+    if (activeTransferRequests_PL.has(maHD)) {
+        showToast_PL("⚠️ Hệ thống đang xử lý yêu cầu trước đó, vui lòng đợi trong giây lát!", "error");
+        return;
+    }
+    
+    activeTransferRequests_PL.add(maHD); // Khóa mã hồ sơ
     const newStatus = !isTransferred;
     const targetItem = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === maHD);
-    if (targetItem) { targetItem.transferred = newStatus; PRECOMPUTED_PL_DATA = null; executeFilter_PL(); }
+    
+    if (targetItem) { 
+        targetItem.transferred = newStatus; 
+        PRECOMPUTED_PL_DATA = null; 
+        executeFilter_PL(); 
+    }
+    
     if (!newStatus) showToast_PL(`🔴 Đã hủy bàn giao: <b style="color:white">${maHD}</b>`, 'error'); 
     else showToast_PL(`🟢 Đã bàn giao: <b style="color:#FFC000">${maHD}</b>`, 'success'); 
+    
     callBackend("updateTransferStatus_PL", [maHD, newStatus, docTypesString]).then(res => {
+        activeTransferRequests_PL.delete(maHD); // Mở khóa khi thành công
         if (res !== true) { 
             alert(`⚠️ LỖI DATA: Backend không tìm thấy mã [${maHD}]!`); 
-            if(targetItem) targetItem.transferred = isTransferred; PRECOMPUTED_PL_DATA = null; executeFilter_PL(); 
+            if(targetItem) targetItem.transferred = isTransferred; 
+            PRECOMPUTED_PL_DATA = null; 
+            executeFilter_PL(); 
         }
     }).catch(err => {
+        activeTransferRequests_PL.delete(maHD); // Mở khóa khi thất bại
         alert("🚨 LỖI KẾT NỐI SERVER: " + (err.message || err)); 
-        if(targetItem) targetItem.transferred = isTransferred; PRECOMPUTED_PL_DATA = null; executeFilter_PL();
+        if(targetItem) targetItem.transferred = isTransferred; 
+        PRECOMPUTED_PL_DATA = null; 
+        executeFilter_PL();
     });
 }
 
@@ -5309,38 +6275,6 @@ function submitData_TB() {
     });
 }
 
-function executeActualDeleteData_PL() {
-    closeDataDeleteModal(); const maToDelete = editingMaHD_PL; const loading = document.getElementById("contractLoading");
-    if (loading) { loading.style.display = "flex"; loading.querySelector('p').textContent = "SYSTEM DELETING DATA..."; }
-    callBackend("deleteContractRow_Backend", maToDelete).then(res => {
-        if (loading) loading.style.display = "none"; 
-        SYSTEM_DATA.pl.field0 = SYSTEM_DATA.pl.field0.filter(item => (item.display || "").split(" | ")[0].trim() !== maToDelete); 
-        PRECOMPUTED_PL_DATA = null; executeFilter_PL(); closeEditPanel_PL(); 
-        showToast_PL(`🗑️ Đã xóa dữ liệu số: ${maToDelete}`, "success"); loadSystemData(true);
-    }).catch(err => {
-        if (loading) loading.style.display = "none"; showToast_PL("⚠️ Lỗi khi xóa dữ liệu trên Server!", "error");
-    });
-}
-
-function executeActualDelete_PL() {
-    if (!fileIdToProcess) return; cancelDeleteScan_PL(); const loading = document.getElementById("contractLoading");
-    if(loading) { loading.style.display = "flex"; loading.querySelector('p').textContent = "SYSTEM DELETING SCAN FILE..."; }
-    callBackend("deleteScanFilePermanently", [currentScanMaHD, fileIdToProcess]).then(res => {
-        if(loading) loading.style.display = "none"; 
-        if (res && res.success) { 
-            const item = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === currentScanMaHD); 
-            if (item) { 
-                item.scanId = item.scanId.split(";;").filter(f => f && !f.startsWith(fileIdToProcess + "|")).join(";;"); 
-                PRECOMPUTED_PL_DATA = null; renderExistingFiles_PL(currentScanMaHD); executeFilter_PL(); 
-            } 
-            showToast_PL("🗑️ Đã xóa file thành công", "success"); fileIdToProcess = ""; 
-        } else {
-            alert("Lỗi xóa file: " + (res ? res.error : "Unknown"));
-        }
-    }).catch(err => {
-        if(loading) loading.style.display = "none"; alert("Lỗi kết nối: " + (err.message || err));
-    });
-}
 
 function exportFilteredToNewSheet_PL() {
     const input = document.getElementById("field0-pl").value.toLowerCase();
@@ -5426,6 +6360,522 @@ function handleMobileSwipe() {
     }
 }
 
+// --- KHAI BÁO KEY KẾT NỐI ABLY PHÍA CLIENT (DÙNG CHUNG KHÓA Ở BƯỚC 2) ---
+const ABLY_CLIENT_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8RU";
+
+/**
+ * Xử lý sự kiện nhấn nút SIGN IN (Đồng bộ tên và quyền lên Client)
+ */
+async function performLogin() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value.trim();
+    
+    if (!mail || !password) {
+        alert("Sếp vui lòng điền đầy đủ thông tin đăng nhập!");
+        return;
+    }
+
+    const loginBtn = document.querySelector('#loginOverlay .submit-button');
+    loginBtn.disabled = true;
+    loginBtn.textContent = "VERIFYING...";
+
+    try {
+        const res = await callBackend("loginUser", { mail, password });
+        if (res && res.token) {
+            localStorage.setItem('bcons_session_token', res.token);
+            localStorage.setItem('bcons_staff_identity', res.name);
+            localStorage.setItem('bcons_staff_role', res.role || "USER"); // Lưu quyền vĩnh viễn trên máy
+            
+            // Gán tên lên Header ngay lần đầu đăng nhập thành công
+            const displayEl = document.getElementById('staffNameDisplay');
+            if (displayEl) {
+                displayEl.textContent = res.name;
+            }
+            
+            document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
+            showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
+            
+            // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
+            loadSystemData();
+        }
+    } catch (err) {
+        alert(err.message || "Xác thực thất bại!");
+    } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "SIGN IN";
+    }
+}
+
+/**
+ * Khởi tạo dữ liệu hệ thống có kiểm tra phiên làm việc (Mở chuông cho TẤT CẢ mọi người)
+ */
+async function loadSystemData(isSilent = false) {
+    const token = localStorage.getItem('bcons_session_token');
+    if (!token) {
+        showLoginUI();
+        return;
+    }
+
+    // 🚀 CHỐNG XUNG ĐỘT REAL-TIME: Nếu người dùng đang mở một trong các bảng điều khiển (Edit/Transfer/Scan),
+    // hoãn việc nạp lại dữ liệu im lặng (isSilent) để tránh ghi đè dữ liệu đang nhập hoặc mất tham chiếu con trỏ.
+    const isPanelActive = document.getElementById('edit-panel-pl')?.classList.contains('active') ||
+                          document.getElementById('transfer-panel-pl')?.classList.contains('active') ||
+                          document.getElementById('scan-panel-pl')?.classList.contains('active');
+    if (isPanelActive && isSilent) {
+        console.log("[Real-time] User is interacting with a panel. Postponing background sync.");
+        return;
+    }
+
+    // Gán tên lên Header khi F5 tải lại trang
+    const name = localStorage.getItem('bcons_staff_identity');
+    const displayEl = document.getElementById('staffNameDisplay');
+    if (displayEl && name) {
+        displayEl.textContent = name;
+    }
+
+    const loading = document.getElementById("loadingSystem");
+    if (loading && !isSilent) loading.style.display = "flex";
+
+    try {
+        const sysData = await callBackend('getSystemData');
+        if (sysData) {
+            SYSTEM_DATA = sysData;
+            PRECOMPUTED_PL_DATA = null;
+
+            // Nạp dữ liệu chờ duyệt về Client
+            pendingUsersList_PL = sysData.pendingUsers || [];
+
+            if (typeof initTabHD === 'function') initTabHD();
+            if (typeof initTabPL === 'function') initTabPL();
+            if (typeof initTabTB === 'function') initTabTB();
+            if (typeof executeFilter_PL === 'function') executeFilter_PL(false);
+            
+            // Tự động tính toán lại STT Phụ lục khi đồng bộ dữ liệu mới (Hỗ trợ Real-time giật lùi STT khi máy khác xóa)
+            if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
+
+            // 🚀 MỞ QUẢ CHUÔNG THÔNG BÁO CHO TẤT CẢ MỌI NGƯỜI ĐÃ ĐĂNG NHẬP THÀNH CÔNG
+            if (name) {
+                const bellContainer = document.getElementById('bellNotificationContainer');
+                if (bellContainer) {
+                    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
+                    // Chỉ hiển thị quả chuông nếu vai trò là quản trị viên ADMIN
+                    if (currentRole.toUpperCase() === "ADMIN") {
+                        bellContainer.style.setProperty('display', 'flex', 'important');
+                    }
+                }
+                updateBellBadge();
+                initAblyRealtimeConnection(); // Mở cổng Socket lắng nghe
+            }
+        }
+        if (loading) {
+            loading.style.opacity = "0";
+            setTimeout(() => { loading.style.display = "none"; }, 500);
+        }
+    } catch (error) {
+        if (loading) loading.style.display = "none";
+        console.error("Lỗi khởi tạo hệ thống:", error);
+        showToast_PL("⚠️ Lỗi phiên làm việc hoặc kết nối!", "error");
+    }
+}
+
+/**
+ * Trình dựng danh sách chờ duyệt (Chỉ hiện nút APPROVE/REJECT đối với quyền ADMIN)
+ */
+function renderBellList() {
+    const listContainer = document.getElementById('bellListContent');
+    if (!listContainer) return;
+    
+    if (pendingUsersList_PL.length === 0) {
+        listContainer.innerHTML = `<div style="color: #505966; font-size: 11px; font-style: italic; text-align: center; padding: 25px 0;">Không có yêu cầu chờ duyệt</div>`;
+        return;
+    }
+    
+    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
+    const isAdmin = (currentRole.toUpperCase() === "ADMIN");
+
+    let html = "";
+    pendingUsersList_PL.forEach(u => {
+        const safeId = getSafeId_PL(u.mail); 
+        
+        // Kiểm tra xem user này có đang nằm trong hàng chờ đếm ngược hay không
+        const queuedItem = pendingApprovalBatch_PL.find(item => item.mail === u.mail);
+        
+        let cardStyle = "background: rgba(255,255,255,0.02); border: 1px solid rgba(255,186,8,0.15);";
+        let buttonHTML = "";
+
+        if (queuedItem) {
+            // Nếu đang trong hàng chờ, đổi viền sang Xanh (Approve) hoặc Đỏ (Reject)
+            const borderCol = queuedItem.action === "APPROVE" ? "#2ECC71" : "#E74C3C";
+            const actionText = queuedItem.action === "APPROVE" ? "Đang chờ Duyệt" : "Đang chờ Từ chối";
+            cardStyle = `background: rgba(255,255,255,0.01); border: 1.5px solid ${borderCol}; opacity: 0.75;`;
+            
+            buttonHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 4px;">
+                    <span class="batch-status-text" style="color: ${borderCol}; font-size: 11px; font-style: italic; font-weight: bold;">${actionText} (3s)...</span>
+                    <button type="button" onclick="undoBatchAction_PL('${u.mail}')" 
+                            style="padding: 2px 10px; border: 1px solid #95A1AF; background: transparent; color: #95A1AF; font-size: 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;">UNDO</button>
+                </div>
+            `;
+        } else if (isAdmin) {
+            buttonHTML = `
+                <div class="action-buttons-wrapper" style="display: flex; gap: 8px; margin-top: 4px;">
+                    <button type="button" class="btn-bell-approve" onclick="queueBatchAction_PL('${u.mail}', '${u.name}', 'APPROVE')" 
+                            style="flex: 1; height: 26px; border: none; background: #2ECC71; color: white; font-weight: bold; font-size: 10.5px; border-radius: 4px; cursor: pointer; transition: all 0.2s ease-in-out;">APPROVE</button>
+                    <button type="button" class="btn-bell-reject" onclick="queueBatchAction_PL('${u.mail}', '${u.name}', 'REJECT')" 
+                            style="flex: 1; height: 26px; border: none; background: #E74C3C; color: white; font-weight: bold; font-size: 10.5px; border-radius: 4px; cursor: pointer; transition: all 0.2s ease-in-out;">REJECT</button>
+                </div>
+            `;
+        } else {
+            buttonHTML = `
+                <div style="color: #95A1AF; font-size: 10.5px; font-style: italic; text-align: center; margin-top: 4px; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px;">Đang chờ phê duyệt...</div>
+            `;
+        }
+
+        html += `
+            <div id="user-card-${safeId}" class="pending-user-card" 
+                 style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); transform-origin: top; ${cardStyle}">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #FFFFFF; font-size: 12.5px; font-weight: bold;">${u.name}</span>
+                    <span style="color: #95A1AF; font-size: 10.5px; font-family: monospace;">${u.mail}</span>
+                </div>
+                ${buttonHTML}
+            </div>
+        `;
+    });
+    listContainer.innerHTML = html;
+}
+
+/**
+ * Đóng mở Dropdown quả chuông và tự động đóng các dropdown khác để tránh đè giao diện
+ */
+function toggleBellDropdown(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('bellDropdown');
+    const isShowing = dropdown.style.display === 'flex';
+    
+    // Đóng toàn bộ menu dropdown khác
+    document.querySelectorAll('.smooth-dropdown').forEach(d => d.classList.remove('show'));
+    
+    if (isShowing) {
+        dropdown.style.display = 'none';
+    } else {
+        dropdown.style.display = 'flex';
+        renderBellList();
+    }
+}
+
+/**
+ * Cập nhật số đỏ hiển thị trên quả chuông báo
+ */
+function updateBellBadge() {
+    const badge = document.getElementById('bellBadge');
+    const count = pendingUsersList_PL.length;
+    
+    if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'block';
+        // Tạo hiệu ứng lắc nhẹ quả chuông để sếp chú ý
+        const icon = document.getElementById('bellIcon');
+        if (icon) {
+            icon.style.transform = 'scale(1.2) rotate(15deg)';
+            setTimeout(() => { icon.style.transform = 'scale(1) rotate(0deg)'; }, 300);
+        }
+    } else {
+        badge.style.display = 'none';
+    }
+
+    // 🚀 THÊM MỚI: Tự động cập nhật thông báo lên Tiêu đề Tab & Favicon
+    updateTabNotification(count);
+}
+
+
+/**
+ * Thêm hành động duyệt/từ chối vào hàng chờ đếm ngược 3 giây
+ */
+function queueBatchAction_PL(mail, name, action) {
+    const safeId = getSafeId_PL(mail);
+
+    // 1. Thêm hành động hoặc cập nhật nếu đã tồn tại trong hàng chờ
+    const existingIndex = pendingApprovalBatch_PL.findIndex(item => item.mail === mail);
+    if (existingIndex > -1) {
+        pendingApprovalBatch_PL[existingIndex].action = action;
+    } else {
+        pendingApprovalBatch_PL.push({ mail, name, action, safeId }); // Lưu kèm safeId để can thiệp thẻ card
+    }
+
+    // Vẽ lại giao diện quả chuông ngay lập tức để hiện viền màu trạng thái chờ duyệt
+    renderBellList();
+
+    // 2. KHỞI CHẠY / RESET THỜI GIAN ĐẾM NGƯỢC 3 GIÂY (DEBOUNCE)
+    clearTimeout(approvalBatchTimer_PL);
+    clearInterval(countdownInterval_PL);
+    countdownSeconds_PL = 3;
+
+    // ĐỒNG BỘ: Đã xóa hoàn toàn thông báo Toast gây nhiễu tại đây theo yêu cầu của sếp
+
+    // 🚀 ĐẾM NGƯỢC GIÂY TRỰC TIẾP TRÊN THẺ CARD
+    countdownInterval_PL = setInterval(() => {
+        countdownSeconds_PL--;
+        if (countdownSeconds_PL > 0) {
+            // Duyệt qua toàn bộ hàng chờ để giảm giây hiển thị trên màn hình
+            pendingApprovalBatch_PL.forEach(item => {
+                const card = document.getElementById(`user-card-${item.safeId}`);
+                if (card) {
+                    const statusText = card.querySelector('.batch-status-text');
+                    if (statusText) {
+                        const actionLabel = item.action === "APPROVE" ? "Đang chờ Duyệt" : "Đang chờ Từ chối";
+                        statusText.textContent = `${actionLabel} (${countdownSeconds_PL}s)...`;
+                    }
+                }
+            });
+        } else {
+            clearInterval(countdownInterval_PL);
+        }
+    }, 1000);
+
+    // Kích hoạt gửi lệnh hàng loạt sau 3 giây nếu sếp dừng không bấm gì thêm
+    approvalBatchTimer_PL = setTimeout(async () => {
+        await commitApprovalBatch_PL();
+    }, 3000);
+}
+
+/**
+ * Hàm rút lại quyết định (Hủy hàng chờ) cho một tài khoản cụ thể
+ */
+function undoBatchAction_PL(mail) {
+    // Xóa khỏi hàng chờ
+    pendingApprovalBatch_PL = pendingApprovalBatch_PL.filter(item => item.mail !== mail);
+    
+    // Khôi phục lại giao diện mặc định
+    renderBellList();
+
+    // Nếu hàng chờ trống rỗng hoàn toàn, tắt bộ đếm ngược
+    if (pendingApprovalBatch_PL.length === 0) {
+        clearTimeout(approvalBatchTimer_PL);
+        clearInterval(countdownInterval_PL);
+    } else {
+        // Nếu vẫn còn người khác, gia hạn lại thời gian đếm ngược về 3 giây
+        const firstItem = pendingApprovalBatch_PL[0];
+        queueBatchAction_PL(firstItem.mail, firstItem.name, firstItem.action);
+    }
+}
+
+/**
+ * Thực thi gửi lô phê duyệt tuần tự lên Server (Khi hết thời gian chờ 3 giây)
+ */
+async function commitApprovalBatch_PL() {
+    if (pendingApprovalBatch_PL.length === 0) return;
+
+    // 1. Hiện bảng tải đen toàn màn hình duy nhất 1 lần để báo đang đồng bộ lô dữ liệu
+    const loading = document.getElementById("contractLoading");
+    if (loading) {
+        loading.style.display = "flex";
+        loading.querySelector('p').textContent = `ĐANG XỬ LÝ LÔ ${pendingApprovalBatch_PL.length} YÊU CẦU...`;
+    }
+
+    // Sao lưu lại mảng hàng chờ để xử lý hoạt ảnh bay thẻ
+    const currentBatch = [...pendingApprovalBatch_PL];
+    pendingApprovalBatch_PL = []; // Dọn sạch hàng chờ toàn cục ngay để sẵn sàng nhận đợt bấm mới
+
+    try {
+        // 2. CHẠY TUẦN TỰ (SEQUENTIAL) ĐỂ TRÁNH LOCK FILE GOOGLE SHEETS
+        for (const item of currentBatch) {
+            const action = item.action === "APPROVE" ? "approveUser_InApp" : "rejectUser_InApp";
+            
+            // Gửi lệnh lên Server và chờ phản hồi thành công rồi mới đi tiếp người sau
+            const success = await callBackend(action, item.mail);
+            
+            if (success) {
+                // Xóa khỏi danh sách bộ nhớ tạm
+                pendingUsersList_PL = pendingUsersList_PL.filter(u => u.mail !== item.mail);
+                
+                // Hiệu ứng bay thẻ
+                const safeId = getSafeId_PL(item.mail);
+                const card = document.getElementById(`user-card-${safeId}`);
+                if (card) {
+                    card.style.transform = item.action === "APPROVE" ? "translateX(50px)" : "translateX(-50px)";
+                    card.style.opacity = "0";
+                }
+            }
+        }
+
+        // 3. Hoàn tất toàn bộ lô sau khi Server phản hồi đầy đủ
+        setTimeout(() => {
+            if (loading) loading.style.display = "none";
+            updateBellBadge();
+            renderBellList();
+
+            if (pendingUsersList_PL.length === 0) {
+                document.getElementById('bellDropdown').style.display = 'none';
+            }
+        }, 400);
+
+    } catch (e) {
+        if (loading) loading.style.display = "none";
+        alert("Lỗi xử lý lô: " + e.message);
+        // Nếu lỗi xảy ra, khôi phục lại danh sách chờ duyệt ban đầu
+        loadSystemData(true);
+    }
+}
+
+// Lắng nghe sự kiện click ngoài màn hình để tự động đóng dropdown Quả chuông báo
+document.addEventListener('click', () => {
+    const dropdown = document.getElementById('bellDropdown');
+    if (dropdown) dropdown.style.display = 'none';
+});
+
+function initAblyRealtimeConnection() {
+    try {
+        if (typeof Ably === 'undefined') return;
+        
+        const realtime = new Ably.Realtime(ABLY_CLIENT_KEY);
+        const channel = realtime.channels.get('bcons_notification');
+        
+        // 1. Đăng ký nhận thông báo Đăng ký Nhân viên mới
+        channel.subscribe('new_registration', (message) => {
+            const newUser = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
+            if (newUser && newUser.mail) {
+                const exists = pendingUsersList_PL.some(u => u.mail === newUser.mail);
+                if (!exists) {
+                    pendingUsersList_PL.push(newUser);
+                    updateBellBadge();
+                    const dropdown = document.getElementById('bellDropdown');
+                    if (dropdown && dropdown.style.display === 'flex') {
+                        renderBellList();
+                    }
+                    showToast_PL(`🔔 <b>${newUser.name}</b> vừa đăng ký tài khoản mới!`, "success");
+                }
+            }
+        });
+
+        // 2. Đăng ký nhận thông báo Cập nhật Hợp đồng / Phụ lục Realtime
+        channel.subscribe('contract_update', (message) => {
+            const updateInfo = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
+            const localStaffName = localStorage.getItem('bcons_staff_identity');
+            
+            // Chỉ xử lý nếu hành động này được thực thi bởi một user khác
+            if (updateInfo && updateInfo.staffName !== localStaffName) {
+                // Tải ngầm dữ liệu để cập nhật Dashboard
+                loadSystemData(true);
+                
+                // Định hình thông báo đặt Tên nhân sự lên trước
+                let actionText = "cập nhật";
+                if (updateInfo.actionType === "CREATE_HD") actionText = "tạo";
+                else if (updateInfo.actionType === "CREATE_PL") actionText = "tạo";
+                else if (updateInfo.actionType === "DELETE_DATA") actionText = "xóa";
+                else if (updateInfo.actionType === "TRANSFER_STATUS") actionText = "thay đổi trạng thái bàn giao";
+
+                showToast_PL(`📢 <b>${updateInfo.staffName}</b> vừa <b>${actionText}</b> hồ sơ <b>${updateInfo.contractNo}</b>!`, "success");
+            }
+        });
+        
+        console.log("⚡ [Realtime] Cổng kết nối WebSockets Ably đã sẵn sàng!");
+    } catch (e) {
+        console.error("[Realtime Error] Lỗi kết nối hệ thống thời gian thực Ably: " + e.message);
+    }
+}
+
+/**
+ * Xử lý cập nhật số lượng thông báo dạng (1) hoặc (2) lên Tiêu đề và Favicon của Tab
+ */
+function updateTabNotification(count) {
+    const baseTitle = "KEN";
+    
+    // 1. CẬP NHẬT TIÊU ĐỀ TAB DẠNG (Count) KEN
+    if (count > 0) {
+        document.title = `(${count}) ${baseTitle}`;
+    } else {
+        document.title = baseTitle;
+    }
+
+    // 2. CẬP NHẬT CHẤM ĐỎ TRÊN FAVICON
+    const favicon = document.querySelector('link[rel="icon"]');
+    if (!favicon) return;
+
+    const originalSrc = "https://i.postimg.cc/W4v0Vv2C/logo.png";
+
+    if (count <= 0) {
+        favicon.href = originalSrc;
+        return;
+    }
+
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+
+        const img = new Image();
+        img.crossOrigin = "anonymous"; // Cho phép tải ảnh an toàn nếu máy chủ hỗ trợ CORS
+        img.src = originalSrc;
+
+        img.onload = function() {
+            try {
+                // Vẽ logo gốc
+                ctx.drawImage(img, 0, 0, 32, 32);
+                // Vẽ thêm chấm đỏ thông báo
+                drawFaviconBadge(ctx, count);
+                // Cập nhật lại liên kết Icon
+                favicon.href = canvas.toDataURL('image/png');
+            } catch (err) {
+                // Dự phòng vẽ tay hoàn toàn bằng Canvas nếu dính lỗi bảo mật CORS từ nhà cung cấp ảnh
+                drawFallbackFavicon(favicon, count);
+            }
+        };
+        img.onerror = function() {
+            drawFallbackFavicon(favicon, count);
+        };
+    } catch (e) {
+        drawFallbackFavicon(favicon, count);
+    }
+}
+
+/**
+ * Hàm hỗ trợ vẽ chấm tròn đỏ chứa số lượng thông báo
+ */
+function drawFaviconBadge(ctx, count) {
+    ctx.beginPath();
+    ctx.arc(24, 8, 7, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ff4d4d'; // Màu đỏ thông báo chuẩn
+    ctx.fill();
+
+    ctx.font = 'bold 9px Arial';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(count > 9 ? '9+' : count, 24, 8);
+}
+
+/**
+ * Hàm vẽ favicon dự phòng (Vẽ tay trực tiếp, không sử dụng tài nguyên ảnh ngoài)
+ */
+function drawFallbackFavicon(favicon, count) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+
+    // Vẽ hình tròn nền tối màu của hệ thống
+    ctx.fillStyle = '#031c35';
+    ctx.beginPath();
+    ctx.arc(16, 16, 15, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = '#FFBA08';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Vẽ chữ K màu vàng đại diện thương hiệu
+    ctx.font = 'bold 15px Arial';
+    ctx.fillStyle = '#FFBA08';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('K', 15, 16);
+
+    // Vẽ chấm đỏ thông báo
+    drawFaviconBadge(ctx, count);
+
+    favicon.href = canvas.toDataURL('image/png');
+}
 
 
 ==================================================
@@ -5599,7 +7049,6 @@ h1 {
 .hoc-tooltip.context-menu-active { 
     background-color: rgba(255, 255, 255, 0.12) !important; 
     color: #ffffff !important; 
-    padding-left: 24px !important;
 }
 
 .ctx-success::before  { content: "\f6b9" !important; color: #2ecc71 !important; }
@@ -5692,14 +7141,26 @@ h1 {
 }
 
 @keyframes planeFullSequence {
-    0% { transform: scale(1.2) translate(0, 0) rotate(0deg); opacity: 1; }
-    15% { transform: scale(1.3) translate(-4px, 4px) rotate(-10deg); opacity: 1; }
-    40% { transform: scale(1.4) translate(35px, -25px) rotate(5deg); opacity: 0; }
-    41% { transform: scale(0) translate(0, 0) rotate(0deg); opacity: 0; } 
-    55% { transform: scale(1.2) translate(0, 0); opacity: 1; } 
-    65% { transform: scale(1.25) translateY(-3px) rotate(8deg); } 
-    80% { transform: scale(1.2) translateY(0) rotate(0deg); } 
-    100% { transform: scale(1.15) translate(0, 0) rotate(0deg); opacity: 1; }
+    0% { 
+        transform: translate(0, 0) rotate(0deg) scale(1.1); 
+        opacity: 1; 
+    }
+    20% { 
+        transform: translate(-3px, 3px) rotate(-10deg) scale(1.1); /* Lùi đà nhẹ nhanh */
+        opacity: 1; 
+    } 
+    45% { 
+        transform: translate(35px, -30px) rotate(15deg) scale(1.3); /* Phóng đi dứt khoát ra góc trên phải */
+        opacity: 0; 
+    }
+    47% { 
+        transform: translate(-15px, 15px) rotate(-15deg) scale(0); /* Vòng nhanh ra sau góc dưới trái */
+        opacity: 0; 
+    }
+    100% { 
+        transform: translate(0, 0) rotate(0deg) scale(1); /* Trượt mượt mà về vị trí ban đầu */
+        opacity: 1; 
+    }
 }
 
 @keyframes iconShake {
@@ -5805,7 +7266,13 @@ function formatInput_PL(input) {
  */
 function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback) {
     const drop = document.getElementById(dropId);
-    const isVisible = drop && (drop.classList.contains("show") || drop.style.display !== "none");
+    
+    // 🚀 SỬA LỖI: Nhận diện hiển thị dựa vào class hoạt động hoặc thuộc tính visibility thực tế của trình duyệt
+    const isVisible = drop && (
+        drop.classList.contains("show") || 
+        drop.classList.contains("open-smooth") || 
+        window.getComputedStyle(drop).visibility === "visible"
+    );
 
     if (!isVisible) {
         if (e.key === "Enter") {
@@ -5819,7 +7286,8 @@ function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback)
     if (items.length === 0) {
         if (e.key === "Enter") {
             e.preventDefault();
-            drop.classList.remove("show");
+            if (drop.classList.contains("show")) drop.classList.remove("show");
+            if (drop.classList.contains("open-smooth")) drop.classList.remove("open-smooth");
             document.getElementById(nextInputId)?.focus();
         }
         return;
@@ -5845,11 +7313,14 @@ function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback)
     } 
     else if (e.key === "Enter") {
         e.preventDefault();
+        
+        // Ngoại lệ cho dropdown bảo lãnh/tạm ứng nếu chưa chọn mục nào
         if (dropId === 'drop-field5-hd' && currentFocusIndex === -1) {
             drop.classList.remove("show");
             setTimeout(() => { document.getElementById(nextInputId)?.focus(); }, 100);
             return;
         }
+        
         const targetItem = (currentFocusIndex >= 0) ? items[currentFocusIndex] : items[0];
         if (targetItem) {
             setTimeout(() => {
@@ -6081,78 +7552,7 @@ function handleKeyDown_PL(e, nextInputId) {
 
 
 ==================================================
-FILE [21]: ./public/JS_Metadata_Engine.js
-==================================================
-// JS_Metadata_Engine.js
-let METADATA_STORE = null;
-
-async function initMetadataEngine() {
-    try {
-        const res = await callBackend("getMetadataSync");
-        if (!res || !res.metadata) {
-            console.error("Metadata rỗng!");
-            return;
-        }
-        METADATA_STORE = res;
-        localStorage.setItem("METADATA_CACHE", JSON.stringify(res));
-        
-        // Render Form cho HDTCXD
-        renderForm("dataForm-hd", "_hd");
-        console.log("✅ Metadata Engine Ready");
-    } catch (e) {
-        console.error("Lỗi khởi tạo Metadata:", e);
-        // Hiển thị lỗi ra màn hình cho dễ debug
-        document.getElementById("dataForm-hd").innerHTML = `<p style="color:red">Lỗi cấu hình: ${e.message}</p>`;
-    }
-}
-
-function renderForm(formId, suffix) {
-    const form = document.getElementById(formId);
-    // Thay dòng cũ bằng dòng này để an toàn hơn
-    const fields = METADATA_STORE.metadata.filter(f => f.id.toLowerCase().endsWith(suffix.toLowerCase()));
-    const rows = fields.reduce((acc, f) => { (acc[f.row] = acc[f.row] || []).push(f); return acc; }, {});
-
-    form.innerHTML = Object.keys(rows).sort((a,b) => a-b).map(r => `
-        <div class="m-row">
-            ${rows[r].map(f => `
-                <div class="m-col" style="flex: 0 0 calc(${(f.width/12)*100}% - 15px)">
-                    <label class="m-label">${f.label}</label>
-                    ${renderInput(f)}
-                </div>
-            `).join('')}
-        </div>
-    `).join('');
-}
-
-function renderInput(f) {
-    const src = METADATA_STORE.sources[f.id] || [];
-    if (f.type === 'currency') return `<input type="text" id="${f.id}" oninput="maskMoney(this)" placeholder="${f.placeholder}">`;
-    if (f.type === 'dropdown') return `<select id="${f.id}"><option value="">${f.placeholder}</option>${src.map(o => `<option value="${o[0]}">${o[0]}</option>`).join('')}</select>`;
-    if (f.type === 'radio') return `<div class="m-radio-group">${src.map(o => {
-        const [l, v] = o[0].split(':');
-        return `<label><input type="radio" name="${f.id}" value="${v||l}"> ${l}</label>`;
-    }).join('')}</div>`;
-    return `<input type="text" id="${f.id}" placeholder="${f.placeholder}">`;
-}
-
-function maskMoney(el) {
-    let v = el.value.replace(/\D/g, "");
-    el.value = v.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-}
-
-async function submitMetadataForm() {
-    const payload = {};
-    METADATA_STORE.metadata.forEach(f => {
-        const el = document.getElementById(f.id) || document.querySelector(`input[name="${f.id}"]:checked`);
-        if (el) payload[f.id] = (f.type === 'currency') ? el.value.replace(/\./g, "") : el.value;
-    });
-    const res = await callBackend("processInjection", payload);
-    if(res.success) alert("Đã tiêm dữ liệu thành công!");
-}
-
-
-==================================================
-FILE [22]: ./public/CSS_Dropdown_General.css
+FILE [21]: ./public/CSS_Dropdown_General.css
 ==================================================
 /* ==========================================================================
    4.2. DROPDOWN MENU SYSTEM (FIX ICON, HEIGHT 172PX & ECO-SHADOW)
@@ -6265,9 +7665,16 @@ FILE [22]: ./public/CSS_Dropdown_General.css
     white-space: nowrap; 
 }
 
+/* 🚀 THÊM MỚI: Đồng bộ đổi màu nền khi dùng phím mũi tên lên/xuống */
+#tab-hdtcxd .smooth-dropdown div:not(.disable-hover).active,
+#tab-tbkq .smooth-dropdown div:not(.disable-hover).active {
+    background-color: rgba(255, 255, 255, 0.12) !important; 
+    color: #ffffff !important;
+}
+
 
 ==================================================
-FILE [23]: ./public/CSS_Dropdown_PL.css
+FILE [22]: ./public/CSS_Dropdown_PL.css
 ==================================================
 /* ==========================================================================
    4.3. DASHBOARD PL (FIELD 0 PL) - ULTRA-SHARP & ECO-PERFORMANCE
@@ -6526,7 +7933,7 @@ FILE [23]: ./public/CSS_Dropdown_PL.css
 
 
 ==================================================
-FILE [24]: ./public/CSS_Header.css
+FILE [23]: ./public/CSS_Header.css
 ==================================================
 /* ==========================================================================
    NHÓM 2: HEADER & NAVIGATION
@@ -6682,7 +8089,7 @@ FILE [24]: ./public/CSS_Header.css
 
 
 ==================================================
-FILE [25]: ./public/JS_Tab_PL_Core.js
+FILE [24]: ./public/JS_Tab_PL_Core.js
 ==================================================
 
 // ==========================================================================
@@ -7077,10 +8484,10 @@ function toggleAdjustment_PL(id, label, fieldToShow) {
 
 
 ==================================================
-FILE [26]: ./.clasp.json
+FILE [25]: ./.clasp.json
 ==================================================
 {
-  "scriptId": "1pfwf8hqa_oXTbdfmatN5T_qcP0JWadMpHVZzVTMjY-rKvXZsErAqz6l5",
+  "scriptId": "1tJWEYIFGotPIUgJ-CciZzigMTW4-W5KSBKVeJleQISGdxLRtk1IJU5li",
   "rootDir": "",
   "scriptExtensions": [
     ".js",

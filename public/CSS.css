@@ -166,7 +166,6 @@ h1 {
 .hoc-tooltip.context-menu-active { 
     background-color: rgba(255, 255, 255, 0.12) !important; 
     color: #ffffff !important; 
-    padding-left: 24px !important;
 }
 
 .ctx-success::before  { content: "\f6b9" !important; color: #2ecc71 !important; }
@@ -259,14 +258,26 @@ h1 {
 }
 
 @keyframes planeFullSequence {
-    0% { transform: scale(1.2) translate(0, 0) rotate(0deg); opacity: 1; }
-    15% { transform: scale(1.3) translate(-4px, 4px) rotate(-10deg); opacity: 1; }
-    40% { transform: scale(1.4) translate(35px, -25px) rotate(5deg); opacity: 0; }
-    41% { transform: scale(0) translate(0, 0) rotate(0deg); opacity: 0; } 
-    55% { transform: scale(1.2) translate(0, 0); opacity: 1; } 
-    65% { transform: scale(1.25) translateY(-3px) rotate(8deg); } 
-    80% { transform: scale(1.2) translateY(0) rotate(0deg); } 
-    100% { transform: scale(1.15) translate(0, 0) rotate(0deg); opacity: 1; }
+    0% { 
+        transform: translate(0, 0) rotate(0deg) scale(1.1); 
+        opacity: 1; 
+    }
+    20% { 
+        transform: translate(-3px, 3px) rotate(-10deg) scale(1.1); /* Lùi đà nhẹ nhanh */
+        opacity: 1; 
+    } 
+    45% { 
+        transform: translate(35px, -30px) rotate(15deg) scale(1.3); /* Phóng đi dứt khoát ra góc trên phải */
+        opacity: 0; 
+    }
+    47% { 
+        transform: translate(-15px, 15px) rotate(-15deg) scale(0); /* Vòng nhanh ra sau góc dưới trái */
+        opacity: 0; 
+    }
+    100% { 
+        transform: translate(0, 0) rotate(0deg) scale(1); /* Trượt mượt mà về vị trí ban đầu */
+        opacity: 1; 
+    }
 }
 
 @keyframes iconShake {

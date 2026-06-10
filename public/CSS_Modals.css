@@ -225,12 +225,29 @@
 .ctx-main-action { flex: 1; border: none !important; } 
 
 .ctx-gear-action { 
-    width: 46px !important; display: flex !important; align-items: center !important; 
-    justify-content: center !important; cursor: pointer; color: #ADADAD;
-    border-left: 1px solid rgba(255, 255, 255, 0.05) !important; transition: transform 0.3s ease;
+    width: 46px !important; 
+    display: flex !important; 
+    align-items: center !important; 
+    justify-content: center !important; 
+    cursor: pointer; 
+    color: #ADADAD;
+    border-left: 1px solid rgba(255, 255, 255, 0.05) !important;
+    background: transparent !important;
+    transition: background-color 0.2s ease;
 }
+
+.ctx-gear-action i {
+    display: inline-block;
+    color: #ADADAD;
+    transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1), color 0.2s ease;
+}
+
+.ctx-gear-action:hover i { 
+    transform: rotate(90deg) scale(1.15) !important; /* Xoay 90 độ và phóng to 1.15 lần mượt mà */
+    color: #FFBA08 !important; /* Đổi sang màu vàng Gold nhã nhặn khi hover */
+}
+
 .ctx-gear-action:hover { background: transparent !important; color: #ADADAD !important; }
-.ctx-gear-action:hover i { transform: rotate(90deg); }
 
 .ctx-menu-item::before, .ctx-main-action::before { font-family: "bootstrap-icons" !important; font-size: 17px; width: 22px !important; text-align: center; display: inline-block; flex-shrink: 0; }
 
@@ -240,7 +257,7 @@
 
 /* 1. Bàn giao: Máy bay phóng đi rồi xuất hiện lại */
 .ctx-success:hover::before { 
-    animation: planeFullSequence 1.5s cubic-bezier(0.45, 0.05, 0.55, 0.95) forwards; 
+    animation: planeFullSequence 0.8s cubic-bezier(0.25, 0.8, 0.25, 1) forwards; 
     color: #2ECC71 !important; 
 }
 
@@ -261,12 +278,6 @@
 .ctx-main-action:hover::before { 
     transform: scale(1.2) !important; 
     transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
-}
-
-/* 5. Bánh răng (Settings): Xoay tròn */
-.ctx-gear-action:hover i { 
-    transform: rotate(45deg) scale(1.2) !important; 
-    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
 }
 
 /* --- 5.4. SCAN DELETE CONFIRM & GLOBAL TOOLTIP --- */
@@ -317,4 +328,23 @@
 .form-container.dim-overlay-active.show-overlay::after {
     opacity: 1;
     visibility: visible;
+}
+
+/* 🚀 THÊM MỚI: Hiệu ứng Hover cao cấp cho nút duyệt nhanh */
+.btn-bell-approve:hover {
+    background-color: #27ae60 !important; /* Xanh đậm hơn */
+    transform: translateY(-1.5px);
+    box-shadow: 0 3px 10px rgba(46, 204, 113, 0.4);
+}
+.btn-bell-approve:active {
+    transform: translateY(0.5px) scale(0.97); /* Nhấn lún nút nhẹ */
+}
+
+.btn-bell-reject:hover {
+    background-color: #c0392b !important; /* Đỏ đậm hơn */
+    transform: translateY(-1.5px);
+    box-shadow: 0 3px 10px rgba(231, 76, 60, 0.4);
+}
+.btn-bell-reject:active {
+    transform: translateY(0.5px) scale(0.97);
 }

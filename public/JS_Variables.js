@@ -7,7 +7,16 @@ let SYSTEM_DATA = {
     pl: { field0: [] } 
 };
 
+let INITIALIZED_TABS = {
+    'tab-hdtcxd': false,
+    'tab-plhd': false,
+    'tab-tbkq': false,
+    'tab-drawing': false
+};
+
 let isTBKQInitialized = false;
+
+
 let mobileTouchTimer;
 let currentFocusIndex = -1;
 let currentRenderLimit_PL = 50; 
@@ -48,6 +57,7 @@ let currentScanFiles = [];
 let fileIdToProcess = "";
 let lastTap_Scan = 0;
 
+let pendingUsersList_PL = [];
 // ==========================================================================
 // 2. HẰNG SỐ CẤU HÌNH (CONSTANTS)
 // ==========================================================================
@@ -80,11 +90,23 @@ let tooltipTimeout;
 // 3. SỰ KIỆN KHỞI TẠO HỆ THỐNG (INITIALIZATION)
 // ==========================================================================
 document.addEventListener("DOMContentLoaded", () => {
+    // Khởi tạo giao diện tĩnh một lần duy nhất vì các phần tử HTML đã có sẵn trong DOM
+    if (typeof initTabHD === 'function') {
+        initTabHD();
+        INITIALIZED_TABS['tab-hdtcxd'] = true;
+    }
+    if (typeof initTabPL === 'function') {
+        initTabPL();
+        INITIALIZED_TABS['tab-plhd'] = true;
+    }
+    if (typeof initTabTB === 'function') {
+        initTabTB();
+        INITIALIZED_TABS['tab-tbkq'] = true;
+    }
+
     // Đọc Tab đã lưu từ máy, mặc định là 'tab-about'
     const lastTab = localStorage.getItem('bcons_hub_last_tab') || 'tab-about';
-    
-    // THAY ĐỔI TẠI ĐÂY: Đổi false thành true để kích hoạt bung ngày tháng ngay khi load
-    openTab(lastTab, true); 
+    openTab(lastTab, false); 
     
     loadSystemData();
 
@@ -151,15 +173,28 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
+// Bộ lắng nghe sự kiện Focus an toàn (Chống lặp vô hạn)
 document.addEventListener('focusin', function(e) {
     const activeField = e.target;
     const isHDorTB = activeField.closest('#tab-hdtcxd, #tab-tbkq');
     if (isHDorTB && activeField.tagName === 'INPUT') {
-        if (activeField.hasAttribute('onclick')) {
+        // Chỉ kích hoạt tự động Click nếu ô này chưa từng được kích hoạt click trong phiên focus hiện tại
+        if (activeField.hasAttribute('onclick') && !activeField.dataset.focusTriggered) {
+            activeField.dataset.focusTriggered = "true"; // Đánh dấu đã kích hoạt click an toàn
             setTimeout(() => {
-                activeField.click();
+                if (document.activeElement === activeField) {
+                    activeField.click();
+                }
             }, 100);
         }
+    }
+});
+
+// Giải phóng cờ bảo vệ khi người dùng rời khỏi ô nhập liệu
+document.addEventListener('focusout', function(e) {
+    const activeField = e.target;
+    if (activeField.tagName === 'INPUT') {
+        delete activeField.dataset.focusTriggered; // Reset trạng thái để sẵn sàng cho lần focus tiếp theo
     }
 });
 

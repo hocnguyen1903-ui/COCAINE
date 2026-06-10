@@ -169,29 +169,63 @@ function selectEditCategory_PL(type, labelName) {
  */
 function submitEdit_PL() {
     const val = document.getElementById('ep-input-val').value.trim();
-    const loading = document.getElementById("contractLoading"); 
-    if(loading) loading.style.display = "flex";
+    const oldMaHD = editingMaHD_PL;
 
-    // Đóng gói payload mảng 3 tham số
-    callBackend("updateContractData_PL", [editingMaHD_PL, currentEditType, val])
+    // 1. Sao lưu dữ liệu cũ của dòng để phục vụ Rollback nếu gặp lỗi mạng
+    const originalValues = {
+        maHD: currentEditItemData.maHD,
+        dateH: currentEditItemData.dateH,
+        packageI: currentEditItemData.packageI,
+        note: currentEditItemData.note,
+        valueK: currentEditItemData.valueK,
+        c: currentEditItemData.c,
+        display: currentEditItemData.display
+    };
+
+    // 2. CẬP NHẬT GIẢ ĐỊNH (Optimistic UI Update) trên RAM
+    if (currentEditType === "CONTRACT_NO") {
+        currentEditItemData.maHD = val;
+    } else if (currentEditType === "DATE") {
+        currentEditItemData.dateH = val;
+    } else if (currentEditType === "PACKAGE") {
+        currentEditItemData.packageI = val; 
+        currentEditItemData.note = val;
+    } else if (currentEditType === "VALUE") {
+        currentEditItemData.valueK = val; 
+        currentEditItemData.c = val;
+    }
+
+    // Định dạng lại hiển thị dòng tiền tệ tương thích
+    let formattedMoney = (currentEditItemData.valueK || "").toString().replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    currentEditItemData.display = `${currentEditItemData.maHD} | ${currentEditItemData.packageI} | ${formattedMoney}`;
+
+    // 3. Cập nhật Dashboard giao diện lập tức và đóng biểupanel nhập liệu
+    PRECOMPUTED_PL_DATA = null; 
+    executeFilter_PL(false); 
+    closeEditPanel_PL();
+
+    showToast_PL(`🟢 Đã lưu thay đổi!`, 'success');
+
+    // 4. Gửi lệnh xử lý ngầm lên máy chủ
+    callBackend("updateContractData_PL", [oldMaHD, currentEditType, val])
         .then(res => {
-            if(loading) loading.style.display = "none";
             if (res) {
-                showToast_PL(`🟢 Đã cập nhật thành công: ${editingMaHD_PL}`, 'success');
-                if (currentEditType === "CONTRACT_NO") currentEditItemData.maHD = val;
-                else if (currentEditType === "DATE") currentEditItemData.dateH = val;
-                else if (currentEditType === "PACKAGE") { currentEditItemData.packageI = val; currentEditItemData.note = val; } 
-                else if (currentEditType === "VALUE") { currentEditItemData.valueK = val; currentEditItemData.c = val; }
-
-                let formattedMoney = (currentEditItemData.valueK || "").toString().replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-                currentEditItemData.display = `${currentEditItemData.maHD} | ${currentEditItemData.packageI} | ${formattedMoney}`;
-
-                PRECOMPUTED_PL_DATA = null; executeFilter_PL(false); closeEditPanel_PL(); 
+                // Nếu đổi mã số hợp đồng, cập nhật lại tham chiếu toàn cục
+                if (currentEditType === "CONTRACT_NO") {
+                    editingMaHD_PL = val;
+                }
+                loadSystemData(true); // đồng bộ ngầm dữ liệu sạch
+            } else {
+                throw new Error("Không có phản hồi xác thực từ máy chủ.");
             }
         })
         .catch(err => {
-            if(loading) loading.style.display = "none";
-            alert("Lỗi Server: " + (err.message || err));
+            // Khôi phục dữ liệu gốc nếu cập nhật ngầm xảy ra lỗi
+            Object.assign(currentEditItemData, originalValues);
+            PRECOMPUTED_PL_DATA = null;
+            executeFilter_PL(false);
+            showToast_PL(`⚠️ Đồng bộ chỉnh sửa dữ liệu ${oldMaHD} thất bại! Đã khôi phục dữ liệu gốc.`, "error");
+            loadSystemData(true);
         });
 }
 

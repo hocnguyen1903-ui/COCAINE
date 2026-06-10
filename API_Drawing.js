@@ -1,7 +1,7 @@
 // MODULE DRAWING: BACKEND - QUÉT DRIVE & AI EXTRACTION (5-COLUMN ENGINE)
 // =========================================================================
 
-const GEMINI_API_KEY = "AIzaSyCeqg1ed9VqEqBA3j1zIyoHtQJqOjKIua8"; 
+const GEMINI_API_KEY = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
 
 /**
  * 1. LẤY DỮ LIỆU MINDMAP TỪ FOLDER DỰ ÁN
@@ -73,11 +73,13 @@ function getAllTasksByProject(projectCode) {
   const data = sheet.getDataRange().getValues();
   return data
     .filter(r => r[0] === projectCode)
-    .map(r => ({ fileId: r[2], description: r[3] }));
+    .map(r => ({ taskId: r[1], fileId: r[2], description: r[3], team: r[4] }));
 }
 
 function batchAddTasksBackend(projectCode, fileId, tasksArray, isOverwrite = false) {
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(20000); // Khóa luồng 20 giây chống xung đột chèn Task_Log hàng loạt
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const sheet = ss.getSheetByName("Task_Log") || ss.insertSheet("Task_Log");
     if (sheet.getLastRow() === 0) sheet.appendRow(["Mã dự án", "Task_ID", "File_ID", "Description", "Team"]);
@@ -94,44 +96,72 @@ function batchAddTasksBackend(projectCode, fileId, tasksArray, isOverwrite = fal
     const rowsToInsert = tasksArray.map((t, i) => [projectCode, "T-" + now + "-" + i, fileId, t.note, t.dept]);
     sheet.getRange(sheet.getLastRow() + 1, 1, rowsToInsert.length, 5).setValues(rowsToInsert);
     return true;
-  } catch (e) { throw new Error(e.message); }
+  } catch (e) { 
+    throw new Error(e.message); 
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
+  }
 }
 
 function updateTasksOrderBackend(projectCode, fileId, orderedTasks) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
-  const data = sheet.getDataRange().getValues();
-  const header = ["Mã dự án", "Task_ID", "File_ID", "Description", "Team"];
-  const otherFiles = data.filter((row, idx) => idx > 0 && row[2] !== fileId);
-  const currentFile = orderedTasks.map(t => [projectCode, t.taskId, fileId, t.description, t.team]);
-  const final = [header, ...otherFiles, ...currentFile];
-  sheet.clearContents();
-  sheet.getRange(1, 1, final.length, 5).setValues(final);
-  return true;
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng 20 giây chống xung đột ghi đè Task_Log
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
+    const data = sheet.getDataRange().getValues();
+    const header = ["Mã dự án", "Task_ID", "File_ID", "Description", "Team"];
+    const otherFiles = data.filter((row, idx) => idx > 0 && row[2] !== fileId);
+    const currentFile = orderedTasks.map(t => [projectCode, t.taskId, fileId, t.description, t.team]);
+    const final = [header, ...otherFiles, ...currentFile];
+    sheet.clearContents();
+    sheet.getRange(1, 1, final.length, 5).setValues(final);
+    return true;
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
+  }
 }
 
 function editTaskBackend(taskId, newDesc, newTeam) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
-  const data = sheet.getDataRange().getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][1] === taskId) {
-      sheet.getRange(i + 1, 4, 1, 2).setValues([[newDesc, newTeam]]);
-      return true;
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng tránh xung đột trượt dòng Task_Log khi sửa đổi
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
+    const data = sheet.getDataRange().getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][1] === taskId) {
+        sheet.getRange(i + 1, 4, 1, 2).setValues([[newDesc, newTeam]]);
+        return true;
+      }
     }
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
 }
 
 function deleteTaskBackend(taskId) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
-  const data = sheet.getDataRange().getValues();
-  for (let i = data.length - 1; i >= 0; i--) {
-    if (data[i][1] === taskId) { sheet.deleteRow(i + 1); return true; }
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng tránh xung đột trượt dòng Task_Log khi xóa tác vụ
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
+    const data = sheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 0; i--) {
+      if (data[i][1] === taskId) { sheet.deleteRow(i + 1); return true; }
+    }
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
   }
 }
 
 function addTaskBackend(projectCode, fileId, desc, team) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
-  sheet.appendRow([projectCode, "T-" + new Date().getTime(), fileId, desc, team]);
-  return true;
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng tránh tranh chấp dòng ghi khi thêm mới tác vụ bản vẽ
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("Task_Log");
+    sheet.appendRow([projectCode, "T-" + new Date().getTime(), fileId, desc, team]);
+    return true;
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa
+  }
 }
 
 /**

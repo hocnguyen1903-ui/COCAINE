@@ -195,30 +195,22 @@ async function startUploadScan_PL() {
             const baseProgress = (i / currentScanFiles.length) * 100;
             const fileWeight = 100 / currentScanFiles.length;
             let base64Data = "";
-            const isExcel = file.name.toLowerCase().match(/\.(xls|xlsx)$/);
 
-            if (isExcel) {
-                statusText.textContent = `[${i+1}/${currentScanFiles.length}] PROCESSING EXCEL...`;
-                base64Data = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result.split(',')[1]);
-                    reader.onerror = e => reject(e);
-                    reader.readAsDataURL(file);
-                });
-                let fakeP = Math.round(baseProgress + fileWeight);
-                progressBar.style.width = fakeP + "%";
-                percentText.textContent = fakeP + "%";
-            } else {
-                base64Data = await compressPDFEngine(file, (p) => {
-                    const overallP = Math.round(baseProgress + (p / 100 * fileWeight));
-                    statusText.textContent = `[${i+1}/${currentScanFiles.length}] COMPRESSING: ${p}%`;
-                    progressBar.style.width = overallP + "%";
-                    percentText.textContent = overallP + "%";
-                    progressBar.style.backgroundColor = "#FFBA08";
-                });
-            }
+            statusText.textContent = `[${i+1}/${currentScanFiles.length}] READING ORIGINAL FILE...`;
+            
+            // Đọc trực tiếp tệp tin gốc nguyên bản sang Base64 không qua nén ảnh
+            base64Data = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = e => reject(e);
+                reader.readAsDataURL(file);
+            });
 
-            statusText.textContent = `[${i+1}/${currentScanFiles.length}] UPLOADING...`;
+            let fakeP = Math.round(baseProgress + fileWeight * 0.5); // 50% hoàn tất tiến trình đọc tệp cục bộ
+            progressBar.style.width = fakeP + "%";
+            percentText.textContent = fakeP + "%";
+
+            statusText.textContent = `[${i+1}/${currentScanFiles.length}] UPLOADING TO DRIVE...`;
             
             const res = await callBackend('uploadScanToDrive', [base64Data, currentScanMaHD, file.name]);
             if (res && res.success) {
@@ -243,7 +235,7 @@ async function startUploadScan_PL() {
         progressBar.classList.add('finished'); 
         progressBar.style.backgroundColor = "#2ECC71"; 
         
-        showToast_PL(`🚀 UPLOADED ${currentScanFiles.length} FILE(S)!`, "success");
+        showToast_PL(`🚀 UPLOADED ${currentScanFiles.length} FILE(S) SUCCESSFULLY!`, "success");
         removeScanFile_PL();
         setTimeout(() => { progressContainer.style.display = 'none'; }, 2000);
     } catch (e) {
@@ -287,24 +279,42 @@ function closeDataDeleteModal() {
 function executeActualDeleteData_PL() {
     closeDataDeleteModal(); 
     const maToDelete = editingMaHD_PL;
-    const loading = document.getElementById("contractLoading");
-    if (loading) {
-        loading.style.display = "flex";
-        loading.querySelector('p').textContent = "SYSTEM DELETING DATA...";
+    
+    // Sao lưu dữ liệu để phục vụ trường hợp cần phục hồi khi xảy ra lỗi mạng/server
+    const backupItem = SYSTEM_DATA.pl.field0.find(item => (item.display || "").split(" | ")[0].trim() === maToDelete);
+    const backupIndex = SYSTEM_DATA.pl.field0.indexOf(backupItem);
+
+    if (backupItem) {
+        // 1. CẬP NHẬT GIẢ ĐỊNH (Optimistic UI Update): Xóa lập tức trên RAM máy khách
+        SYSTEM_DATA.pl.field0 = SYSTEM_DATA.pl.field0.filter(item => (item.display || "").split(" | ")[0].trim() !== maToDelete);
+        PRECOMPUTED_PL_DATA = null;
+        
+        // 2. Cập nhật giao diện Dashboard ngay tức thì và tự động tính toán giật lùi STT Phụ lục
+        executeFilter_PL(false); 
+        if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
+        closeEditPanel_PL();
+        
+        // 3. Hiển thị thông báo lập tức cho người dùng
+        showToast_PL(`🗑️ Đã xóa dữ liệu: <b style="color:white">${maToDelete}`, "success");
+
+        // 4. Gửi lệnh xử lý ngầm lên máy chủ
+        callBackend("deleteContractRow_Backend", maToDelete)
+            .then(() => {
+                // Đồng bộ hóa trạng thái ngầm để nhận cập nhật mới từ các user khác
+                loadSystemData(true); 
+            })
+            .catch(err => {
+                // Khôi phục dữ liệu nguyên trạng (Rollback) nếu ghi nhận lỗi máy chủ
+                if (backupIndex !== -1) {
+                    SYSTEM_DATA.pl.field0.splice(backupIndex, 0, backupItem);
+                }
+                PRECOMPUTED_PL_DATA = null;
+                executeFilter_PL(false);
+                if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
+                showToast_PL(`⚠️ Thao tác xóa ${maToDelete} thất bại trên hệ thống! Đã khôi phục dữ liệu.`, "error");
+                loadSystemData(true);
+            });
     }
-    callBackend("deleteContractRow_Backend", maToDelete)
-        .then(() => {
-            if (loading) loading.style.display = "none";
-            SYSTEM_DATA.pl.field0 = SYSTEM_DATA.pl.field0.filter(item => (item.display || "").split(" | ")[0].trim() !== maToDelete);
-            PRECOMPUTED_PL_DATA = null;
-            executeFilter_PL(false); closeEditPanel_PL();
-            showToast_PL(`🗑️ Đã xóa dữ liệu số: ${maToDelete}`, "success");
-            loadSystemData(true); 
-        })
-        .catch(err => {
-            if (loading) loading.style.display = "none";
-            showToast_PL("⚠️ Lỗi xóa dữ liệu!", "error");
-        });
 }
 
 /**

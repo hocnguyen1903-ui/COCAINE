@@ -25,29 +25,51 @@ function loadDrawingModule() {
     if (!isDrawingListLoaded) fetchActiveProjectsForDrawing();
     if (selectedProjectDrawing) {
         if (cyInstance && selectedProjectDrawing === currentlyRenderedProject) {
-            setTimeout(() => { cyInstance.resize(); cyInstance.fit(null, 50); }, 300);
+            setTimeout(() => { cyInstance.resize(); cyInstance.fit(null, 20); }, 300);
         } else { renderMindmap(selectedProjectDrawing); }
     }
 }
 
-function fetchActiveProjectsForDrawing() {
-    if (isDrawingListLoaded && activeDrawingProjects.length > 0) return;
-    
-    const syncBtnIcon = document.querySelector("#btn-sync-drawing i");
-    if (syncBtnIcon && syncBtnIcon.classList.contains('spinning')) return;
+/* --- public/JS_Drawing.js --- */
+
+/* --- public/JS_Drawing.js --- */
+
+function fetchActiveProjectsForDrawing(forceRefresh = false) {
+    // 1. Chỉ chạy quét nếu chưa tải lần nào, hoặc khi người dùng chủ động nhấn nút Sync (forceRefresh = true)
+    if (!forceRefresh && isDrawingListLoaded && activeDrawingProjects.length > 0) return;
 
     const input = document.getElementById("drawing-project-search");
-    if (input) input.placeholder = "Loading...";
+    const syncBtnIcon = document.querySelector("#btn-sync-drawing i");
+
+    // Ngăn chặn việc bấm Sync liên tục khi tiến trình đang chạy
+    if (syncBtnIcon && syncBtnIcon.classList.contains('spinning')) return;
+
+    // Hiển thị trạng thái tải cho người dùng thấy rõ
+    if (input) {
+        input.disabled = true;
+        input.placeholder = "Loading projects from Drive...";
+    }
     if (syncBtnIcon) syncBtnIcon.classList.add('spinning');
-    
+
+    // 2. Gọi Backend quét trực tiếp tên các thư mục dự án trên Google Drive
     callBackend("getActiveProjectFolders_Backend").then(folderNames => {
-        activeDrawingProjects = folderNames || []; 
+        activeDrawingProjects = folderNames || [];
         isDrawingListLoaded = true;
-        if (input) { input.disabled = false; input.placeholder = "Project"; }
+        
+        // Trả lại trạng thái sẵn sàng cho ô nhập liệu
+        if (input) {
+            input.disabled = false;
+            input.placeholder = "Project";
+        }
         if (syncBtnIcon) syncBtnIcon.classList.remove('spinning');
     }).catch(err => {
+        console.error("Lỗi tải danh sách thư mục từ Drive:", err);
+        isDrawingListLoaded = false; // Cho phép thử lại lần sau
+        if (input) {
+            input.disabled = false;
+            input.placeholder = "Failed to load projects";
+        }
         if (syncBtnIcon) syncBtnIcon.classList.remove('spinning');
-        console.error("Lỗi tải danh sách dự án:", err);
     });
 }
 
@@ -242,10 +264,38 @@ function renderMindmap(projectCode) {
     if(localLoader) localLoader.style.display = "flex";
     cyArea.style.opacity = "0";
 
-    callBackend("getMindmapData", projectCode).then(data => {
+    // Thực hiện tải song song cấu trúc bản vẽ từ Drive và toàn bộ tác vụ trong Sheet
+    Promise.all([
+        callBackend("getMindmapData", projectCode),
+        callBackend("getAllTasksByProject", projectCode)
+    ]).then(([mindmapData, projectTasks]) => {
         if(localLoader) localLoader.style.display = "none";
         currentlyRenderedProject = projectCode; 
-        if (!data || !data.files || data.files.length === 0) {
+
+        // Khởi tạo và đồng bộ dữ liệu vào Cache trên RAM Client
+        drawingTaskCache = {};
+        
+        // 1. Khởi tạo mảng trống cho tất cả FileID thuộc dự án để tránh gọi mạng đơn lẻ
+        if (mindmapData && mindmapData.files) {
+            mindmapData.files.forEach(f => {
+                drawingTaskCache[f.fileId] = [];
+            });
+        }
+
+        // 2. Điền dữ liệu tác vụ thực tế tải hàng loạt từ server vào Cache
+        if (projectTasks && Array.isArray(projectTasks)) {
+            projectTasks.forEach(task => {
+                if (drawingTaskCache[task.fileId] !== undefined) {
+                    drawingTaskCache[task.fileId].push({
+                        taskId: task.taskId,
+                        description: task.description,
+                        team: task.team
+                    });
+                }
+            });
+        }
+
+        if (!mindmapData || !mindmapData.files || mindmapData.files.length === 0) {
             cyArea.style.opacity = "1";
             cyArea.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#FFBA08;font-style:italic;">Dự án [${projectCode}] chưa có bản vẽ!</div>`;
             return;
@@ -255,7 +305,7 @@ function renderMindmap(projectCode) {
 
         setTimeout(() => {
             cyInstance = cytoscape({
-                container: cyArea, elements: buildCytoscapeElements(data), pixelRatio: 2,
+                container: cyArea, elements: buildCytoscapeElements(mindmapData), pixelRatio: 2,
                 autoungrabify: true, userPanningEnabled: true, userZoomingEnabled: true,
                 style: [
                     { selector: 'node', style: { 'background-color': '#021a31', 'label': 'data(label)', 'color': '#fff', 'font-family': 'Poppins, sans-serif', 'font-size': 18, 'text-valign': 'center', 'text-halign': 'center', 'width': 220, 'height': 68, 'shape': 'round-rectangle', 'border-width': 1.5, 'border-color': '#FFBA08', 'text-wrap': 'wrap', 'text-max-width': 180, 'line-height': 1.4, 'overlay-opacity': 0 } },
@@ -558,7 +608,19 @@ function resetAIZoneUI() {
  * 8. CORE UTILS
  */
 
-function syncManual() { if (!selectedProjectDrawing) return; document.getElementById("drawing-local-loader").style.display = "flex"; drawingTaskCache = {}; currentlyRenderedProject = ""; renderMindmap(selectedProjectDrawing); }
+function syncManual() {
+    // 1. Buộc quét lại danh sách dự án mới nhất từ Drive (Force Refresh)
+    fetchActiveProjectsForDrawing(true);
+    
+    // 2. Đồng bộ và vẽ lại Mindmap của dự án hiện tại đang chọn
+    if (selectedProjectDrawing) {
+        const localLoader = document.getElementById("drawing-local-loader");
+        if (localLoader) localLoader.style.display = "flex";
+        drawingTaskCache = {};
+        currentlyRenderedProject = "";
+        renderMindmap(selectedProjectDrawing);
+    }
+}
 
 function resetMindmapView() { if (cyInstance) cyInstance.animate({ fit: { padding: 20 }, duration: 400 }); }
 
@@ -691,12 +753,24 @@ function addNewTaskItem() {
     // Render lại UI để hiện field trống
     displayTasksHTML(drawingTaskCache[currentFileId]);
     
-    // Tự động focus vào ô input vừa tạo
+    // Tự động focus vào ô input vừa tạo và cuộn nội bộ an toàn (Chống giật khung hình tổng)
     setTimeout(() => {
         const newInput = document.querySelector(`#task-${tempId} .task-desc-edit`);
         if (newInput) {
             newInput.focus();
-            newInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Tính toán tọa độ và cuộn nội bộ bằng scrollTo (Không dùng scrollIntoView gây lệch layout)
+            const scrollContainer = document.querySelector("#dp-content-state > div");
+            if (scrollContainer) {
+                const containerRect = scrollContainer.getBoundingClientRect();
+                const inputRect = newInput.getBoundingClientRect();
+                const relativeTop = inputRect.top - containerRect.top + scrollContainer.scrollTop;
+                
+                scrollContainer.scrollTo({
+                    top: relativeTop - (containerRect.height / 2) + (inputRect.height / 2),
+                    behavior: 'smooth'
+                });
+            }
         }
     }, 100);
 }

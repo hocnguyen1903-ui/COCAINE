@@ -1,205 +1,381 @@
-const SHEET_ID = "1_whNLrEL5x1Kk3Fheq8-AgTE425LnWkvbGVmhXMlL1I";
+const SHEET_ID = "1y73SqPevgBN7s0_uhUhYQoGD1OXDbDgvHHXbLQD1EH0";
 const SHEET_NAME_TBKQ = "TBKQTT";
 const SHEET_NAME_SO_TB = "SO THONG BAO";
 const MASTER_FOLDER_ID = '1zStGfH5eitVgbxHF-bhrQGE4NWoKlCpw';
-const CONFIG_SHEET_NAME = "WEB_CONFIG";
 
-// --- KHU VỰC CẤU HÌNH HỆ THỐNG ---
-const STAFF_CONFIG = {
-    "hocnguyen1903@gmail.com": "HỌC",
-    "ngocchaulhtst@gmail.com": "CHÂU"
-};
+// --- ĐỊNH DANH TOÀN CỤC CHO THIẾT BỊ ĐANG GỌI API ---
+var GLOBAL_STAFF_NAME = "UNKNOWN";
+var GLOBAL_STAFF_ROLE = "USER"; // Mặc định quyền của phiên làm việc là USER
 
 /**
- * Hàm lấy tên nhân sự dựa trên Email đang đăng nhập
+ * Xử lý xác thực Token qua kiến trúc Hybrid (Bóc tách phân quyền Name|Role)
  */
-function getCurrentStaffName() {
-    const email = Session.getActiveUser().getEmail();
-    return STAFF_CONFIG[email] || email || "UNKNOWN";
+function authenticateAndGetName(token) {
+  if (!token) return "UNKNOWN";
+  
+  const cache = CacheService.getScriptCache();
+  let cachedVal = cache.get(token);
+  
+  if (!cachedVal) {
+    const props = PropertiesService.getScriptProperties();
+    cachedVal = props.getProperty(token);
+    if (cachedVal) cache.put(token, cachedVal, 21600);
+  }
+  
+  if (cachedVal && cachedVal.includes("|")) {
+    const parts = cachedVal.split("|");
+    GLOBAL_STAFF_NAME = parts[0].toUpperCase().trim();
+    GLOBAL_STAFF_ROLE = parts[1] ? parts[1].toUpperCase().trim() : "USER"; 
+    return GLOBAL_STAFF_NAME;
+  }
+  return "UNKNOWN";
 }
 
-// =========================================================================
-// 1. TẠO KHUNG WEB APP (SINGLE PAGE APPLICATION)
-// =========================================================================
-// Thay thế đoạn code cũ bằng API Router này
+// --- CẤU HÌNH KHÓA TRUYỀN TIN THỜI GIAN THỰC ABLY ---
+const ABLY_API_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8RU";
+
 /**
- * GAS - File: Code.js
- * Cập nhật hàm doPost để đăng ký API Metadata
+ * Xác thực thông tin đăng nhập từ Sheet "User_Registry"
+ */
+function loginUser(mail, password) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName("User_Registry");
+  if (!sheet) throw new Error("Không tìm thấy Sheet danh sách User 'User_Registry'!");
+  
+  const data = sheet.getDataRange().getValues();
+  const targetMail = mail.toLowerCase().trim();
+  let matchedName = "";
+  let storedPassword = "";
+  let status = "PENDING";
+  let role = "USER"; 
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+      matchedName = data[i][1]?.toString().toUpperCase().trim();
+      storedPassword = data[i][2]?.toString().trim(); // Cột C (Password)
+      status = data[i][3] ? data[i][3].toString().toUpperCase().trim() : "PENDING"; // Cột D (Status)
+      role = data[i][4] ? data[i][4].toString().toUpperCase().trim() : "USER"; // Cột E (Role)
+      break;
+    }
+  }
+  
+  if (!matchedName) {
+    throw new Error("Email của sếp chưa được đăng ký trong hệ thống!");
+  }
+
+  // Xác thực mật khẩu cá nhân của từng user
+  if (password !== storedPassword) {
+    throw new Error("Sai mật khẩu đăng nhập hệ thống!");
+  }
+  
+  if (status !== "ACTIVE") {
+    throw new Error("Tài khoản đang chờ sếp phê duyệt hoặc đã bị khóa!");
+  }
+  
+  const token = "TOKEN-" + Utilities.getUuid();
+  const tokenValue = matchedName + "|" + role; 
+  
+  PropertiesService.getScriptProperties().setProperty(token, tokenValue);
+  CacheService.getScriptCache().put(token, tokenValue, 21600);
+  
+  return { success: true, token: token, name: matchedName, role: role }; 
+}
+
+/**
+ * Hàm phê duyệt nhanh tài khoản ACTIVE ngay trong Web App
+ */
+function approveUser_InApp(mail) {
+  if (GLOBAL_STAFF_ROLE !== "ADMIN") {
+    throw new Error("BẢO MẬT: Sếp không có quyền quản trị để thực hiện hành động này!");
+  }
+
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName("User_Registry");
+  if (!sheet) return false;
+  
+  const data = sheet.getDataRange().getValues();
+  const targetMail = mail.toLowerCase().trim();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+      sheet.getRange(i + 1, 4).setValue("ACTIVE"); // Cột D là cột Status
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * CHUYẾN XE TẢI DỮ LIỆU TỔNG - KHẮC PHỤC TRỄ ĐỒNG BỘ CÔNG THỨC BẢNG X
+ */
+function getSystemData(token) {
+  if (token) {
+    authenticateAndGetName(token); 
+  }
+
+  // 1. GHI ĐÈ LỆNH ĐỌC BẢNG X QUA SPREADSHEETAPP ĐỂ ÉP GOOGLE SHTEETS ĐỒNG BỘ CÔNG THỨC LẬP TỨC
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheetX = ss.getSheetByName("X");
+  const lastRowX = sheetX.getLastRow();
+  const dataX = lastRowX >= 4 ? sheetX.getRange(4, 1, lastRowX - 3, 22).getValues() : [];
+
+  // 2. GỌI BATCH GET TRUY VẤN ĐỒNG THỜI 6 BẢNG STATIC CÒN LẠI ĐỂ TỐI ƯU HÓA TỐC ĐỘ TẢI
+  const response = Sheets.Spreadsheets.Values.batchGet(SHEET_ID, {
+    ranges: [
+      "User_Registry!A2:E",
+      "DATABCONS!A3:B",
+      "DATAGOITHAU!B12:T",
+      "DATAGOITHAU!N3:N",
+      "DATANTP!C3:D",
+      "SO HDTCXD BCONS - NTP!B3:V"
+    ]
+  });
+
+  const valueRanges = response.valueRanges || [];
+  const userRegistryData = valueRanges[0]?.values || [];
+  const dataBcons = valueRanges[1]?.values || [];
+  const dataGoiThau = valueRanges[2]?.values || [];
+  const dataWarranty = valueRanges[3]?.values || [];
+  const dataNTP = valueRanges[4]?.values || [];
+  const logData = valueRanges[5]?.values || [];
+
+  // 3. LẤY DANH SÁCH USER CHỜ PHÊ DUYỆT (PENDING)
+  const pendingUsers = [];
+  userRegistryData.forEach(row => {
+    const uMail = (row[0] || "").toString().toLowerCase().trim();
+    const uName = (row[1] || "").toString().toUpperCase().trim();
+    const uStatus = row[3] ? row[3].toString().toUpperCase().trim() : "PENDING";
+    if (uMail && uStatus === "PENDING") {
+      pendingUsers.push({ mail: uMail, name: uName });
+    }
+  });
+
+  // 4. LẤY DATA DỰ ÁN
+  const reversedBcons = [...dataBcons].reverse();
+  const projectHD = reversedBcons.map(r => {
+    if (!r[0]) return null;
+    return {
+      display: r[0].toString().trim(),
+      searchString: r[1] ? `${r[0]} | ${r[1]}`.trim() : r[0].toString().trim()
+    };
+  }).filter(i => i && i.display);
+
+  // 5. LẤY DATA GÓI THẦU & BẢO HÀNH
+  const packHD = dataGoiThau.filter(r => r[18] && r[18].toString().trim() !== "").map(r => ({
+    searchString: r[18].toString().trim(),
+    category: r[0] ? r[0].toString().trim() : ""
+  }));
+  const warrantyHD = dataWarranty.map(r => r[0]).filter(Boolean).map(v => v.toString().trim());
+
+  // 6. LẤY DATA NHÀ THẦU
+  const contractorHD = dataNTP.map(r => {
+    if (!r[0]) return null;
+    return {
+      display: r[0].toString().trim(),
+      searchString: r[1] ? `${r[1]} | ${r[0]}`.trim() : r[0].toString().trim()
+    };
+  }).filter(i => i && i.display);
+
+  // 7. LẤY DATA PHỤ LỤC (BẢNG X)
+  const field0PL = dataX.map(r => {
+    const valA = (r[0] || "").toString().trim();
+    if (!valA) return null;
+    const scanRaw = (r[15] || "").toString().trim();
+    let rawDate = r[7];
+    let strDate = (rawDate instanceof Date) ? Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy") : (rawDate ? rawDate.toString().trim() : "");
+
+    return {
+      maHD: valA,
+      display: `${valA} | ${(r[6] || "").toString().trim()} | ${(r[2] || "").toString().trim() || (r[3] || "").toString().trim() || ""}`,
+      note: (r[1] || "").toString().trim(),
+      searchK: (r[10] || "").toString().trim(), 
+      dateH: strDate, 
+      packageI: (r[1] || "").toString().trim(),
+      valueK: (r[2] || "").toString().trim(),
+      searchM: (r[12] || "").toString().trim(),
+      transferred: (r[14] || "").toString().trim() !== "",
+      scanId: scanRaw, 
+      fileName: scanRaw.includes("|") ? scanRaw.split(";;")[0].split("|")[1].trim() : "", 
+      c: (r[2] || "").toString().trim(),
+      hasQ: (r[16] || "").toString().trim().toLowerCase() === "x",
+      hasR: (r[17] || "").toString().trim().toLowerCase() === "x",
+      hasS: (r[18] || "").toString().trim().toLowerCase() === "x"
+    };
+  }).filter(Boolean);
+
+  // 8. LẤY DỮ LIỆU SỔ THEO DÕI
+  const transferMap = {};
+  logData.forEach(r => {
+    const contractNo = (r[2] || "").toString().trim();
+    if (contractNo) {
+      transferMap[contractNo] = {
+        isTransferred: r[13] !== undefined && (r[13] || "").toString().trim() !== "",                                       
+        t: (r[18] || "").toString().trim().toLowerCase().startsWith("x"),         
+        u: (r[19] || "").toString().trim() !== "" && r[19] != 0,                  
+        v: (r[20] || "").toString().trim() !== "" && r[20] != 0                   
+      };
+    }
+  });
+
+  return {
+    hd: { project: projectHD, pack: packHD, warranty: warrantyHD, contractor: contractorHD },
+    pl: { field0: field0PL },
+    transferMap: transferMap,
+    pendingUsers: pendingUsers, 
+    currentUserRole: GLOBAL_STAFF_ROLE ? GLOBAL_STAFF_ROLE.toUpperCase().trim() : "USER" 
+  };
+}
+
+/**
+ * XỬ LÝ YÊU CẦU ĐĂNG KÝ TÀI KHOẢN TỪ NHÂN VIÊN (ĐỒNG BỘ REALTIME QUA ABLY)
+ */
+function registerUser(mail, name, password) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); 
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    let sheet = ss.getSheetByName("User_Registry");
+    if (!sheet) {
+      sheet = ss.insertSheet("User_Registry");
+      sheet.appendRow(["Mail", "Name", "Password", "Status", "Role"]);
+    }
+    
+    const targetMail = mail.toLowerCase().trim();
+    const targetName = name.toUpperCase().trim();
+    const cleanPassword = password ? password.toString().trim() : "";
+
+    if (cleanPassword.length < 4) {
+      throw new Error("Mật khẩu đăng ký phải chứa tối thiểu 4 ký tự!");
+    }
+
+    const data = sheet.getDataRange().getValues();
+    
+    // 1. Kiểm tra trùng lặp Email đăng ký
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
+        throw new Error("Email này đã được sử dụng!");
+      }
+    }
+    
+    // 2. Kiểm tra trùng lặp Tên viết tắt (Name) đăng ký
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][1]?.toString().toUpperCase().trim() === targetName) {
+        throw new Error(`Tên viết tắt "${targetName}" này đã tồn tại! Vui lòng chọn tên viết tắt khác.`);
+      }
+    }
+    
+    // Thêm dòng mới trạng thái PENDING, mật khẩu lưu vào Cột C, Status cột D, Role cột E
+    sheet.appendRow([targetMail, targetName, cleanPassword, "PENDING", "USER"]);
+    
+    // 🚀 BẮN TÍN HIỆU THỜI GIAN THỰC SANG ABLY
+    try {
+      const ablyUrl = "https://rest.ably.io/channels/bcons_notification/messages";
+      const ablyPayload = {
+        "name": "new_registration",
+        "data": { "mail": targetMail, "name": targetName }
+      };
+      const ablyOptions = {
+        "method": "POST",
+        "headers": {
+          "Authorization": "Basic " + Utilities.base64Encode(ABLY_API_KEY),
+          "Content-Type": "application/json"
+        },
+        "payload": JSON.stringify(ablyPayload),
+        "muteHttpExceptions": true
+      };
+      UrlFetchApp.fetch(ablyUrl, ablyOptions);
+    } catch (err) {
+      console.error("Lỗi bắn tín hiệu Ably Realtime: " + err.message);
+    }
+    
+    return { success: true };
+  } finally {
+    lock.releaseLock(); 
+  }
+}
+
+/**
+ * ĐỊNH TUYẾN WEB APP API
  */
 function doPost(e) {
   if (!e || !e.postData) return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "No post data" })).setMimeType(ContentService.MimeType.JSON);
   
-  var request;
+  let request;
   try {
     request = JSON.parse(e.postData.contents);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "JSON Parse error" })).setMimeType(ContentService.MimeType.JSON);
   }
 
-  const { action, data: payload } = request;
+  const { action, data: payload, token } = request;
 
-  // BẢNG ĐỊNH TUYẾN CHUẨN (Khớp 100% với các file API_*.gs của mày)
+  if (token && action !== "loginUser" && action !== "registerUser") {
+    authenticateAndGetName(token); 
+  }
+
+  if (action === "loginUser") {
+    try {
+      const res = loginUser(payload.mail, payload.password);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+  
+  if (action === "registerUser") {
+    try {
+      const res = registerUser(payload.mail, payload.name, payload.password);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: res })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   const routes = {
-    // --- CORE & SYSTEM ---
+    "batchRequest": () => apiDispatcher(payload),
     "getSystemData": () => getSystemData(),
     "getActiveProjectFolders_Backend": () => getActiveProjectFolders_Backend(),
-
-    // --- HỢP ĐỒNG (HDTCXD) ---
     "handleFullExportProcess_HD": () => handleFullExportProcess_HD(payload),
-
-    // --- THÔNG BÁO KẾT QUẢ (TBKQ) ---
     "handleFullExportProcess_TB": () => handleFullExportProcess_TB(payload),
-
-    // --- PHỤ LỤC & BÀN GIAO (PLHD) ---
     "writeToSheetAndExportDoc_PL": () => writeToSheetAndExportDoc_PL(payload),
-    "updateContractData_PL": () => updateContractData_PL(payload[0], payload[1], payload[2]),
-    "updateTransferStatus_PL": () => updateTransferStatus_PL(payload[0], payload[1], payload[2]),
+    "updateContractData_PL": () => updateContractData_PL(payload?.[0], payload?.[1], payload?.[2]),
+    "updateTransferStatus_PL": () => updateTransferStatus_PL(payload?.[0], payload?.[1], payload?.[2]),
     "exportToNewSpreadsheet_PL": () => exportToNewSpreadsheet_PL(payload),
     "deleteContractRow_Backend": () => deleteContractRow_Backend(payload),
-    "uploadScanToDrive": () => uploadScanToDrive(payload[0], payload[1], payload[2]),
-    "deleteScanFilePermanently": () => deleteScanFilePermanently(payload[0], payload[1]),
-
-    // --- DRAWING & MINDMAP ---
+    "uploadScanToDrive": () => uploadScanToDrive(payload?.[0], payload?.[1], payload?.[2]),
+    "deleteScanFilePermanently": () => deleteScanFilePermanently(payload?.[0], payload?.[1]),
     "getMindmapData": () => getMindmapData(payload),
     "getTasksByFileId": () => getTasksByFileId(payload),
     "getAllTasksByProject": () => getAllTasksByProject(payload),
-    "updateTasksOrderBackend": () => updateTasksOrderBackend(payload[0], payload[1], payload[2]),
-
-    // --- AI EXTRACTION ---
+    "updateTasksOrderBackend": () => updateTasksOrderBackend(payload?.[0], payload?.[1], payload?.[2]),
     "getFileBase64ForAI": () => getFileBase64ForAI(payload),
-    "extractDataOnly": () => extractDataOnly(payload[0], payload[1], payload[2]),
-    "batchAddTasksBackend": () => batchAddTasksBackend(payload[0], payload[1], payload[2], payload[3]),
-
-    // 🔥 API METADATA MỚI CỦA MÀY ĐÂY 🔥
-    "getMetadataSync": () => getMetadataSync(),
-    "processInjection": () => processInjection(payload)
+    "extractDataOnly": () => extractDataOnly(payload?.[0], payload?.[1], payload?.[2]),
+    "batchAddTasksBackend": () => batchAddTasksBackend(payload?.[0], payload?.[1], payload?.[2], payload?.[3]),
+    "approveUser_InApp": () => approveUser_InApp(payload), 
+    "rejectUser_InApp": () => rejectUser_InApp(payload)    
   };
 
   try {
-    if (!routes[action]) throw new Error("Action '" + action + "' not found in Backend Routing.");
-    
-    // Thực thi hàm tương ứng dựa trên action
+    if (!routes[action]) throw new Error(`Action '${action}' not found in Backend Routing.`);
     const result = routes[action]();
-    
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result })).setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+    console.error(`[API ERROR] Action: ${action} | Msg: ${error.message}`);
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
-// Hàm bổ trợ bắt buộc phải có để tránh lỗi khi truy cập link trực tiếp
-function doGet() {
-  return HtmlService.createHtmlOutput("Backend API is Online. Please use Frontend from GitHub.");
+function getCurrentStaffName() {
+  return GLOBAL_STAFF_NAME;
 }
 
-// =========================================================================
-// 2. CHUYẾN XE TẢI DỮ LIỆU TỔNG (ĐÃ NÂNG CẤP LẤY CỘT K ĐỂ SEARCH)
-// =========================================================================
-function getSystemData() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  
-  // 1. LẤY DATA DỰ ÁN (Dùng chung cho HD và TBKQ)
-  const dataBcons = ss.getSheetByName("DATABCONS").getRange("A3:B").getValues().reverse();
-  const projectHD = dataBcons.map(r => ({
-    display: r[0].toString().trim(),
-    searchString: r[1] ? `${r[0]} | ${r[1]}`.trim() : r[0].toString().trim()
-  })).filter(i => i.display);
-
-  // 2. LẤY DATA GÓI THẦU (DATAGOITHAU)
-  const sheetGoiThau = ss.getSheetByName("DATAGOITHAU");
-  const lastRowGT = sheetGoiThau.getLastRow();
-  
-  let packHD = []; 
-  let warrantyHD = []; 
-
-  if (lastRowGT >= 12) {
-    const dataGT = sheetGoiThau.getRange(12, 2, lastRowGT - 11, 19).getValues();
-    packHD = dataGT.filter(r => r[18] !== "").map(r => ({
-      searchString: r[18].toString().trim(),
-      category: r[0].toString().trim()
-    }));
-    warrantyHD = sheetGoiThau.getRange("N3:N").getValues().flat().filter(String);
-  }
-
-  // 3. LẤY DATA NHÀ THẦU (DATANTP)
-  const dataNTP = ss.getSheetByName("DATANTP").getRange("C3:D").getValues();
-  const contractorHD = dataNTP.map(r => ({
-    display: r[0].toString().trim(),
-    searchString: r[1] ? `${r[1]} | ${r[0]}`.trim() : r[0].toString().trim()
-  })).filter(i => i.display);
-
-  // 4. LẤY DATA PHỤ LỤC (Sheet X) - ĐÃ BỔ SUNG CỘT K
-  const sheetX = ss.getSheetByName("X");
-  const lastRowX = sheetX.getLastRow();
-  let field0PL = [];
-  
-  if (lastRowX >= 4) {
-    // Lấy đến cột V (Index 21) để đảm bảo bao phủ hết các trường Q, R, S
-    const dataX = sheetX.getRange(`A4:V${lastRowX}`).getValues(); 
-    
-    field0PL = dataX.map(r => {
-      const valA = r[0]?.toString().trim() || ""; // Cột A: Số HĐ
-      if (!valA) return null;
-
-      const scanRaw = r[15]?.toString().trim() || ""; // Cột P: Scan ID
-      let rawDate = r[7]; // Cột H: Ngày ký
-      let strDate = rawDate instanceof Date ? Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy") : (rawDate?.toString().trim() || "");
-
-      return {
-        maHD: valA, // Cột A
-        display: `${valA} | ${r[6]?.toString().trim() || ""} | ${r[2]?.toString().trim() || r[3]?.toString().trim() || ""}`,
-        note: r[1]?.toString().trim() || "", // Cột B: Tên gói thầu
-        
-        // 🔥 BỔ SUNG: LẤY DỮ LIỆU CỘT K (Index 10) ĐỂ SEARCH
-        searchK: r[10]?.toString().trim() || "", 
-        
-        dateH: strDate, 
-        packageI: r[1]?.toString().trim() || "",
-        valueK: r[2]?.toString().trim() || "",
-        searchM: r[12]?.toString().trim() || "",
-        transferred: r[14]?.toString().trim() !== "", // Cột O: CHUYỂN HS
-        scanId: scanRaw, 
-        fileName: scanRaw.includes("|") ? scanRaw.split(";;")[0].split("|")[1].trim() : "", 
-        c: r[2]?.toString().trim() || "",
-        
-        // ĐỌC DỮ LIỆU TỪ CỘT Q, R, S (Index 16, 17, 18)
-        hasQ: r[16]?.toString().trim().toLowerCase() === "x", // Đề nghị tạm ứng
-        hasR: r[17]?.toString().trim().toLowerCase() === "x", // Bảo lãnh tạm ứng
-        hasS: r[18]?.toString().trim().toLowerCase() === "x"  // Bảo lãnh HĐ
-      };
-    }).filter(Boolean);
-  }
-
-  // 5. LẤY DỮ LIỆU SỔ THEO DÕI ĐỂ TICK CHUYỂN GIAO UI
-  const logSheet = ss.getSheetByName("SO HDTCXD BCONS - NTP");
-  const logLastRow = logSheet.getLastRow();
-  const transferMap = {};
-
-  if (logLastRow >= 3) {
-    const logData = logSheet.getRange(3, 2, logLastRow - 2, 21).getValues(); 
-    logData.forEach(r => {
-      const contractNo = r[2]?.toString().trim(); // Cột D (index 2 tính từ B)
-      if (contractNo) {
-        transferMap[contractNo] = {
-          isTransferred: r[13] !== "",                                       
-          t: r[18]?.toString().trim().toLowerCase().startsWith("x"),         
-          u: r[19]?.toString().trim() !== "" && r[19] != 0,                  
-          v: r[20]?.toString().trim() !== "" && r[20] != 0                   
-        };
-      }
-    });
-  }
-
-  return {
-    hd: { project: projectHD, pack: packHD, warranty: warrantyHD, contractor: contractorHD },
-    pl: { field0: field0PL },
-    transferMap: transferMap 
-  };
+/**
+ * Trả về trạng thái online của Backend
+ */
+function doGet(e) {
+  return HtmlService.createHtmlOutput("<h3>Backend API is Online.</h3>");
 }
 
-// THÊM VÀO CUỐI FILE Code.gs
 function apiDispatcher(payload) {
   const results = {};
   for (const key in payload) {
@@ -217,9 +393,9 @@ function apiDispatcher(payload) {
         case 'getLatestTBNo':
           results[key] = getLatestContractNumber_TB();
           break;
-        // Mày có thể thêm các case khác ở đây nếu muốn gộp thêm
         default:
           results[key] = null;
+          break;
       }
     } catch (e) {
       results[key] = { error: e.toString() };
@@ -228,79 +404,28 @@ function apiDispatcher(payload) {
   return results;
 }
 
-function getMetadataSync() {
+function publishAblyContractUpdate(actionType, contractNo) {
   try {
-    const ss = SpreadsheetApp.openById(SHEET_ID);
-    const configSheet = ss.getSheetByName(CONFIG_SHEET_NAME);
-    if (!configSheet) throw new Error("Thiếu sheet WEB_CONFIG");
-
-    const lastRow = configSheet.getLastRow();
-    if (lastRow < 2) return { metadata: [], sources: {} };
-
-    const data = configSheet.getRange(2, 1, lastRow - 1, 12).getValues();
-    
-    const metadata = data.map(r => ({
-      id: r[1] ? String(r[1]) : "",           
-      label: r[2] ? String(r[2]) : "",        
-      placeholder: r[3] ? String(r[3]) : "",  
-      type: r[4] ? String(r[4]) : "",         
-      row: r[5] ? Number(r[5]) : 1,           
-      width: r[6] ? Number(r[6]) : 12,        
-      source: r[7] ? String(r[7]) : "",       
-      dependsOn: r[8] ? String(r[8]) : "",    
-      lookupCol: r[9] ? Number(r[9]) : 0,     
-      targetS: r[10] ? String(r[10]) : "",    
-      targetC: r[11] ? String(r[11]) : ""     
-    })).filter(x => x.id !== ""); 
-
-    const sources = {};
-    metadata.forEach(f => {
-      if (f.source.includes("!")) {
-        try {
-          const range = ss.getRange(f.source);
-          sources[f.id] = range.getValues().filter(r => r[0] !== "" && r[0] !== null);
-        } catch (e) { sources[f.id] = []; }
-      } else if (f.source.startsWith("[")) {
-        try {
-          sources[f.id] = JSON.parse(f.source).map(x => [x]);
-        } catch (e) { sources[f.id] = []; }
+    const ablyUrl = "https://rest.ably.io/channels/bcons_notification/messages";
+    const ablyPayload = {
+      "name": "contract_update",
+      "data": {
+        "actionType": actionType,
+        "contractNo": contractNo,
+        "staffName": getCurrentStaffName()
       }
-    });
-
-    // Fix lỗi lấy Timestamp của Google Drive API
-    const fileTimestamp = DriveApp.getFileById(SHEET_ID).getLastUpdated().getTime();
-
-    return { 
-      version: fileTimestamp, 
-      metadata: metadata, 
-      sources: sources 
     };
+    const ablyOptions = {
+      "method": "POST",
+      "headers": {
+        "Authorization": "Basic " + Utilities.base64Encode(ABLY_API_KEY),
+        "Content-Type": "application/json"
+      },
+      "payload": JSON.stringify(ablyPayload),
+      "muteHttpExceptions": true
+    };
+    UrlFetchApp.fetch(ablyUrl, ablyOptions);
   } catch (err) {
-    throw new Error(err.stack || err.message);
+    console.error("Lỗi gửi tín hiệu cập nhật Ably Realtime: " + err.message);
   }
-}
-
-function processInjection(payload) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const config = ss.getSheetByName(CONFIG_SHEET_NAME).getRange("A2:L").getValues();
-  const mapping = {};
-  
-  config.forEach(r => { 
-    const id = r[1] ? String(r[1]) : "";
-    const sheet = r[10] ? String(r[10]) : "";
-    const cell = r[11] ? String(r[11]) : "";
-    if(id && sheet && cell) mapping[id] = { s: sheet, c: cell }; 
-  });
-
-  Object.keys(payload).forEach(id => {
-    if (mapping[id]) {
-      const target = mapping[id];
-      const targetSheet = ss.getSheetByName(target.s);
-      // Validate Sheet tồn tại trước khi ghi
-      if (targetSheet) {
-         targetSheet.getRange(target.c).setValue(payload[id]);
-      }
-    }
-  });
-  return { success: true };
 }
