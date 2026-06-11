@@ -28,9 +28,9 @@ function writeToSheetAndExportDoc_PL(data) {
 
     const valuesToWrite = [[
       row3Data[1], row3Data[51], "", data.field8, "", row3Data[6], row3Data[21], 
-      row3Data[31], jValue, row3Data[3], "", row3Data[57], row3Data[59]
+      row3Data[31], jValue, row3Data[3], "", row3Data[57]
     ]];
-    targetSheet.getRange(targetRow, 2, 1, 13).setValues(valuesToWrite);
+    targetSheet.getRange(targetRow, 2, 1, 12).setValues(valuesToWrite);
 
     // 2.1 GHI ĐÈ INITIAL STATE VÀO SHEET X
     SpreadsheetApp.flush(); 
@@ -209,7 +209,12 @@ function exportToNewSpreadsheet_PL(filteredA) {
     if (lastDataRow >= 2) sheet.getRange("F2:F" + lastDataRow).setNumberFormat("#,##0").setHorizontalAlignment("right");
     sheet.getRange("G2:G" + lastDataRow).setHorizontalAlignment("center");
 
-    sheet.setColumnWidths(1, 7, [110, 350, 75, 500, 800, 170, 170]);
+    // Lặp và đặt độ rộng chuẩn riêng biệt từng cột
+    const colWidths = [110, 350, 75, 500, 800, 170, 170];
+    colWidths.forEach((width, index) => {
+        sheet.setColumnWidth(index + 1, width);
+    });
+
     sheet.setFrozenRows(1);
     return newSS.getUrl();
   } catch (e) { throw new Error("Lỗi xuất Sheet: " + e.message); }

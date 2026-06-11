@@ -19,18 +19,31 @@ let placeholder = document.createElement('div');
 placeholder.className = 'task-placeholder';
 
 /**
- * 2. KHỞI CHẠY & NẠP DỰ ÁN
+ * 2. KHỞI CHẠY & NẠP DỰ ÁN (ĐÃ TÍCH HỢP PLACEHOLDER KHUNG TRỐNG)
  */
 function loadDrawingModule() {
     if (!isDrawingListLoaded) fetchActiveProjectsForDrawing();
+    
     if (selectedProjectDrawing) {
         if (cyInstance && selectedProjectDrawing === currentlyRenderedProject) {
             setTimeout(() => { cyInstance.resize(); cyInstance.fit(null, 20); }, 300);
-        } else { renderMindmap(selectedProjectDrawing); }
+        } else { 
+            renderMindmap(selectedProjectDrawing); 
+        }
+    } else {
+        // Dựng placeholder thương hiệu tinh tế khi chưa có dự án nào được chọn
+        const cyArea = document.getElementById('cy');
+        if (cyArea && (cyArea.innerHTML.trim() === "" || cyArea.querySelector('.existing-file-wrapper') === null)) {
+            cyArea.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; text-align: center; padding: 20px; box-sizing: border-box;">
+                    <i class="bi bi-diagram-3-fill" style="font-size: 48px; color: rgba(255, 186, 8, 0.15); margin-bottom: 18px; filter: drop-shadow(0 0 10px rgba(255,186,8,0.03));"></i>
+                    <h3 style="color: rgba(255, 186, 8, 0.45); font-size: 15px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 10px 0; font-family: 'Poppins', sans-serif;">MAP NOT INITIALIZED</h3>
+                    <p style="color: rgba(255, 255, 255, 0.35); font-size: 13px; line-height: 1.6; margin: 0; font-style: italic;">Vui lòng chọn một Dự án để bắt đầu khởi tạo Mindmap.</p>
+                </div>
+            `;
+        }
     }
 }
-
-/* --- public/JS_Drawing.js --- */
 
 /* --- public/JS_Drawing.js --- */
 

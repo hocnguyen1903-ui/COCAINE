@@ -402,7 +402,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (!hoverText) return;
 
                 globalTooltip.innerHTML = `
-                    <b style="color:white; border-bottom:1.5px solid #FFBA08; padding-bottom: 4px; margin-bottom: 6px; display:block; font-size:11px;">RIGHT-CLICK / HOLD TO MANAGE</b>
+                    <b style="color:white; border-bottom:1.5px solid #FFBA08; padding-bottom: 4px; margin-bottom: 6px; display:block; font-size:11px;">RIGHT-CLICK / HOLD TO OPEN</b>
                     ${hoverText}
                 `;
                 

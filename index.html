@@ -256,7 +256,7 @@
                 </label>
                 <label class="radio-label">
                     <input type="radio" name="option2-hd" value="TT90" onclick="toggleRadio_HD(this)">
-                    <span class="custom-radio"></span><span class="radio-text">Thanh toán đến 90%</span>
+                    <span class="custom-radio"></span><span class="radio-text">Thanh toán đến 90% (ĐTCL)</span>
                 </label>
             </div>
         </div>
@@ -814,6 +814,40 @@
 </div>
 </div>
 </div>
+<!-- Modal Xác Nhận Xuất Spreadsheet ( Luxury Style ) -->
+        <div id="confirmExportModal" class="info-modal-overlay" style="display: none; z-index: 21000000;">
+            <div class="info-modal-content" style="width: 460px; max-width: 90%;">
+                <div class="info-modal-header">
+                    <i class="bi bi-file-earmark-spreadsheet-fill" style="color: #FFBA08; font-size: 32px; filter: drop-shadow(0 0 10px rgba(255, 186, 8, 0.4));"></i>
+                    <span>SYSTEM EXPORT DATA</span>
+                </div>
+                
+                <div class="info-modal-body" style="margin-top: 20px;">
+                    <div class="info-section-title">Xác Nhận Xuất Spreadsheet</div>
+                    
+                    <div class="info-row" style="margin-bottom: 15px;">
+                        <div class="info-key"><i class="bi bi-file-earmark-arrow-down-fill" style="font-size: 18px; line-height: 1; display: block;"></i></div>
+                        <div class="info-desc">
+                            <b>Tổng số dòng dữ liệu:</b>
+                            <p>Hệ thống sẽ xuất <strong id="export-row-count" style="color: #FFBA08; font-size: 13.5px; font-weight: bold;">0</strong> dòng dữ liệu.</p>
+                        </div>
+                    </div>
+
+                    <div class="info-row" style="margin-bottom: 25px;">
+                        <div class="info-key"><i class="bi bi-hourglass-split" style="font-size: 18px; line-height: 1; display: block;"></i></div>
+                        <div class="info-desc">
+                            <b>Thời gian ước tính:</b>
+                            <p>File sẽ được tạo sau khoảng <strong id="export-estimated-time" style="color: #00BCD4; font-size: 13px; font-weight: bold;">0 giây</strong>.</p>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 15px; width: 100%; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 20px;">
+                        <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 42px; border-radius: 8px; font-size: 12px; font-weight: bold; letter-spacing: 0.5px;" onclick="cancelExport()">CANCEL</button>
+                        <button type="button" class="btn-primary-luxury" style="flex: 1; height: 42px; border-radius: 8px; font-size: 12px; font-weight: bold; letter-spacing: 0.5px;" id="confirmExportBtn">CONFIRM</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     <script src="public/JS_Variables.js"></script>
     <script src="public/JS_Utils.js"></script>
     <script src="public/JS_Core_API.js"></script>

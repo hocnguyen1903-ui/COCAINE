@@ -611,16 +611,79 @@ function submitData_TB() {
 
 
 function exportFilteredToNewSheet_PL() {
-    const input = document.getElementById("field0-pl").value.toLowerCase();
-    const filteredA = SYSTEM_DATA.pl.field0.filter(i => i.display.toLowerCase().includes(input)).map(i => i.display.split(" | ")[0]);
-    if (filteredA.length === 0) return alert("Không có dữ liệu để xuất!");
-    const loading = document.getElementById("contractLoading"); if (loading) loading.style.display = "flex";
-    callBackend("exportToNewSpreadsheet_PL", filteredA).then(url => {
-        if (loading) loading.style.display = "none"; 
-        if (url) window.open(url, "_blank");
-    }).catch(err => {
-        if (loading) loading.style.display = "none"; alert("Lỗi: " + (err.message || err));
-    });
+    const inputField = document.getElementById("field0-pl");
+    if (!inputField) return;
+    
+    const query = inputField.value.toLowerCase().trim();
+    
+    // Gọi tiền xử lý dữ liệu hệ thống
+    if (typeof precomputePLData === 'function') precomputePLData();
+    
+    let finalData = [];
+    if (typeof filterAndSortData_PL === 'function') {
+        const result = filterAndSortData_PL(query);
+        finalData = result.finalData || [];
+    } else {
+        const dropdown = document.getElementById("dropdown-field0-pl");
+        const items = dropdown ? dropdown.querySelectorAll(".hoc-tooltip") : [];
+        finalData = Array.from(items).map(div => {
+            const display = div.getAttribute("data-display");
+            return display ? { maHD: display.split(" | ")[0].trim() } : null;
+        }).filter(Boolean);
+    }
+    
+    const filteredA = finalData.map(item => item.maHD).filter(a => a && a !== "");
+    
+    if (filteredA.length === 0) { 
+        showToast_PL("⚠️ Không có dữ liệu nào để xuất!", "error"); 
+        return; 
+    }
+    
+    const actualDataRows = filteredA.length;
+    
+    let estimatedTime = "";
+    if (actualDataRows < 50) estimatedTime = "5 giây"; 
+    else if (actualDataRows <= 100) estimatedTime = "6 giây"; 
+    else if (actualDataRows <= 150) estimatedTime = "7 giây"; 
+    else if (actualDataRows <= 250) estimatedTime = "8 giây"; 
+    else estimatedTime = "9 giây";
+
+    const modal = document.getElementById("confirmExportModal");
+    if (!modal) return;
+
+    // Đổ dữ liệu động vào cấu trúc HTML tĩnh đã có sẵn trong index.html
+    document.getElementById("export-row-count").textContent = actualDataRows.toLocaleString('vi-VN');
+    document.getElementById("export-estimated-time").textContent = estimatedTime;
+    
+    // Kích hoạt hiển thị
+    modal.style.display = 'flex';
+    setTimeout(() => {
+        modal.classList.add('show');
+    }, 10);
+
+    window.cancelExport = () => {
+        modal.classList.remove('show');
+        setTimeout(() => modal.style.display = 'none', 300);
+    };
+
+    document.getElementById("confirmExportBtn").onclick = () => {
+        window.cancelExport();
+        const loading = document.getElementById("contractLoading"); 
+        if (loading) {
+            loading.style.display = "flex";
+            loading.querySelector('p').textContent = "SYSTEM EXPORTING DATA SPREADSHEET...";
+        }
+        
+        callBackend("exportToNewSpreadsheet_PL", filteredA)
+            .then(url => {
+                if (loading) loading.style.display = "none"; 
+                if (url) window.open(url, "_blank");
+            })
+            .catch(err => {
+                if (loading) loading.style.display = "none"; 
+                showToast_PL("⚠️ Lỗi xuất dữ liệu: " + (err.message || err), "error");
+            });
+    };
 }
 
 // ==========================================================================
