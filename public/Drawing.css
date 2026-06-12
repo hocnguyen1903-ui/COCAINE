@@ -55,7 +55,7 @@
         min-height: 250px; 
         max-height: 700px; 
         overflow-y: auto; 
-        background: rgba(3, 24, 48, 0.85) !important;
+        background: rgba(3, 24, 48, 0.95) !important;
         border: 1.5px solid #FFBA08; 
         border-radius: 15px; 
         display: flex; 

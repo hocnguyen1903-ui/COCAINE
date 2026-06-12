@@ -133,14 +133,6 @@ function writeToSheetAndExportDoc_HD(data) {
             const targetRow = getNextRowAfterLastData_SO(targetSheet, 3, 2, 5);
             const jValue = getCurrentStaffName();
 
-            // Sửa lỗi: Cung cấp đầy đủ 13 phần tử mảng khớp hoàn hảo với dải ô Range(13)
-            const logValues = [[
-                allRow3Values[49], allRow3Values[8], "", data.field8, "",
-                allRow3Values[45], allRow3Values[21], allRow3Values[26], jValue,
-                allRow3Values[5], allRow3Values[6], ""
-            ]];
-            targetSheet.getRange(targetRow, 2, 1, 12).setValues(logValues);
-
             const valH3 = allRow3Values[7]; 
             const valBI3 = allRow3Values[60]; 
             const valBJ3 = allRow3Values[61]; 
@@ -149,22 +141,14 @@ function writeToSheetAndExportDoc_HD(data) {
             const tickR = (valBI3 == 303) ? "x" : "";
             const tickS = (valBJ3 == 309) ? "x" : "";
 
-            const sheetX = spreadsheet.getSheetByName("X");
-            const dataA = sheetX.getRange(4, 1, sheetX.getLastRow() - 3, 1).getValues();
-            
-            let rowX = -1;
-            const targetMa = data.field8.trim();
-            for (let i = 0; i < dataA.length; i++) {
-                if (dataA[i][0].toString().trim() === targetMa) {
-                    rowX = i;
-                    break;
-                }
-            }
-
-            if (rowX !== -1) {
-                const hdStatus = [['', '', tickQ, tickR, tickS]];
-                sheetX.getRange(rowX + 4, 15, 1, 5).setValues(hdStatus);
-            }
+            // Ghi 18 cột từ cột B (NGÀY KÝ) đến cột S (Checklist S) trên Sổ Gốc
+            const logValues = [[
+                allRow3Values[49], allRow3Values[8], "", data.field8, "",
+                allRow3Values[45], allRow3Values[21], allRow3Values[26], jValue,
+                allRow3Values[5], allRow3Values[6], "", "",
+                "", "", tickQ, tickR, tickS // Cột O (Bàn giao), P (Scan File), Q, R, S
+            ]];
+            targetSheet.getRange(targetRow, 2, 1, 18).setValues(logValues);
         }
 
         // 3. TẠO VÀ XỬ LÝ DOCS
@@ -190,9 +174,7 @@ function writeToSheetAndExportDoc_HD(data) {
         optimizeDocSections(body, validSections);
 
         doc.saveAndClose();
-        
-        publishAblyContractUpdate("CREATE_HD", data.field8);
-        
+                
         return { link: copiedFile.getUrl() };
 
     } catch (error) {

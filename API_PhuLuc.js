@@ -25,26 +25,15 @@ function writeToSheetAndExportDoc_PL(data) {
     const targetRow = getNextRowAfterLastData_SO(targetSheet, 3, 2, 5);
 
     const jValue = getCurrentStaffName();
+    const hasValue = (parseFloat(data.field2.toString().replace(/\./g, '')) || 0) !== 0;
 
+    // Ghi 18 cột từ cột B (NGÀY KÝ) đến cột S (Checklist S) trên Sổ Gốc
     const valuesToWrite = [[
       row3Data[1], row3Data[51], "", data.field8, "", row3Data[6], row3Data[21], 
-      row3Data[31], jValue, row3Data[3], "", row3Data[57]
+      row3Data[31], jValue, row3Data[3], "", row3Data[57], row3Data[59],
+      "", "", hasValue ? "x" : "", "", "" // Cột O (Bàn giao), P (Scan File), Q, R, S
     ]];
-    targetSheet.getRange(targetRow, 2, 1, 12).setValues(valuesToWrite);
-
-    // 2.1 GHI ĐÈ INITIAL STATE VÀO SHEET X
-    SpreadsheetApp.flush(); 
-    const sheetX = ss.getSheetByName("X");
-    const dataA = sheetX.getRange(4, 1, sheetX.getLastRow() - 3, 1).getValues().flat();
-    const rowX = dataA.findIndex(val => val.toString().trim() === data.field8.trim());
-    
-    if (rowX !== -1) {
-      const hasValue = (parseFloat(data.field2.toString().replace(/\./g, '')) || 0) !== 0;
-      const plStatus = [['', '', hasValue ? 'x' : '', '', '']];
-      sheetX.getRange(rowX + 4, 15, 1, 5).setValues(plStatus);
-    }
-
-    publishAblyContractUpdate("CREATE_PL", data.field8);
+    targetSheet.getRange(targetRow, 2, 1, 18).setValues(valuesToWrite);
 
     // 3. TẠO VÀ XỬ LÝ DOCS
     const docTemplateId = "1S02EAglGKBo55f4TT_oMKawDyZcNF-Wl2GZRjO-e5G4";
@@ -225,36 +214,32 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
   try {
     lock.waitLock(20000); 
     const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sheetX = ss.getSheetByName("X");
     const logSheet = ss.getSheetByName("CHUYEN HO SO");
-    if (!sheetX || !logSheet) throw new Error("Hệ thống thiếu Sheet X hoặc CHUYEN HO SO");
+    const sheetLog = ss.getSheetByName("SO HDTCXD BCONS - NTP");
+    if (!sheetLog || !logSheet) throw new Error("Hệ thống thiếu Sổ gốc hoặc CHUYEN HO SO");
 
-    const lastRowX = sheetX.getLastRow();
-    if (lastRowX < 4) return false;
-
-    const rangeX = sheetX.getRange(4, 1, lastRowX - 3, 15);
-    const dataX = rangeX.getValues(); 
-
-    const targetMa = contractNumber.trim();
-    let targetIndex = -1;
+    const lastRowLog = sheetLog.getLastRow();
+    const dataE = sheetLog.getRange(1, 5, lastRowLog, 1).getValues(); // Cột E (Mã HĐ)
+    const targetMa = contractNumber.trim().toUpperCase();
+    let targetRow = -1;
     let ngayKyStr = "";
 
-    for (let i = 0; i < dataX.length; i++) {
-      if (dataX[i][0]?.toString().trim() === targetMa) {
-        targetIndex = i;
-        let rawDate = dataX[i][7];
+    for (let i = 0; i < dataE.length; i++) {
+      if (dataE[i][0].toString().trim().toUpperCase() === targetMa) {
+        targetRow = i + 1;
+        let rawDate = sheetLog.getRange(targetRow, 2).getValue(); // Lấy ngày ký ở cột B
         if (rawDate instanceof Date) ngayKyStr = Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy");
         else ngayKyStr = rawDate ? rawDate.toString() : "";
         break;
       }
     }
 
-    if (targetIndex === -1) return false;
+    if (targetRow === -1) return false;
 
-    // Ghi dấu "x" bàn giao vào đúng Cột 15 (Cột O)
-    sheetX.getRange(targetIndex + 4, 15).setValue(isTransferred ? "x" : "");
+    // SỬA TẠI ĐÂY: Ghi dấu "x" bàn giao vào trực tiếp Cột O (Cột 15) trên Sổ Gốc
+    sheetLog.getRange(targetRow, 15).setValue(isTransferred ? "x" : "");
 
-    const lastRowLog = logSheet.getLastRow();
+    const lastRowLogChuyen = logSheet.getLastRow();
     
     if (isTransferred) {
       const senderName = getCurrentStaffName();
@@ -283,8 +268,8 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
       logSheet.getRange(nextRow, 1, 1, 9).setValues(newRowData);
 
     } else {
-      if (lastRowLog >= 4) {
-        const fullRangeLog = logSheet.getRange(4, 1, lastRowLog - 3, 9);
+      if (lastRowLogChuyen >= 4) {
+        const fullRangeLog = logSheet.getRange(4, 1, lastRowLogChuyen - 3, 9);
         const allLogData = fullRangeLog.getValues();
         
         let contractToFind = targetMa;
@@ -313,9 +298,6 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
         }
       }
     }
-
-    // 🚀 BẮN REAL-TIME TRẠNG THÁI BÀN GIAO SANG ABLY KHI THAO TÁC THÀNH CÔNG
-    publishAblyContractUpdate("TRANSFER_STATUS", contractNumber);
 
     return true;
   } finally {
@@ -367,7 +349,7 @@ const ROOT_FOLDER_ID = "1SmlwbdIfTTQAaGTl2sEtRU-KFEYmx9Xc";
 function uploadScanToDrive(base64Data, maHD, fileName) {
   const lock = LockService.getScriptLock();
   try {
-    lock.waitLock(20000); // Khóa luồng bảo vệ ô chứa chuỗi metadata File Scan
+    lock.waitLock(20000); 
     let projectName = "DEFAULT";
     const match = maHD.match(/HĐTCXD-([^\/\s]+)/i); 
     if (match) {
@@ -399,13 +381,14 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
     const fileId = file.getId();
 
     const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sheetX = ss.getSheetByName("X");
-    const lastRow = sheetX.getLastRow();
-    const dataA = sheetX.getRange(4, 1, lastRow - 3, 1).getValues().flat();
-    const targetIndex = dataA.findIndex(val => val.toString().trim() === maHD.trim());
+    const sheetLog = ss.getSheetByName("SO HDTCXD BCONS - NTP");
+    const lastRowLog = sheetLog.getLastRow();
+    const dataE = sheetLog.getRange(1, 5, lastRowLog, 1).getValues().flat(); // Cột E (Mã HĐ)
+    const targetIndex = dataE.findIndex(val => val.toString().trim().toUpperCase() === maHD.trim().toUpperCase());
 
     if (targetIndex !== -1) {
-      const cell = sheetX.getRange(targetIndex + 4, 16);
+      // SỬA TẠI ĐÂY: Ghi trực tiếp thông tin Scan vào Cột P (Cột 16) trên Sổ Gốc
+      const cell = sheetLog.getRange(targetIndex + 1, 16);
       SpreadsheetApp.flush(); 
       const currentVal = cell.getValue().toString();
       const newEntry = fileId + "|" + fileName;
@@ -418,7 +401,7 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
   } catch (e) { 
     return { success: false, error: e.toString() }; 
   } finally {
-    lock.releaseLock(); // Giải phóng khóa
+    lock.releaseLock(); 
   }
 }
 
@@ -436,71 +419,61 @@ function getFileFromDrive(fileId) {
 function deleteContractRow_Backend(maHD) {
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(20000); // Khóa luồng 20 giây tránh tranh chấp trượt dòng với lệnh sửa
+    lock.waitLock(20000); 
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const maClean = maHD.toString().trim().toUpperCase();
     let fileIds = [];
 
-    // 1. XỬ LÝ TRÊN SHEET X (Tìm mã tại cột A để dọn static data và lấy file ID)
-    const sheetX = ss.getSheetByName("X");
-    if (sheetX) {
-      const dataX = sheetX.getRange(1, 1, sheetX.getLastRow(), 16).getValues(); 
-      for (let i = dataX.length - 1; i >= 3; i--) {
-        if (dataX[i][0].toString().trim().toUpperCase() === maClean) {
-          const scanData = dataX[i][15].toString();
-          if (scanData.includes("|")) {
-            scanData.split(";;").forEach(e => fileIds.push(e.split("|")[0]));
-          }
-          sheetX.getRange(i + 1, 15, 1, 5).clearContent();
-          break; 
-        }
-      }
-    }
-
-    // 2. XỬ LÝ TRÊN SỔ GỐC (Tìm mã tại cột E để xóa hàng)
+    // 1. XỬ LÝ TRÊN SỔ GỐC (Tìm mã tại cột E để lấy file ID và xóa hàng)
     const sheetLog = ss.getSheetByName("SO HDTCXD BCONS - NTP");
     if (sheetLog) {
       const lastRowLog = sheetLog.getLastRow();
       const dataE = sheetLog.getRange(1, 5, lastRowLog, 1).getValues();
+      const dataP = sheetLog.getRange(1, 16, lastRowLog, 1).getValues(); // Cột P (Cột 16) chứa File Scan
+      
       for (let j = dataE.length - 1; j >= 0; j--) {
         if (dataE[j][0].toString().trim().toUpperCase() === maClean && maClean !== "") {
+          const scanData = dataP[j][0].toString();
+          if (scanData.includes("|")) {
+            scanData.split(";;").forEach(e => fileIds.push(e.split("|")[0]));
+          }
+          // Xóa hàng sổ gốc
           sheetLog.deleteRow(j + 1);
           break; 
         }
       }
     }
 
-    // 3. DỌN DRIVE (Chạy sau cùng)
+    // 2. DỌN DRIVE
     if (fileIds.length > 0) {
       fileIds.forEach(id => { try { DriveApp.getFileById(id).setTrashed(true); } catch(e) {} });
     }
 
     SpreadsheetApp.flush();
-    
-    publishAblyContractUpdate("DELETE_DATA", maHD);
-    
     return true;
   } catch (e) {
     throw new Error("Lỗi Backend xóa Cột E: " + e.message);
   } finally {
-    lock.releaseLock(); // Giải phóng khóa
+    lock.releaseLock(); 
   }
 }
 
 function deleteScanFilePermanently(maHD, fileIdToDelete) {
   const lock = LockService.getScriptLock();
   try {
-    lock.waitLock(20000); // Khóa luồng bảo vệ tránh ghi đè dữ liệu tệp tin khi xóa đồng thời
+    lock.waitLock(20000); 
     if (!fileIdToDelete) throw new Error("ID không hợp lệ");
     Drive.Files.remove(fileIdToDelete);
 
     const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sheetX = ss.getSheetByName("X");
-    const dataA = sheetX.getRange(4, 1, sheetX.getLastRow() - 3, 1).getValues().flat();
-    const targetIndex = dataA.findIndex(val => val.toString().trim() === maHD.trim());
+    const sheetLog = ss.getSheetByName("SO HDTCXD BCONS - NTP");
+    const lastRowLog = sheetLog.getLastRow();
+    const dataE = sheetLog.getRange(1, 5, lastRowLog, 1).getValues().flat();
+    const targetIndex = dataE.findIndex(val => val.toString().trim().toUpperCase() === maHD.trim().toUpperCase());
 
     if (targetIndex !== -1) {
-      const cell = sheetX.getRange(targetIndex + 4, 16);
+      // SỬA TẠI ĐÂY: Xóa tệp scan trực tiếp trên Cột P (Cột 16) của Sổ Gốc
+      const cell = sheetLog.getRange(targetIndex + 1, 16);
       const currentVal = cell.getValue().toString();
       const updatedFiles = currentVal.split(";;").filter(f => f && !f.startsWith(fileIdToDelete + "|"));
       
@@ -514,7 +487,7 @@ function deleteScanFilePermanently(maHD, fileIdToDelete) {
   } catch (e) {
     return { success: false, error: e.toString() };
   } finally {
-    lock.releaseLock(); // Giải phóng khóa
+    lock.releaseLock(); 
   }
 }
 

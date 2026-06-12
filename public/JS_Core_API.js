@@ -3,7 +3,8 @@ let pendingApprovalBatch_PL = [];
 let approvalBatchTimer_PL = null;
 let countdownInterval_PL = null;
 let countdownSeconds_PL = 3;
-
+let ablyRealtime = null;
+let ablyChannel = null;
 // ==========================================================================
 // 1. NHÓM CORE / GLOBAL UI LOGIC
 // ==========================================================================
@@ -465,47 +466,36 @@ function submitData_HD() {
         return;
     }
 
-    // 1. KIỂM TRA TRÙNG LẶP ĐỒNG THỜI: MÃ DỰ ÁN + ITEM CATEGORY + GIÁ TRỊ + MÃ NHÀ THẦU
     const f2Raw = document.getElementById("field2-hd").value;
-    const f2 = f2Raw.includes(" | ") ? f2Raw.split(" | ")[0].trim() : f2Raw.trim(); // Mã dự án
-    const f1 = document.getElementById("field1-hd").value; // Tên đầy đủ (Item Category)
+    const f2 = f2Raw.includes(" | ") ? f2Raw.split(" | ")[0].trim() : f2Raw.trim(); 
+    const f1 = document.getElementById("field1-hd").value; 
     const f3Raw = document.getElementById("field3-hd").value;
-    const f3 = f3Raw.includes(" | ") ? f3Raw.split(" | ")[0].trim() : f3Raw.trim(); // Mã nhà thầu
-    const f4Raw = document.getElementById("field4-hd").value; // Giá trị hợp đồng
+    const f3 = f3Raw.includes(" | ") ? f3Raw.split(" | ")[0].trim() : f3Raw.trim(); 
+    const f4Raw = document.getElementById("field4-hd").value; 
 
     if (f2 && f1 && f3 && f4Raw && SYSTEM_DATA.pl && SYSTEM_DATA.pl.field0) {
         const currentCategory = f1.trim().toUpperCase();
         const currentProj = f2.toUpperCase();
         const currentContractor = f3.toUpperCase();
-        const currentValClean = f4Raw.replace(/\D/g, ""); // Chuỗi số sạch của Giá trị nhập vào
+        const currentValClean = f4Raw.replace(/\D/g, ""); 
 
-        // Quét tìm hợp đồng trùng khớp đồng thời cả 4 yếu tố định danh
         const duplicateContract = SYSTEM_DATA.pl.field0.find(item => {
-            // a. Khớp mã dự án
             const isMatchProj = item.maHD.toUpperCase().includes("HĐTCXD-" + currentProj);
-            
-            // b. Khớp tên đầy đủ hạng mục (Item Category)
             const isMatchCategory = (item.packageI || "").trim().toUpperCase() === currentCategory;
-            
-            // c. Khớp giá trị hợp đồng (so sánh dạng số nguyên sạch)
             const itemValClean = (item.valueK || item.c || "").toString().replace(/\D/g, "");
             const isMatchValue = (itemValClean === currentValClean);
-            
-            // d. Khớp mã nhà thầu (quét đuôi số HĐ hoặc quét chéo thông tin nhà thầu)
             const isMatchContractor = item.maHD.toUpperCase().endsWith("-" + currentContractor) || 
                                       item.maHD.toUpperCase().includes("-" + currentContractor + "/") ||
                                       (item.searchK || "").toUpperCase().includes(currentContractor);
-
             return isMatchProj && isMatchCategory && isMatchValue && isMatchContractor;
         });
 
         if (duplicateContract) {
             showToast_PL("⚠️ Hợp đồng này đã được tạo trước đó, vui lòng kiểm tra lại DATA!", "error");
-            return; // Ngừng tiến trình xuất file hoàn toàn
+            return; 
         }
     }
 
-    // 2. TIẾP TỤC TIẾN TRÌNH XUẤT FILE NẾU KHÔNG TRÙNG KHỚP
     btn.disabled = true; loading.style.display = "flex";
     const formData = {
         location: document.getElementById("locationDropdown-hd").value,
@@ -519,13 +509,16 @@ function submitData_HD() {
             SYSTEM_DATA.pl.field0.unshift({ display: `${formData.field8} | ${formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0} | ${formData.field4}`, note: formData.field0, transferred: false, scanId: "", hasQ: (formData.field5 && formData.field5 !== "0"), hasR: (formData.radioOption === "BLTU"), hasS: (formData.radioOption === "BLHD") });
             PRECOMPUTED_PL_DATA = null;
             if (activeTabId === 'tab-plhd') executeFilter_PL();
+            
+            // Kích hoạt phát tin cập nhật ngay tại Client
+            publishAblyContractUpdate_Client("CREATE_HD", formData.field8);
+            
             loadSystemData(true);
         }
     }).catch(err => {
         loading.style.display = "none"; btn.disabled = false; alert(err.message || err);
     });
 }
-
 
 function submitData_PL() {
     const loading = document.getElementById("contractLoading");
@@ -541,7 +534,12 @@ function submitData_PL() {
         const f5 = document.getElementById("field5-pl"); if (f5) f5.value = ""; 
         renderAdjustmentOptions_PL(); 
         ["label-field2-pl", "label-field9-pl", "label-field10-pl"].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = "none"; }); 
-        updateContractNo_PL(); loadSystemData(true);
+        updateContractNo_PL();
+        
+        // Kích hoạt phát tin cập nhật ngay tại Client
+        publishAblyContractUpdate_Client("CREATE_PL", formData.field8);
+        
+        loadSystemData(true);
     }).catch(err => {
         loading.style.display = "none"; alert("Lỗi xuất file: " + (err.message || err));
     });
@@ -553,13 +551,12 @@ let activeTransferRequests_PL = new Set();
 function executeTransferScript_PL(docTypesString) {
     const { maHD, isTransferred } = currentTransferData_PL;
     
-    // Chặn đứng hành động nếu yêu cầu trước đó của mã hồ sơ này chưa hoàn tất
     if (activeTransferRequests_PL.has(maHD)) {
         showToast_PL("⚠️ Hệ thống đang xử lý yêu cầu trước đó, vui lòng đợi trong giây lát!", "error");
         return;
     }
     
-    activeTransferRequests_PL.add(maHD); // Khóa mã hồ sơ
+    activeTransferRequests_PL.add(maHD); 
     const newStatus = !isTransferred;
     const targetItem = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === maHD);
     
@@ -573,15 +570,18 @@ function executeTransferScript_PL(docTypesString) {
     else showToast_PL(`🟢 Đã bàn giao: <b style="color:#FFC000">${maHD}</b>`, 'success'); 
     
     callBackend("updateTransferStatus_PL", [maHD, newStatus, docTypesString]).then(res => {
-        activeTransferRequests_PL.delete(maHD); // Mở khóa khi thành công
+        activeTransferRequests_PL.delete(maHD); 
         if (res !== true) { 
             alert(`⚠️ LỖI DATA: Backend không tìm thấy mã [${maHD}]!`); 
             if(targetItem) targetItem.transferred = isTransferred; 
             PRECOMPUTED_PL_DATA = null; 
             executeFilter_PL(); 
+        } else {
+            // Kích hoạt phát tin cập nhật ngay tại Client khi hoàn thành
+            publishAblyContractUpdate_Client("TRANSFER_STATUS", maHD);
         }
     }).catch(err => {
-        activeTransferRequests_PL.delete(maHD); // Mở khóa khi thất bại
+        activeTransferRequests_PL.delete(maHD); 
         alert("🚨 LỖI KẾT NỐI SERVER: " + (err.message || err)); 
         if(targetItem) targetItem.transferred = isTransferred; 
         PRECOMPUTED_PL_DATA = null; 
@@ -1052,12 +1052,13 @@ document.addEventListener('click', () => {
 function initAblyRealtimeConnection() {
     try {
         if (typeof Ably === 'undefined') return;
-        
-        const realtime = new Ably.Realtime(ABLY_CLIENT_KEY);
-        const channel = realtime.channels.get('bcons_notification');
+        if (ablyRealtime) return; // Đã kết nối, không khởi tạo lại
+
+        ablyRealtime = new Ably.Realtime(ABLY_CLIENT_KEY);
+        ablyChannel = ablyRealtime.channels.get('bcons_notification');
         
         // 1. Đăng ký nhận thông báo Đăng ký Nhân viên mới
-        channel.subscribe('new_registration', (message) => {
+        ablyChannel.subscribe('new_registration', (message) => {
             const newUser = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
             if (newUser && newUser.mail) {
                 const exists = pendingUsersList_PL.some(u => u.mail === newUser.mail);
@@ -1074,29 +1075,42 @@ function initAblyRealtimeConnection() {
         });
 
         // 2. Đăng ký nhận thông báo Cập nhật Hợp đồng / Phụ lục Realtime
-        channel.subscribe('contract_update', (message) => {
+        ablyChannel.subscribe('contract_update', (message) => {
             const updateInfo = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
             const localStaffName = localStorage.getItem('bcons_staff_identity');
             
             // Chỉ xử lý nếu hành động này được thực thi bởi một user khác
             if (updateInfo && updateInfo.staffName !== localStaffName) {
-                // Tải ngầm dữ liệu để cập nhật Dashboard
-                loadSystemData(true);
+                loadSystemData(true); // tải ngầm dữ liệu
                 
-                // Định hình thông báo đặt Tên nhân sự lên trước
                 let actionText = "cập nhật";
                 if (updateInfo.actionType === "CREATE_HD") actionText = "tạo";
                 else if (updateInfo.actionType === "CREATE_PL") actionText = "tạo";
                 else if (updateInfo.actionType === "DELETE_DATA") actionText = "xóa";
                 else if (updateInfo.actionType === "TRANSFER_STATUS") actionText = "thay đổi trạng thái bàn giao";
 
-                showToast_PL(`📢 <b>${updateInfo.staffName}</b> vừa <b>${actionText}</b> hồ sơ <b>${updateInfo.contractNo}</b>!`, "success");
+                showToast_PL(`📢 <b>${updateInfo.staffName}</b> vừa <b>${actionText}</b> hồ sơ <b>${updateInfo.contractNo}</b>.`, "success");
             }
         });
         
         console.log("⚡ [Realtime] Cổng kết nối WebSockets Ably đã sẵn sàng!");
     } catch (e) {
         console.error("[Realtime Error] Lỗi kết nối hệ thống thời gian thực Ably: " + e.message);
+    }
+}
+
+/**
+ * Phát tin cập nhật Ably trực tiếp từ Client (Triệt tiêu độ trễ mạng ngầm trên Apps Script)
+ */
+function publishAblyContractUpdate_Client(actionType, contractNo) {
+    if (ablyChannel) {
+        const staffName = localStorage.getItem('bcons_staff_identity') || "UNKNOWN";
+        ablyChannel.publish('contract_update', {
+            "actionType": actionType,
+            "contractNo": contractNo,
+            "staffName": staffName
+        });
+        console.log(`[Ably-Client] Broadcasted ${actionType} for ${contractNo}`);
     }
 }
 

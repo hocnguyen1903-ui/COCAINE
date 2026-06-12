@@ -11,7 +11,7 @@ var GLOBAL_STAFF_ROLE = "USER"; // Mặc định quyền của phiên làm việ
  * Xử lý xác thực Token qua kiến trúc Hybrid (Bóc tách phân quyền Name|Role)
  */
 function authenticateAndGetName(token) {
-  if (!token) return "UNKNOWN";
+  if (!token) throw new Error("UNAUTHORIZED: Phiên làm việc không tồn tại, vui lòng đăng nhập!");
   
   const cache = CacheService.getScriptCache();
   let cachedVal = cache.get(token);
@@ -28,7 +28,8 @@ function authenticateAndGetName(token) {
     GLOBAL_STAFF_ROLE = parts[1] ? parts[1].toUpperCase().trim() : "USER"; 
     return GLOBAL_STAFF_NAME;
   }
-  return "UNKNOWN";
+  
+  throw new Error("UNAUTHORIZED: Phiên làm việc đã hết hạn hoặc bị thu hồi, vui lòng đăng nhập lại!");
 }
 
 // --- CẤU HÌNH KHÓA TRUYỀN TIN THỜI GIAN THỰC ABLY ---
@@ -309,8 +310,13 @@ function doPost(e) {
 
   const { action, data: payload, token } = request;
 
-  if (token && action !== "loginUser" && action !== "registerUser") {
-    authenticateAndGetName(token); 
+  // 🚀 KIỂM TRA BẢO MẬT THẮT CHẶT: Chặn đứng mọi tiến trình ghi ngay tại cửa ngõ nếu Token không hợp lệ
+  if (action !== "loginUser" && action !== "registerUser") {
+    try {
+      authenticateAndGetName(token); 
+    } catch (authError) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: authError.message })).setMimeType(ContentService.MimeType.JSON);
+    }
   }
 
   if (action === "loginUser") {
@@ -404,28 +410,3 @@ function apiDispatcher(payload) {
   return results;
 }
 
-function publishAblyContractUpdate(actionType, contractNo) {
-  try {
-    const ablyUrl = "https://rest.ably.io/channels/bcons_notification/messages";
-    const ablyPayload = {
-      "name": "contract_update",
-      "data": {
-        "actionType": actionType,
-        "contractNo": contractNo,
-        "staffName": getCurrentStaffName()
-      }
-    };
-    const ablyOptions = {
-      "method": "POST",
-      "headers": {
-        "Authorization": "Basic " + Utilities.base64Encode(ABLY_API_KEY),
-        "Content-Type": "application/json"
-      },
-      "payload": JSON.stringify(ablyPayload),
-      "muteHttpExceptions": true
-    };
-    UrlFetchApp.fetch(ablyUrl, ablyOptions);
-  } catch (err) {
-    console.error("Lỗi gửi tín hiệu cập nhật Ably Realtime: " + err.message);
-  }
-}

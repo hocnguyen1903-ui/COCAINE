@@ -257,7 +257,7 @@ function flashNode_Drawing(node) {
         }
         count++;
         
-        if (count >= 6) { 
+        if (count >= 10) { // Đã tăng nhịp đếm từ 6 lên 10 để chớp nháy đúng 5 lần
             clearInterval(intervalId);
             node.removeStyle('border-color border-width');
             node.removeScratch('flashInterval');
