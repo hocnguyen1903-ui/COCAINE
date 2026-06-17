@@ -549,10 +549,11 @@ async function uploadDrawingChunked(file) {
     progressBar.style.width = "0%";
     
     try {
-        // 2. Gọi API Backend xin phiên Upload mã hóa tạm thời từ Google
+        // 2. Gọi API Backend xin phiên Upload có đính kèm MimeType đặc tả để kích hoạt CORS gốc
         const session = await callBackend("getDrawingUploadSession_Backend", {
             fileName: file.name,
-            fileSize: file.size
+            fileSize: file.size,
+            mimeType: file.type || "application/pdf"
         });
         
         if (!session || !session.success) {

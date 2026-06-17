@@ -385,7 +385,7 @@ function getDrawingUploadSession_Backend(payload) {
       }
     }
     
-    // 5. Khởi tạo phiên Resumable Upload trực tiếp qua Google Drive API REST v3
+    // 5. Khởi tạo phiên Resumable Upload có đính kèm Header đặc tả chuẩn hóa CORS tránh lỗi Failed to fetch
     const targetFolderId = targetFolder.getId();
     const apiURL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable";
     const metaPayload = {
@@ -397,7 +397,9 @@ function getDrawingUploadSession_Backend(payload) {
       method: 'POST',
       headers: {
         Authorization: "Bearer " + ScriptApp.getOAuthToken(),
-        "Content-Type": "application/json"
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Type": payload.mimeType || "application/pdf",
+        "X-Upload-Content-Length": fileSize.toString()
       },
       payload: JSON.stringify(metaPayload),
       muteHttpExceptions: true
