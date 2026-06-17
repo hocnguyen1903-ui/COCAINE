@@ -24,10 +24,10 @@ placeholder.className = 'task-placeholder';
 function loadDrawingModule() {
     if (!isDrawingListLoaded) fetchActiveProjectsForDrawing();
     
-    if (selectedProjectDrawing) {
-        // Kích hoạt bộ lắng nghe kéo thả tệp tĩnh ở đáy bảng Hướng dẫn
-        setTimeout(initDrawingUploadZone, 100);
+    // 🚀 ĐỒNG BỘ BẮT BUỘC: Luôn khởi tạo bộ lắng nghe kéo thả/click chọn file ngay khi nạp mô-đun
+    setTimeout(initDrawingUploadZone, 100);
 
+    if (selectedProjectDrawing) {
         if (cyInstance && selectedProjectDrawing === currentlyRenderedProject) {
             setTimeout(() => { cyInstance.resize(); cyInstance.fit(null, 20); }, 300);
         } else { 
@@ -153,9 +153,12 @@ function selectProject_Drawing(projectName) {
     
     document.getElementById("drawing-project-drop").classList.remove("show");
     
-    // ĐẢM BẢO GIỮ TRẠNG THÁI CHỜ KHI VỪA CHỌN DỰ ÁN
+    // Đảm bảo giữ trạng thái chờ khi vừa chọn dự án
     document.getElementById('dp-empty-state').style.display = 'flex';
     document.getElementById('dp-content-state').style.display = 'none';
+    
+    // SỬA LỖI: Tự động kích hoạt bộ lắng nghe kéo thả/click chọn file ngay khi sếp vừa chọn dự án
+    setTimeout(initDrawingUploadZone, 200);
     
     renderMindmap(projectName);
 }

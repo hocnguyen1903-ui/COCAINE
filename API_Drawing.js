@@ -284,15 +284,16 @@ function getActiveProjectFolders_Backend() {
     return names;
   } catch (e) { return []; } }
 
-  /**
- * 4. KHỞI TẠO PHIÊN TẢI FILE PHÂN MẢNH VỚI GOOGLE DRIVE (TỰ ĐỘNG TẠO THƯ MỤC THÂN/HẦM)
+/**
+ * 4. KHỞI TẠO PHIÊN TẢI FILE PHÂN MẢNH VỚI GOOGLE DRIVE (TỰ ĐỘNG CHUẨN HÓA UNICODE NFC)
  */
 function getDrawingUploadSession_Backend(payload) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000); // Khóa luồng an toàn tránh tranh chấp thư mục
     
-    const fileName = payload.fileName;
+    // 🚀 ĐỒNG BỘ UNICODE: Chuẩn hóa NFC để giải quyết triệt để lỗi gõ tiếng Việt tổ hợp (NFD) trên macOS MacBook
+    const fileName = (payload.fileName || "").normalize("NFC");
     const fileSize = payload.fileSize;
     const lowerName = fileName.toLowerCase();
     
@@ -332,11 +333,11 @@ function getDrawingUploadSession_Backend(payload) {
     let targetFolder = null;
     let originalParentFolder = null; // Thư mục cha chứa Bộ môn / BVTKTC
     
-    // 3. Quét tìm các thư mục con hiện có
+    // 3. Quét tìm các thư mục con hiện có (Chuẩn hóa NFC thư mục Drive tránh lệch mã ký tự)
     const subFolders = projFolder.getFolders();
     while (subFolders.hasNext()) {
       const sub = subFolders.next();
-      const subName = sub.getName().toLowerCase();
+      const subName = sub.getName().normalize("NFC").toLowerCase();
       
       if (type === "PROPOSAL" && (subName.includes("đề xuất") || subName.includes("proposal"))) {
         targetFolder = sub;
@@ -365,12 +366,13 @@ function getDrawingUploadSession_Backend(payload) {
           originalParentFolder = projFolder.createFolder("Bộ môn");
         }
         
-        // Tìm tiếp thư mục con Thân/Hầm bên trong Bộ môn
+        // Tìm tiếp thư mục con Thân/Hầm bên trong Bộ môn (Chuẩn hóa NFC)
         const branchFolders = originalParentFolder.getFolders();
         const targetBranchLower = branch.toLowerCase();
         while (branchFolders.hasNext()) {
           const bSub = branchFolders.next();
-          if (bSub.getName().toLowerCase().includes(targetBranchLower)) {
+          const bSubName = bSub.getName().normalize("NFC").toLowerCase();
+          if (bSubName.includes(targetBranchLower)) {
             targetFolder = bSub;
             break;
           }

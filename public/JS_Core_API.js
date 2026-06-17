@@ -43,6 +43,7 @@ async function openTab(tabId, triggerIntro = true) {
     // Kích hoạt mô-đun Drawing khi chuyển qua tab-drawing
     if (tabId === 'tab-drawing') {
         loadDrawingModule();
+        setTimeout(initDrawingUploadZone, 150);
     }
 
     const allTabs = document.querySelectorAll('.tab-content');
