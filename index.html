@@ -114,7 +114,7 @@
             <a href="javascript:void(0)" id="btn-hd" onclick="openTab('tab-hdtcxd')">CONTRACT</a>
             <a href="javascript:void(0)" id="btn-pl" onclick="openTab('tab-plhd')">EXTENSIONS</a>
             <a href="javascript:void(0)" id="btn-tbkq" onclick="openTab('tab-tbkq')">NOTICES</a>
-            <a href="javascript:void(0)" id="btn-drawing" onclick="openTab('tab-drawing')">MAPDRAWING</a>
+            <a href="javascript:void(0)" id="btn-drawing" onclick="openTab('tab-drawing')">DRAWING</a>
             <div class="header-dropdown">
                 <a href="javascript:void(0)"><b>RESOURCE</b></a>
                 <div class="dropdown-menu-content">
@@ -663,7 +663,7 @@
 
             <!-- Trạng thái chờ -->
             <div id="dp-empty-state" style="flex: 1; display: flex; flex-direction: column; overflow-y: auto;">
-                <div class="drawing-guide-wrapper">
+                <div class="drawing-guide-wrapper" style="padding-bottom: 15px !important; flex: 1; display: flex; flex-direction: column;">
                     <div class="guide-header-box">
                         <div class="guide-info-circle"><i class="bi bi-info"></i></div>
                         <span class="guide-header-title">SYSTEM GUIDELINES</span>
@@ -695,6 +695,23 @@
                     <div class="guide-step">
                         <div class="guide-icon"><i class="bi bi-grip-vertical"></i></div>
                         <div class="guide-text">Có thể kéo thả các hạng mục qua lại giữa <b>Xây dựng</b> và <b>Cơ điện</b>.</div>
+                    </div>
+
+                    <!-- 🚀 KHU VỰC KÉO THẢ TẢI BẢN VẼ PHÂN MẢNH (CĂN SÁT ĐÁY HOÀN HẢO BẰNG FLEXBOX) -->
+                    <input type="file" id="drawing-upload-input" accept=".pdf, .xls, .xlsx" style="display: none;">
+                    <div id="drawing-upload-zone" class="scan-drop-zone" style="height: 150px !important; margin-top: auto !important; margin-bottom: 5px !important; width: 100%;">
+                        <div id="drawing-state-empty" style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
+                            <i class="bi bi-cloud-arrow-up-fill" style="font-size: 30px; color: #FFBA08; margin-bottom: 6px;"></i>
+                            <div style="color: #E0E0E0; font-size: 13px; font-weight: 700; letter-spacing: 1px;">KÉO THẢ BẢN VẼ VÀO ĐÂY</div>
+                            <div style="color: #95A1AF; font-size: 10.5px; margin-top: 4px; font-style: italic;">Hệ thống tự động phân loại tệp tin theo Tên</div>
+                        </div>
+                        <div id="drawing-state-uploading" style="display: none; width: 100%; flex-direction: column; align-items: center; pointer-events: none;">
+                            <i class="bi bi-arrow-repeat rotation" style="font-size: 26px; color: #00BCD4; margin-bottom: 6px;"></i>
+                            <div id="drawing-upload-status" style="color: #00BCD4; font-size: 12px; font-weight: bold; text-transform: uppercase;">XỬ LÝ TỆP TIN...</div>
+                            <div style="width: 80%; height: 3px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 10px;">
+                                <div id="drawing-upload-progress" style="width: 0%; height: 100%; background: #00BCD4; box-shadow: 0 0 10px #00BCD4;"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

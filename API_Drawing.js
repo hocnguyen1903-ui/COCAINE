@@ -283,3 +283,145 @@ function getActiveProjectFolders_Backend() {
     while (folders.hasNext()) names.push(folders.next().getName().toUpperCase());
     return names;
   } catch (e) { return []; } }
+
+  /**
+ * 4. KHỞI TẠO PHIÊN TẢI FILE PHÂN MẢNH VỚI GOOGLE DRIVE (TỰ ĐỘNG TẠO THƯ MỤC THÂN/HẦM)
+ */
+function getDrawingUploadSession_Backend(payload) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000); // Khóa luồng an toàn tránh tranh chấp thư mục
+    
+    const fileName = payload.fileName;
+    const fileSize = payload.fileSize;
+    const lowerName = fileName.toLowerCase();
+    
+    // 1. Phân tích tên tệp tin để nhận diện Dự án, Loại bản vẽ và Phân nhánh
+    const parts = fileName.split("_");
+    if (parts.length < 3) {
+      throw new Error("Tên tệp không đúng định dạng chuẩn! Cú pháp chuẩn: [YYMMDD]_[MÃ_DỰ_ÁN]_[TẢI_LÊN]_[NỘI_DUNG].pdf");
+    }
+    
+    const projectCode = parts[1].trim().toUpperCase();
+    let type = "";
+    let branch = "";
+    
+    if (lowerName.includes("tkbvtc") || lowerName.includes("bvtktc") || lowerName.includes("bộ môn")) {
+      type = "ORIGINAL";
+      branch = lowerName.includes("hầm") ? "Hầm" : lowerName.includes("thân") ? "Thân" : "";
+      if (!branch) {
+        throw new Error("Bản vẽ TKTC bắt buộc phải chứa từ khóa 'Phần hầm' hoặc 'Phần thân' trong tên file để hệ thống phân nhánh!");
+      }
+    } 
+    else if (lowerName.includes("cập nhật") || lowerName.includes("update")) {
+      type = "UPDATE";
+    } 
+    else if (lowerName.includes("pđx") || lowerName.includes("pdx") || lowerName.includes("đề xuất") || lowerName.includes("proposal")) {
+      type = "PROPOSAL";
+    } else {
+      throw new Error("Không thể nhận diện loại bản vẽ! Tên file phải chứa các từ khóa định danh: 'TKBVTC' (Bản vẽ gốc), 'Cập nhật' (Bản vẽ cập nhật), hoặc 'PĐX' (Phiếu đề xuất).");
+    }
+    
+    // 2. Định vị thư mục cha dự án trên Drive
+    const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
+    const projectFolders = masterFolder.getFoldersByName(projectCode);
+    if (!projectFolders.hasNext()) {
+      throw new Error(`Không tìm thấy thư mục dự án '${projectCode}' trên Drive! Sếp hãy tạo thư mục dự án trước.`);
+    }
+    const projFolder = projectFolders.next();
+    let targetFolder = null;
+    let originalParentFolder = null; // Thư mục cha chứa Bộ môn / BVTKTC
+    
+    // 3. Quét tìm các thư mục con hiện có
+    const subFolders = projFolder.getFolders();
+    while (subFolders.hasNext()) {
+      const sub = subFolders.next();
+      const subName = sub.getName().toLowerCase();
+      
+      if (type === "PROPOSAL" && (subName.includes("đề xuất") || subName.includes("proposal"))) {
+        targetFolder = sub;
+        break;
+      }
+      else if (type === "UPDATE" && (subName.includes("cập nhật") || subName.includes("update"))) {
+        targetFolder = sub;
+        break;
+      }
+      else if (subName.includes("bộ môn") || subName.includes("bản vẽ 3") || subName.includes("bvtktc")) {
+        originalParentFolder = sub;
+      }
+    }
+    
+    // 4. KIẾN TRÚC TỰ KHỞI TẠO (Self-healing): Tự động tạo thư mục nếu chưa tồn tại
+    if (!targetFolder) {
+      if (type === "PROPOSAL") {
+        targetFolder = projFolder.createFolder("Đề xuất");
+      }
+      else if (type === "UPDATE") {
+        targetFolder = projFolder.createFolder("Cập nhật");
+      }
+      else if (type === "ORIGINAL") {
+        // Nếu chưa có thư mục Bộ môn, tự động tạo mới
+        if (!originalParentFolder) {
+          originalParentFolder = projFolder.createFolder("Bộ môn");
+        }
+        
+        // Tìm tiếp thư mục con Thân/Hầm bên trong Bộ môn
+        const branchFolders = originalParentFolder.getFolders();
+        const targetBranchLower = branch.toLowerCase();
+        while (branchFolders.hasNext()) {
+          const bSub = branchFolders.next();
+          if (bSub.getName().toLowerCase().includes(targetBranchLower)) {
+            targetFolder = bSub;
+            break;
+          }
+        }
+        
+        // Tự động tạo thư mục con "Phần Thân" hoặc "Phần Hầm" nếu chưa có
+        if (!targetFolder) {
+          targetFolder = originalParentFolder.createFolder("Phần " + branch);
+        }
+      }
+    }
+    
+    // 5. Khởi tạo phiên Resumable Upload trực tiếp qua Google Drive API REST v3
+    const targetFolderId = targetFolder.getId();
+    const apiURL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable";
+    const metaPayload = {
+      name: fileName,
+      parents: [targetFolderId]
+    };
+    
+    const options = {
+      method: 'POST',
+      headers: {
+        Authorization: "Bearer " + ScriptApp.getOAuthToken(),
+        "Content-Type": "application/json"
+      },
+      payload: JSON.stringify(metaPayload),
+      muteHttpExceptions: true
+    };
+    
+    const response = UrlFetchApp.fetch(apiURL, options);
+    if (response.getResponseCode() !== 200) {
+      throw new Error("Lỗi API khởi tạo phiên: " + response.getContentText());
+    }
+    
+    const uploadUrl = response.getHeaders()["Location"] || response.getHeaders()["location"];
+    if (!uploadUrl) {
+      throw new Error("Google API không trả về đường dẫn tải phân mảnh.");
+    }
+    
+    return {
+      success: true,
+      uploadUrl: uploadUrl,
+      projectCode: projectCode,
+      type: type,
+      branch: branch
+    };
+    
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}

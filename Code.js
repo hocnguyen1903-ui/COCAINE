@@ -358,6 +358,7 @@ function doPost(e) {
     "extractDataOnly": () => extractDataOnly(payload?.[0], payload?.[1], payload?.[2]),
     "batchAddTasksBackend": () => batchAddTasksBackend(payload?.[0], payload?.[1], payload?.[2], payload?.[3]),
     "approveUser_InApp": () => approveUser_InApp(payload), 
+    "getDrawingUploadSession_Backend": () => getDrawingUploadSession_Backend(payload),
     "rejectUser_InApp": () => rejectUser_InApp(payload)    
   };
 

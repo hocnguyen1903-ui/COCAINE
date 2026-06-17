@@ -19,26 +19,28 @@ let placeholder = document.createElement('div');
 placeholder.className = 'task-placeholder';
 
 /**
- * 2. KHỞI CHẠY & NẠP DỰ ÁN (ĐÃ TÍCH HỢP PLACEHOLDER KHUNG TRỐNG)
+ * 2. KHỞI CHẠY & NẠP DỰ ÁN (ĐỒNG BỘ BỘ NẠP ĐÁY BẢNG HƯỚNG DẪN TĨNH)
  */
 function loadDrawingModule() {
     if (!isDrawingListLoaded) fetchActiveProjectsForDrawing();
     
     if (selectedProjectDrawing) {
+        // Kích hoạt bộ lắng nghe kéo thả tệp tĩnh ở đáy bảng Hướng dẫn
+        setTimeout(initDrawingUploadZone, 100);
+
         if (cyInstance && selectedProjectDrawing === currentlyRenderedProject) {
             setTimeout(() => { cyInstance.resize(); cyInstance.fit(null, 20); }, 300);
         } else { 
             renderMindmap(selectedProjectDrawing); 
         }
     } else {
-        // Dựng placeholder thương hiệu tinh tế khi chưa có dự án nào được chọn
         const cyArea = document.getElementById('cy');
         if (cyArea && (cyArea.innerHTML.trim() === "" || cyArea.querySelector('.existing-file-wrapper') === null)) {
             cyArea.innerHTML = `
                 <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; text-align: center; padding: 20px; box-sizing: border-box;">
-                    <i class="bi bi-diagram-3-fill" style="font-size: 48px; color: rgba(255, 186, 8, 0.15); margin-bottom: 18px; filter: drop-shadow(0 0 10px rgba(255,186,8,0.03));"></i>
-                    <h3 style="color: rgba(255, 186, 8, 0.45); font-size: 15px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 10px 0; font-family: 'Poppins', sans-serif;">MAP NOT INITIALIZED</h3>
-                    <p style="color: rgba(255, 255, 255, 0.35); font-size: 13px; line-height: 1.6; margin: 0; font-style: italic;">Vui lòng chọn một Dự án để bắt đầu khởi tạo Mindmap.</p>
+                    <i class="bi bi-diagram-3-fill" style="font-size: 44px; color: rgba(255, 18, 8, 0.15); margin-bottom: 18px; filter: drop-shadow(0 0 10px rgba(255,18,8,0.03));"></i>
+                    <h3 style="color: rgba(255, 18, 8, 0.35); font-size: 14.5px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 10px 0; font-family: 'Poppins', sans-serif;">MAP NOT INITIALIZED</h3>
+                    <p style="color: rgba(255, 255, 255, 0.25); font-size: 11px; line-height: 1.6; max-width: 320px; margin: 0; font-style: italic;">Sếp vui lòng chọn một Dự án ở ô tìm kiếm phía bên phải để bắt đầu khởi tạo bản đồ tư duy bản vẽ thiết kế.</p>
                 </div>
             `;
         }
@@ -451,7 +453,6 @@ function updatePanelContent(nodeData) {
     const fileName = nodeData.label.split('\n').pop();
 
     let aiZoneHTML = "";
-    // Phân loại trực tiếp ngay từ đầu để dùng chung biến
     const isProcessable = (nodeData.type === 'UPDATE' || nodeData.type === 'PROPOSAL');
 
     if (isProcessable) {
@@ -469,7 +470,7 @@ function updatePanelContent(nodeData) {
                 <i class="bi bi-robot" style="font-size:28px; color:#505966; opacity: 0.3;"></i>
                 <div style="text-align:center;">
                     <div style="font-size:10px; color:#505966; font-weight:700; letter-spacing:1px; margin-top:5px;">AI NOT SUPPORTED</div>
-                    <div style="font-size:10px; color:#505966; margin-top:4px;">Chỉ khả dụng cho PHIẾU ĐỀ XUẤT / BẢN VẼ CẬP NHẬT</div>
+                    <div style="font-size:10px; color:#505966; margin-top:4px;">Chỉ hỗ trợ PHIẾU ĐỀ XUẤT / BẢN VẼ CẬP NHẬT</div>
                 </div>
             </div>`;
     }
@@ -484,15 +485,125 @@ function updatePanelContent(nodeData) {
         </div>
         ${aiZoneHTML}`;
     
-    // TỐI ƯU HÓA API: CHỈ GỌI SERVER NẾU FILE LÀ UPDATE HOẶC PROPOSAL
     const taskListContainer = document.getElementById('dp-task-list');
     if (isProcessable) {
         renderTaskList_Drawing(currentFileId);
         document.querySelector('button[onclick="addNewTaskItem()"]').style.display = 'block';
     } else {
-        // Đổ UI rỗng và ẩn nút "Thêm hạng mục" nếu là Hồ sơ gốc
         taskListContainer.innerHTML = `<div class="empty-msg" style="color:#505966; font-size:11px; font-style:italic; padding:15px; text-align:center;">Không có dữ liệu trích xuất từ bản vẽ thiết kế thi công.</div>`;
         document.querySelector('button[onclick="addNewTaskItem()"]').style.display = 'none';
+    }
+}
+
+/**
+ * KHỞI TẠO SỰ KIỆN KÉO THẢ BẢN VẼ TRÊN WEB APP (GHIM SÁT ĐÁY PANEL)
+ */
+function initDrawingUploadZone() {
+    const zone = document.getElementById('drawing-upload-zone');
+    const input = document.getElementById('drawing-upload-input');
+    if (!zone || !input || zone.dataset.bound) return;
+    
+    zone.dataset.bound = "true"; // Ghim cờ chặn gán trùng sự kiện gây lặp luồng
+    
+    zone.addEventListener('click', () => input.click());
+    input.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+            uploadDrawingChunked(e.target.files[0]);
+        }
+        input.value = "";
+    });
+    
+    zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+    });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            uploadDrawingChunked(e.dataTransfer.files[0]);
+        }
+    });
+}
+
+/**
+ * THỰC THI CẮT NHỎ VÀ TẢI TỆP TIN TRỰC TIẾP LÊN DRIVE (RESUMABLE UPLOAD ENGINE)
+ */
+async function uploadDrawingChunked(file) {
+    const zone = document.getElementById("drawing-upload-zone");
+    const stateEmpty = document.getElementById("drawing-state-empty");
+    const stateUploading = document.getElementById("drawing-state-uploading");
+    const statusText = document.getElementById("drawing-upload-status");
+    const progressBar = document.getElementById("drawing-upload-progress");
+    
+    if (!zone || !stateEmpty || !stateUploading || !statusText || !progressBar) return;
+    
+    // 1. Chuyển đổi trạng thái giao diện sang Đang xử lý
+    stateEmpty.style.display = "none";
+    stateUploading.style.display = "flex";
+    statusText.textContent = "INITIALIZING SESSION...";
+    progressBar.style.width = "0%";
+    
+    try {
+        // 2. Gọi API Backend xin phiên Upload mã hóa tạm thời từ Google
+        const session = await callBackend("getDrawingUploadSession_Backend", {
+            fileName: file.name,
+            fileSize: file.size
+        });
+        
+        if (!session || !session.success) {
+            throw new Error(session ? session.error : "Không thể khởi tạo phiên làm việc với Google Drive.");
+        }
+        
+        const uploadUrl = session.uploadUrl;
+        const chunkSize = 5 * 1024 * 1024; // Cắt tệp thành từng lát 5MB (Chuẩn kích cỡ tối ưu nhất của Drive API)
+        const totalChunks = Math.ceil(file.size / chunkSize);
+        
+        // 3. Tiến hành tải tuần tự các mảnh trực tiếp từ trình duyệt lên máy chủ Google
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const chunkBlob = file.slice(start, end);
+            
+            statusText.textContent = `UPLOADING... ${Math.round((i / totalChunks) * 100)}%`;
+            
+            // Gửi trực tiếp HTTP PUT không qua trung gian Apps Script
+            const response = await fetch(uploadUrl, {
+                method: "PUT",
+                headers: {
+                    "Content-Range": `bytes ${start}-${end - 1}/${file.size}`
+                },
+                body: chunkBlob
+            });
+            
+            // Trạng thái 308 (Resume Incomplete) nghĩa là Google nhận tốt mảnh này và đợi mảnh tiếp theo
+            // Trạng thái 200/201 là hoàn thành tải lên toàn bộ tệp tin thành công
+            if (response.status !== 308 && response.status !== 200 && response.status !== 201) {
+                throw new Error(`Google API phản hồi lỗi ${response.status} khi tải mảnh số ${i + 1}.`);
+            }
+            
+            const percent = Math.round(((i + 1) / totalChunks) * 100);
+            progressBar.style.width = percent + "%";
+        }
+        
+        statusText.textContent = "SYNCING MINDMAP...";
+        progressBar.style.width = "100%";
+        
+        showToast_PL(`🚀 Tải lên bản vẽ ${file.name} thành công!`, "success");
+        
+        // Vẽ lại sơ đồ tư duy bản vẽ ngầm tức thì
+        if (selectedProjectDrawing) {
+            renderMindmap(selectedProjectDrawing);
+        }
+        
+    } catch (e) {
+        console.error("Lỗi tải tệp phân mảnh:", e);
+        alert(e.message || e);
+    } finally {
+        // Trả lại trạng thái trống sẵn sàng nhận file mới
+        stateEmpty.style.display = "flex";
+        stateUploading.style.display = "none";
     }
 }
 
