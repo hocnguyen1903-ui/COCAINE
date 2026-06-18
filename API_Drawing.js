@@ -51,8 +51,31 @@ function scanFilesForMindmap(folder, fileArray, type, branch) {
       dateLabel = dateMatch[3] + "/" + dateMatch[2] + "/20" + dateMatch[1]; 
       sortValue = parseInt("20" + dateMatch[1] + dateMatch[2] + dateMatch[3]); 
     }
-    let dept = fNameUpper.includes("STR") ? "STR" : fNameUpper.includes("ARC") ? "ARC" : fNameUpper.includes("MEP") ? "MEP" : "Khác";
-    fileArray.push({ fileId: fId, fileName: fName, dateLabel, sortValue, type, branch, dept, url: f.getUrl() });
+    
+    // 🚀 BẢO VỆ BỘ MÔN: Rà soát tên thư mục vật lý chứa file nếu tên file không chứa từ khóa viết tắt
+    const folderNameUpper = folder.getName().toUpperCase();
+    let dept = fNameUpper.includes("STR") || folderNameUpper.includes("STR") || folderNameUpper.includes("KẾT CẤU") ? "STR" :
+               fNameUpper.includes("ARC") || folderNameUpper.includes("ARC") || folderNameUpper.includes("KIẾN TRÚC") ? "ARC" :
+               fNameUpper.includes("MEP") || folderNameUpper.includes("MEP") || folderNameUpper.includes("CƠ ĐIỆN") ? "MEP" : "Khác";
+    
+    let finalBranch = branch;
+    
+    if (type === "ORIGINAL") {
+      // Khử dấu tiếng Việt của tên file để tránh lệch so khớp không dấu
+      const cleanName = removeVietnameseDiacritics(fName);
+      const hasHầm = cleanName.includes("ham") || cleanName.includes("hầm");
+      const hasThân = cleanName.includes("than") || cleanName.includes("thân");
+      
+      if ((hasHầm && hasThân) || (!hasHầm && !hasThân)) {
+        finalBranch = "Chung";
+      } else if (hasHầm) {
+        finalBranch = "Hầm";
+      } else if (hasThân) {
+        finalBranch = "Thân";
+      }
+    }
+    
+    fileArray.push({ fileId: fId, fileName: fName, dateLabel, sortValue, type, branch: finalBranch, dept, url: f.getUrl() });
   }
 }
 
@@ -307,13 +330,20 @@ function getDrawingUploadSession_Backend(payload) {
     
     if (lowerName.includes("tkbvtc") || lowerName.includes("bvtktc") || lowerName.includes("bộ môn")) {
       type = "ORIGINAL";
-      const hasHam = lowerName.includes("hầm");
-      const hasThan = lowerName.includes("thân");
       
-      if ((hasHam && hasThan) || (!hasHam && !hasThan)) branch = "Chung";
-      else if (hasHam) branch = "Hầm";
-      else branch = "Thân";
-    } 
+      // Khử dấu tiếng Việt tên tệp khi phân tích phiên tải lên
+      const cleanName = removeVietnameseDiacritics(fileName);
+      const hasHầm = cleanName.includes("ham") || cleanName.includes("hầm");
+      const hasThân = cleanName.includes("than") || cleanName.includes("thân");
+      
+      if ((hasHầm && hasThân) || (!hasHầm && !hasThân)) {
+        branch = "Chung";
+      } else if (hasHầm) {
+        branch = "Hầm";
+      } else {
+        branch = "Thân";
+      }
+    }
     else if (lowerName.includes("cập nhật") || lowerName.includes("update")) type = "UPDATE";
     else if (lowerName.includes("pđx") || lowerName.includes("pdx") || lowerName.includes("đề xuất") || lowerName.includes("proposal")) type = "PROPOSAL";
     else throw new Error("Không thể nhận diện loại bản vẽ! Tên file phải chứa từ khóa: 'TKBVTC', 'Cập nhật', hoặc 'PĐX'.");
@@ -396,4 +426,17 @@ function getDrawingUploadSession_Backend(payload) {
     
   } catch (e) { return { success: false, error: e.message }; } 
   finally { lock.releaseLock(); }
+}
+
+/**
+ * 5. HÀM KHỬ DẤU TIẾNG VIỆT ĐỂ SO KHỚP CHUẨN XÁC TÊN FILE KHÔNG DẤU
+ */
+function removeVietnameseDiacritics(str) {
+  if (!str) return "";
+  return str.normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") // Xóa các dấu thanh
+            .replace(/đ/g, "d")
+            .replace(/Đ/g, "D")
+            .toLowerCase()
+            .trim();
 }

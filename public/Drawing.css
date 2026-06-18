@@ -173,3 +173,30 @@
     }
     .guide-step { display: flex; align-items: flex-start; gap: 15px; text-align: left; }
     .guide-icon { width: 36px; height: 36px; background: rgba(255, 186, 8, 0.1); border: 1px solid rgba(255, 186, 8, 0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #FFBA08; font-size: 18px; flex-shrink: 0; }
+
+    /* ==========================================================================
+   LUXURY RESUMABLE UPLOAD ACTIVE ANIMATIONS (GOLD COMPOSITOR OPTIMIZED)
+   ========================================================================== */
+@keyframes luxuryUploadPulse {
+    0%, 100% {
+        transform: translateY(0) scale(1) translateZ(0); /* Khóa chặt kích thước scale(1) */
+        opacity: 0.75;
+    }
+    50% {
+        transform: translateY(-6px) scale(1) translateZ(0); /* Chỉ trượt dọc lơ lửng 6px */
+        opacity: 1;
+    }
+}
+
+.luxury-upload-icon-active {
+    animation: luxuryUploadPulse 1.2s infinite ease-in-out !important;
+    display: inline-block;
+    color: #FFBA08 !important; /* Khóa cứng màu vàng thương hiệu */
+    
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    
+    /* Hào quang phát sáng màu vàng lỳ sang trọng đồng bộ */
+    filter: drop-shadow(0 0 8px rgba(255, 186, 8, 0.35)) !important;
+}
