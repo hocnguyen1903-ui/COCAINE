@@ -285,7 +285,7 @@ function getActiveProjectFolders_Backend() {
   } catch (e) { return []; } }
 
 /**
- * 4. KHỞI TẠO PHIÊN TẢI FILE PHÂN MẢNH VỚI GOOGLE DRIVE (TỰ ĐỘNG CHUẨN HÓA UNICODE NFC)
+ * 4. KHỞI TẠO PHIÊN TẢI FILE PHÂN MẢNH VỚI GOOGLE DRIVE (TỰ ĐỘNG TẠO DỰ ÁN & THƯ MỤC CON)
  */
 function getDrawingUploadSession_Backend(payload) {
   const lock = LockService.getScriptLock();
@@ -323,13 +323,19 @@ function getDrawingUploadSession_Backend(payload) {
       throw new Error("Không thể nhận diện loại bản vẽ! Tên file phải chứa các từ khóa định danh: 'TKBVTC' (Bản vẽ gốc), 'Cập nhật' (Bản vẽ cập nhật), hoặc 'PĐX' (Phiếu đề xuất).");
     }
     
-    // 2. Định vị thư mục cha dự án trên Drive
+    // 2. Định vị thư mục cha dự án trên Drive (TỰ ĐỘNG TẠO MỚI DỰ ÁN NẾU CHƯA TỒN TẠI)
     const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
     const projectFolders = masterFolder.getFoldersByName(projectCode);
-    if (!projectFolders.hasNext()) {
-      throw new Error(`Không tìm thấy thư mục dự án '${projectCode}' trên Drive! Sếp hãy tạo thư mục dự án trước.`);
+    let projFolder = null;
+    
+    if (projectFolders.hasNext()) {
+      projFolder = projectFolders.next();
+    } else {
+      // Tự động khởi tạo thư mục dự án mới tinh nếu chưa tồn tại
+      projFolder = masterFolder.createFolder(projectCode);
+      console.log(`[Auto-Project-Creator] Created new project folder: ${projectCode}`);
     }
-    const projFolder = projectFolders.next();
+    
     let targetFolder = null;
     let originalParentFolder = null; // Thư mục cha chứa Bộ môn / BVTKTC
     
@@ -352,7 +358,7 @@ function getDrawingUploadSession_Backend(payload) {
       }
     }
     
-    // 4. KIẾN TRÚC TỰ KHỞI TẠO (Self-healing): Tự động tạo thư mục nếu chưa tồn tại
+    // 4. KIẾN TRÚC TỰ KHỞI TẠO (Self-healing): Tự động tạo thư mục con nếu chưa tồn tại
     if (!targetFolder) {
       if (type === "PROPOSAL") {
         targetFolder = projFolder.createFolder("Đề xuất");
@@ -385,7 +391,7 @@ function getDrawingUploadSession_Backend(payload) {
       }
     }
     
-    // 5. Khởi tạo phiên Resumable Upload có đính kèm Header đặc tả chuẩn hóa CORS tránh lỗi Failed to fetch
+    // 5. Khởi tạo phiên Resumable Upload trực tiếp qua Google Drive API REST v3
     const targetFolderId = targetFolder.getId();
     const apiURL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable";
     const metaPayload = {
