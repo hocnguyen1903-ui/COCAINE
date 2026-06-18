@@ -557,7 +557,6 @@ function initDrawingUploadZone() {
 async function uploadMultipleDrawingsChunked(files) {
     if (!files || !files.length) return;
     
-    // 1. Chỉ chấp nhận các định dạng PDF và Excel hợp lệ
     const validFiles = Array.from(files).filter(f => {
         const name = f.toLowerCase ? f.toLowerCase() : f.name.toLowerCase();
         return f.type === "application/pdf" || name.endsWith(".xls") || name.endsWith(".xlsx");
@@ -576,20 +575,17 @@ async function uploadMultipleDrawingsChunked(files) {
     
     if (!zone || !stateEmpty || !stateUploading || !statusText || !progressBar) return;
     
-    // 2. Chuyển đổi trạng thái giao diện sang Đang xử lý
     stateEmpty.style.display = "none";
     stateUploading.style.display = "flex";
     progressBar.style.width = "0%";
     
+    let lastTargetProjectCode = ""; // Biến theo dõi mã dự án của file vừa tải lên
+
     try {
-        // Tải tuần tự (Sequential) từng tệp một để chống nghẽn mạng và xung đột khóa ghi Backend của Google
         for (let idx = 0; idx < validFiles.length; idx++) {
             const file = validFiles[idx];
-            
-            // Đổ nhãn thông báo chi tiết mã tệp và số thứ tự tệp trong hàng chờ
             statusText.textContent = `[${idx + 1}/${validFiles.length}] INIT SESSION...`;
             
-            // a. Gọi API Backend xin phiên làm việc độc lập của tệp này với Google Drive
             const session = await callBackend("getDrawingUploadSession_Backend", {
                 fileName: file.name,
                 fileSize: file.size,
@@ -600,31 +596,24 @@ async function uploadMultipleDrawingsChunked(files) {
                 throw new Error(`Lỗi tải tệp [${file.name}]: ` + (session ? session.error : "Không thể khởi tạo phiên."));
             }
             
+            lastTargetProjectCode = session.projectCode; // Ghi nhận mã dự án đích
             const uploadUrl = session.uploadUrl;
-            const chunkSize = 5 * 1024 * 1024; // Cắt tệp thành từng lát 5MB
+            const chunkSize = 5 * 1024 * 1024; 
             const totalChunks = Math.ceil(file.size / chunkSize);
             
-            // b. Tiến hành tải các mảnh của tệp hiện tại trực tiếp lên Google Server
             for (let i = 0; i < totalChunks; i++) {
                 const start = i * chunkSize;
                 const end = Math.min(start + chunkSize, file.size);
                 const chunkBlob = file.slice(start, end);
                 
-                // Tính toán phần trăm tiến độ tổng hợp thực tế của cả lô hàng
-                const currentOverallPercent = Math.round(
-                    ((idx / validFiles.length) * 100) + 
-                    (((i + 1) / totalChunks) * (100 / validFiles.length))
-                );
-                
+                const currentOverallPercent = Math.round(((idx / validFiles.length) * 100) + (((i + 1) / totalChunks) * (100 / validFiles.length)));
                 statusText.textContent = `[${idx + 1}/${validFiles.length}] UPLOADING... ${currentOverallPercent}%`;
                 progressBar.style.width = currentOverallPercent + "%";
                 
                 try {
                     const response = await fetch(uploadUrl, {
                         method: "PUT",
-                        headers: {
-                            "Content-Range": `bytes ${start}-${end - 1}/${file.size}`
-                        },
+                        headers: { "Content-Range": `bytes ${start}-${end - 1}/${file.size}` },
                         body: chunkBlob
                     });
                     
@@ -634,32 +623,34 @@ async function uploadMultipleDrawingsChunked(files) {
                 } catch (fetchError) {
                     const isLastChunk = (i === totalChunks - 1);
                     const isFetchError = fetchError.message.includes("Failed to fetch") || fetchError.name === "TypeError";
-                    
                     if (isLastChunk && isFetchError) {
-                        console.warn("[CORS Warning] Bypassed final chunk browser CORS block. File uploaded successfully.");
+                        console.warn("[CORS Warning] Bypassed final chunk browser CORS block.");
                         break; 
-                    } else {
-                        throw fetchError;
-                    }
+                    } else throw fetchError;
                 }
             }
         }
         
-        statusText.textContent = "SYNCING MINDMAP...";
+        statusText.textContent = "UPDATING DASHBOARD...";
         progressBar.style.width = "100%";
+        showToast_PL(`🚀 Đã tải lên thành công lô ${validFiles.length} bản vẽ!`, "success");
         
-        showToast_PL(`🚀 Đã tải lên thành công ${validFiles.length} bản vẽ!`, "success");
-        
-        // Tự động làm mới và vẽ lại bản đồ ngầm tức thì
-        if (selectedProjectDrawing) {
+        // 🚀 TỰ ĐỘNG CHUYỂN HƯỚNG THÔNG MINH (Auto-Switch Project)
+        // Nếu sếp quăng file của một dự án hoàn toàn mới tinh (hoặc dự án khác dự án đang xem),
+        // hệ thống lập tức tự động quét lại danh sách và bung thẳng Mindmap của dự án đó ra màn hình!
+        if (lastTargetProjectCode) {
+            if (!isDrawingListLoaded || !activeDrawingProjects.includes(lastTargetProjectCode)) {
+                await fetchActiveProjectsForDrawing(true); // Ép quét lại Drive để nhận thư mục mới
+            }
+            selectProject_Drawing(lastTargetProjectCode); // Tự động bung Mindmap
+        } else if (selectedProjectDrawing) {
             renderMindmap(selectedProjectDrawing);
         }
         
     } catch (e) {
-        console.error("Lỗi tải tệp phân mảnh trong hàng chờ:", e);
+        console.error("Lỗi tải tệp phân mảnh:", e);
         alert(e.message || e);
     } finally {
-        // Trả lại trạng thái trống sẵn sàng nhận lô file tiếp theo
         stateEmpty.style.display = "flex";
         stateUploading.style.display = "none";
     }

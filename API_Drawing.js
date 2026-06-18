@@ -285,19 +285,17 @@ function getActiveProjectFolders_Backend() {
   } catch (e) { return []; } }
 
 /**
- * 4. KHỞI TẠO PHIÊN TẢI FILE PHÂN MẢNH VỚI GOOGLE DRIVE (TỰ ĐỘNG TẠO DỰ ÁN & THƯ MỤC CON)
+ * 4. KHỞI TẠO PHIÊN TẢI FILE PHÂN MẢNH VỚI GOOGLE DRIVE (CHỐNG TRỄ PHÂN TÁN 1.5s)
  */
 function getDrawingUploadSession_Backend(payload) {
   const lock = LockService.getScriptLock();
   try {
-    lock.waitLock(10000); // Khóa luồng an toàn tránh tranh chấp thư mục
+    lock.waitLock(10000); 
     
-    // 🚀 ĐỒNG BỘ UNICODE: Chuẩn hóa NFC để giải quyết triệt để lỗi gõ tiếng Việt tổ hợp (NFD) trên macOS MacBook
     const fileName = (payload.fileName || "").normalize("NFC");
     const fileSize = payload.fileSize;
     const lowerName = fileName.toLowerCase();
     
-    // 1. Phân tích tên tệp tin để nhận diện Dự án, Loại bản vẽ và Phân nhánh
     const parts = fileName.split("_");
     if (parts.length < 3) {
       throw new Error("Tên tệp không đúng định dạng chuẩn! Cú pháp chuẩn: [YYMMDD]_[MÃ_DỰ_ÁN]_[TẢI_LÊN]_[NỘI_DUNG].pdf");
@@ -309,103 +307,73 @@ function getDrawingUploadSession_Backend(payload) {
     
     if (lowerName.includes("tkbvtc") || lowerName.includes("bvtktc") || lowerName.includes("bộ môn")) {
       type = "ORIGINAL";
-      const hasHầm = lowerName.includes("hầm");
-      const hasThân = lowerName.includes("thân");
+      const hasHam = lowerName.includes("hầm");
+      const hasThan = lowerName.includes("thân");
       
-      // Tự động nhận dạng phân nhánh Chung khi tên file chứa cả hai chữ, hoặc không chứa chữ nào
-      if ((hasHầm && hasThân) || (!hasHầm && !hasThân)) {
-        branch = "Chung";
-      } else if (hasHầm) {
-        branch = "Hầm";
-      } else {
-        branch = "Thân";
-      }
-    }
-    else if (lowerName.includes("cập nhật") || lowerName.includes("update")) {
-      type = "UPDATE";
+      if ((hasHam && hasThan) || (!hasHam && !hasThan)) branch = "Chung";
+      else if (hasHam) branch = "Hầm";
+      else branch = "Thân";
     } 
-    else if (lowerName.includes("pđx") || lowerName.includes("pdx") || lowerName.includes("đề xuất") || lowerName.includes("proposal")) {
-      type = "PROPOSAL";
-    } else {
-      throw new Error("Không thể nhận diện loại bản vẽ! Tên file phải chứa các từ khóa định danh: 'TKBVTC' (Bản vẽ gốc), 'Cập nhật' (Bản vẽ cập nhật), hoặc 'PĐX' (Phiếu đề xuất).");
-    }
+    else if (lowerName.includes("cập nhật") || lowerName.includes("update")) type = "UPDATE";
+    else if (lowerName.includes("pđx") || lowerName.includes("pdx") || lowerName.includes("đề xuất") || lowerName.includes("proposal")) type = "PROPOSAL";
+    else throw new Error("Không thể nhận diện loại bản vẽ! Tên file phải chứa từ khóa: 'TKBVTC', 'Cập nhật', hoặc 'PĐX'.");
     
-    // 2. Định vị thư mục cha dự án trên Drive (TỰ ĐỘNG TẠO MỚI DỰ ÁN NẾU CHƯA TỒN TẠI)
     const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
     const projectFolders = masterFolder.getFoldersByName(projectCode);
     let projFolder = null;
+    let isNewlyCreated = false; // Cờ nhận dạng thư mục mới tạo
     
     if (projectFolders.hasNext()) {
       projFolder = projectFolders.next();
     } else {
-      // Tự động khởi tạo thư mục dự án mới tinh nếu chưa tồn tại
       projFolder = masterFolder.createFolder(projectCode);
-      console.log(`[Auto-Project-Creator] Created new project folder: ${projectCode}`);
+      isNewlyCreated = true;
+      console.log(`[Auto-Project] Created new project: ${projectCode}`);
     }
     
     let targetFolder = null;
-    let originalParentFolder = null; // Thư mục cha chứa Bộ môn / BVTKTC
+    let originalParentFolder = null; 
     
-    // 3. Quét tìm các thư mục con hiện có (Chuẩn hóa NFC thư mục Drive tránh lệch mã ký tự)
     const subFolders = projFolder.getFolders();
     while (subFolders.hasNext()) {
       const sub = subFolders.next();
       const subName = sub.getName().normalize("NFC").toLowerCase();
       
-      if (type === "PROPOSAL" && (subName.includes("đề xuất") || subName.includes("proposal"))) {
-        targetFolder = sub;
-        break;
-      }
-      else if (type === "UPDATE" && (subName.includes("cập nhật") || subName.includes("update"))) {
-        targetFolder = sub;
-        break;
-      }
-      else if (subName.includes("bộ môn") || subName.includes("bản vẽ 3") || subName.includes("bvtktc")) {
-        originalParentFolder = sub;
-      }
+      if (type === "PROPOSAL" && (subName.includes("đề xuất") || subName.includes("proposal"))) { targetFolder = sub; break; }
+      else if (type === "UPDATE" && (subName.includes("cập nhật") || subName.includes("update"))) { targetFolder = sub; break; }
+      else if (subName.includes("bộ môn") || subName.includes("bản vẽ 3") || subName.includes("bvtktc")) { originalParentFolder = sub; }
     }
     
-    // 4. KIẾN TRÚC TỰ KHỞI TẠO (Self-healing): Tự động tạo thư mục con nếu chưa tồn tại
     if (!targetFolder) {
-      if (type === "PROPOSAL") {
-        targetFolder = projFolder.createFolder("Đề xuất");
-      }
-      else if (type === "UPDATE") {
-        targetFolder = projFolder.createFolder("Cập nhật");
-      }
+      if (type === "PROPOSAL") targetFolder = projFolder.createFolder("Đề xuất");
+      else if (type === "UPDATE") targetFolder = projFolder.createFolder("Cập nhật");
       else if (type === "ORIGINAL") {
-        // Nếu chưa có thư mục Bộ môn, tự động tạo mới
-        if (!originalParentFolder) {
-          originalParentFolder = projFolder.createFolder("Bộ môn");
-        }
+        if (!originalParentFolder) originalParentFolder = projFolder.createFolder("Bộ môn");
         
-        // Tìm tiếp thư mục con Thân/Hầm bên trong Bộ môn (Chuẩn hóa NFC)
         const branchFolders = originalParentFolder.getFolders();
         const targetBranchLower = branch.toLowerCase();
         while (branchFolders.hasNext()) {
           const bSub = branchFolders.next();
-          const bSubName = bSub.getName().normalize("NFC").toLowerCase();
-          if (bSubName.includes(targetBranchLower)) {
-            targetFolder = bSub;
-            break;
-          }
+          if (bSub.getName().normalize("NFC").toLowerCase().includes(targetBranchLower)) { targetFolder = bSub; break; }
         }
-        
-        // Tự động tạo thư mục con "Phần Thân" hoặc "Phần Hầm" nếu chưa có
         if (!targetFolder) {
           targetFolder = originalParentFolder.createFolder("Phần " + branch);
+          isNewlyCreated = true;
         }
       }
+      isNewlyCreated = true;
+    }
+
+    // 🚀 BẢO VỆ CHỐNG TRỄ PHÂN TÁN CỦA GOOGLE DRIVE (Propagation Delay Defense)
+    // Nếu có bất kỳ thư mục nào vừa được tạo mới tinh, bắt buộc dừng ngủ ngầm 1.5 giây
+    // để máy chủ phân tán của Google kịp đồng bộ hóa ID trước khi trả URL về cho trình duyệt upload.
+    if (isNewlyCreated) {
+      SpreadsheetApp.flush();
+      Utilities.sleep(1500);
     }
     
-    // 5. Khởi tạo phiên Resumable Upload trực tiếp qua Google Drive API REST v3
     const targetFolderId = targetFolder.getId();
     const apiURL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable";
-    const metaPayload = {
-      name: fileName,
-      parents: [targetFolderId]
-    };
-    
     const options = {
       method: 'POST',
       headers: {
@@ -414,31 +382,18 @@ function getDrawingUploadSession_Backend(payload) {
         "X-Upload-Content-Type": payload.mimeType || "application/pdf",
         "X-Upload-Content-Length": fileSize.toString()
       },
-      payload: JSON.stringify(metaPayload),
+      payload: JSON.stringify({ name: fileName, parents: [targetFolderId] }),
       muteHttpExceptions: true
     };
     
     const response = UrlFetchApp.fetch(apiURL, options);
-    if (response.getResponseCode() !== 200) {
-      throw new Error("Lỗi API khởi tạo phiên: " + response.getContentText());
-    }
+    if (response.getResponseCode() !== 200) throw new Error("Lỗi API khởi tạo phiên: " + response.getContentText());
     
     const uploadUrl = response.getHeaders()["Location"] || response.getHeaders()["location"];
-    if (!uploadUrl) {
-      throw new Error("Google API không trả về đường dẫn tải phân mảnh.");
-    }
+    if (!uploadUrl) throw new Error("Google API không trả về đường dẫn tải phân mảnh.");
     
-    return {
-      success: true,
-      uploadUrl: uploadUrl,
-      projectCode: projectCode,
-      type: type,
-      branch: branch
-    };
+    return { success: true, uploadUrl: uploadUrl, projectCode: projectCode, type: type, branch: branch };
     
-  } catch (e) {
-    return { success: false, error: e.message };
-  } finally {
-    lock.releaseLock();
-  }
+  } catch (e) { return { success: false, error: e.message }; } 
+  finally { lock.releaseLock(); }
 }
