@@ -430,11 +430,32 @@ function buildCytoscapeElements(data) {
             const dateId = f.sortValue || 'nodate', deptKey = f.dept.toUpperCase(), deptColor = DEPT_COLORS[deptKey] || DEPT_COLORS['KHÁC'];
             
             if (f.type === 'ORIGINAL') {
-                const dNode = 'date_goc_' + dateId, sNode = dNode + '_' + f.branch, deptId = sNode + '_' + f.dept;
+                const dNode = 'date_goc_' + dateId;
                 addNode(dNode, f.dateLabel || "--/--/----", 'branch_goc', GOLD, null, null, false, true);
-                addNode(sNode, f.branch.toUpperCase(), dNode, GOLD);
-                addNode(deptId, f.dept.toUpperCase(), sNode, deptColor, null, null, true);
-                addNode(f.fileId, smartName, deptId, deptColor, f.fileId, f.url, false, false, f.type);
+                
+                if (f.branch === 'Chung') {
+                    // Bản vẽ chung: Vẽ 2 đường liên kết (edges) song song từ cả hai bộ môn thuộc Thân và Hầm trỏ tới tệp tin
+                    const sNodeThân = dNode + '_Thân', deptIdThân = sNodeThân + '_' + f.dept;
+                    addNode(sNodeThân, 'THÂN', dNode, GOLD);
+                    addNode(deptIdThân, f.dept.toUpperCase(), sNodeThân, deptColor, null, null, true);
+
+                    const sNodeHầm = dNode + '_Hầm', deptIdHầm = sNodeHầm + '_' + f.dept;
+                    addNode(sNodeHầm, 'HẦM', dNode, GOLD);
+                    addNode(deptIdHầm, f.dept.toUpperCase(), sNodeHầm, deptColor, null, null, true);
+
+                    // Thêm nút file gốc một lần duy nhất vào đồ thị
+                    addNode(f.fileId, smartName, null, deptColor, f.fileId, f.url, false, false, f.type);
+
+                    // Vẽ thủ công 2 đường mũi tên trỏ từ Bộ môn Thân và Bộ môn Hầm vào file dùng chung này
+                    elements.push({ data: { source: deptIdThân, target: f.fileId, color: deptColor, arrowShape: 'triangle' }, selectable: false });
+                    elements.push({ data: { source: deptIdHầm, target: f.fileId, color: deptColor, arrowShape: 'triangle' }, selectable: false });
+                } else {
+                    // Bản vẽ phân nhánh đơn lẻ Thân hoặc Hầm như bình thường
+                    const sNode = dNode + '_' + f.branch, deptId = sNode + '_' + f.dept;
+                    addNode(sNode, f.branch.toUpperCase(), dNode, GOLD);
+                    addNode(deptId, f.dept.toUpperCase(), sNode, deptColor, null, null, true);
+                    addNode(f.fileId, smartName, deptId, deptColor, f.fileId, f.url, false, false, f.type);
+                }
             } else {
                 const bParent = f.type === 'UPDATE' ? 'branch_update' : 'branch_proposal';
                 const dNode = 'date_alt_' + bParent + '_' + dateId;

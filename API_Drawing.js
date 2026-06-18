@@ -309,11 +309,18 @@ function getDrawingUploadSession_Backend(payload) {
     
     if (lowerName.includes("tkbvtc") || lowerName.includes("bvtktc") || lowerName.includes("bộ môn")) {
       type = "ORIGINAL";
-      branch = lowerName.includes("hầm") ? "Hầm" : lowerName.includes("thân") ? "Thân" : "";
-      if (!branch) {
-        throw new Error("Bản vẽ TKTC bắt buộc phải chứa từ khóa 'Phần hầm' hoặc 'Phần thân' trong tên file để hệ thống phân nhánh!");
+      const hasHầm = lowerName.includes("hầm");
+      const hasThân = lowerName.includes("thân");
+      
+      // Tự động nhận dạng phân nhánh Chung khi tên file chứa cả hai chữ, hoặc không chứa chữ nào
+      if ((hasHầm && hasThân) || (!hasHầm && !hasThân)) {
+        branch = "Chung";
+      } else if (hasHầm) {
+        branch = "Hầm";
+      } else {
+        branch = "Thân";
       }
-    } 
+    }
     else if (lowerName.includes("cập nhật") || lowerName.includes("update")) {
       type = "UPDATE";
     } 
