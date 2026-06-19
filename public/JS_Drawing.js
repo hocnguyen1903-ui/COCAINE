@@ -371,10 +371,11 @@ function buildCytoscapeElements(data) {
     const GOLD = '#FFBA08', DEPT_COLORS = { 'STR': '#BCC6CC', 'ARC': '#50C878', 'MEP': '#CD7F32', 'KHÁC': GOLD };
     const DEPT_ORDER = { 'STR': 1, 'ARC': 2, 'MEP': 3, 'KHÁC': 4 };
 
-    function addNode(id, label, parentId, nodeColor, fileId = null, url = null, isDept = false, isDate = false, type = null) {
+    // Nâng cấp addNode để lưu trữ thêm trường tên file gốc đầy đủ (fullName) dùng riêng cho Edit Panel
+    function addNode(id, label, parentId, nodeColor, fileId = null, url = null, isDept = false, isDate = false, type = null, fullName = null) {
         if (!addedNodes.has(id)) {
             elements.push({ 
-                data: { id, label, color: nodeColor, fileId, url, isDept, isDate, type },
+                data: { id, label, color: nodeColor, fileId, url, isDept, isDate, type, fullName },
                 selectable: !!fileId 
             });
             addedNodes.add(id);
@@ -384,7 +385,7 @@ function buildCytoscapeElements(data) {
                         source: parentId, 
                         target: id, 
                         color: fileId ? nodeColor : GOLD,
-                        arrowShape: fileId ? 'triangle' : 'none' // Ánh xạ mũi tên: Có fileId -> vẽ, Không -> ẩn
+                        arrowShape: fileId ? 'triangle' : 'none'
                     },
                     selectable: false 
                 });
@@ -404,13 +405,13 @@ function buildCytoscapeElements(data) {
             return (DEPT_ORDER[a.dept.toUpperCase()] || 4) - (DEPT_ORDER[b.dept.toUpperCase()] || 4);
         });
 
+        const seenFiles = new Set();
+
         data.files.forEach(f => {
-            // --- LOGIC LÀM SẠCH TÊN FILE NÂNG CAO ---
-            const ext = ".pdf";
-            let namePart = f.fileName.replace(/\.pdf$/i, "");
+            const ext = f.fileName.toLowerCase().endsWith(".pdf") ? ".pdf" : f.fileName.toLowerCase().endsWith(".xlsx") ? ".xlsx" : ".xls";
+            let namePart = f.fileName.replace(/\.(pdf|xlsx|xls)$/i, "");
             const projectCode = (data.projectCode || "").toString();
 
-            // 1. Danh sách mẫu cần xóa (Mã dự án, PĐX, BVTKTC, TKBVTC, STR, ARC, MEP, và ngày tháng 6 số)
             const patterns = [
                 new RegExp(projectCode, 'gi'),
                 /PĐX/gi, /BVTKTC/gi, /TKBVTC/gi, /STR/gi, /ARC/gi, /MEP/gi, /\d{6}/g
@@ -420,11 +421,7 @@ function buildCytoscapeElements(data) {
                 namePart = namePart.replace(p, "");
             });
 
-            // 2. Thu gọn nhiều dấu gạch dưới liên tiếp thành 1 dấu (do xóa từ ở giữa để lại)
-            // 3. Loại bỏ dấu gạch dưới hoặc khoảng trắng ở đầu và cuối tên
             let cleanName = namePart.replace(/_+/g, "_").replace(/\s+/g, " ").replace(/^[_ \s]+|[_ \s]+$/g, "");
-
-            // 4. Nếu sau khi lọc tên bị rỗng, trả về tên gốc. Nếu không, ghép đuôi .pdf
             const smartName = cleanName ? (cleanName + ext) : f.fileName;
             
             const dateId = f.sortValue || 'nodate', deptKey = f.dept.toUpperCase(), deptColor = DEPT_COLORS[deptKey] || DEPT_COLORS['KHÁC'];
@@ -434,47 +431,63 @@ function buildCytoscapeElements(data) {
                 addNode(dNode, f.dateLabel || "--/--/----", 'branch_goc', GOLD, null, null, false, true);
                 
                 if (f.branch === 'Chung') {
-                    // Bản vẽ chung: Vẽ 2 đường liên kết (edges) song song từ cả hai bộ môn thuộc Thân và Hầm trỏ tới tệp tin
                     const sNodeThân = dNode + '_Thân', deptIdThân = sNodeThân + '_' + f.dept;
+                    const sNodeHầm = dNode + '_Hầm', deptIdHầm = sNodeHầm + '_' + f.dept;
+                    
+                    const dupKey = f.fileName.toUpperCase() + "_" + deptIdThân;
+                    if (seenFiles.has(dupKey)) return;
+                    seenFiles.add(dupKey);
+
                     addNode(sNodeThân, 'THÂN', dNode, GOLD);
                     addNode(deptIdThân, f.dept.toUpperCase(), sNodeThân, deptColor, null, null, true);
 
-                    const sNodeHầm = dNode + '_Hầm', deptIdHầm = sNodeHầm + '_' + f.dept;
                     addNode(sNodeHầm, 'HẦM', dNode, GOLD);
                     addNode(deptIdHầm, f.dept.toUpperCase(), sNodeHầm, deptColor, null, null, true);
 
-                    // Thêm nút file gốc một lần duy nhất vào đồ thị
-                    addNode(f.fileId, smartName, null, deptColor, f.fileId, f.url, false, false, f.type);
+                    // Truyền f.fileName (tên file gốc nguyên bản) vào tham số cuối cùng của addNode
+                    addNode(f.fileId, smartName, null, deptColor, f.fileId, f.url, false, false, f.type, f.fileName);
 
-                    // Vẽ thủ công 2 đường mũi tên trỏ từ Bộ môn Thân và Bộ môn Hầm vào file dùng chung này
                     elements.push({ data: { source: deptIdThân, target: f.fileId, color: deptColor, arrowShape: 'triangle' }, selectable: false });
                     elements.push({ data: { source: deptIdHầm, target: f.fileId, color: deptColor, arrowShape: 'triangle' }, selectable: false });
                 } else {
-                    // Bản vẽ phân nhánh đơn lẻ Thân hoặc Hầm như bình thường
                     const sNode = dNode + '_' + f.branch, deptId = sNode + '_' + f.dept;
+                    
+                    const dupKey = f.fileName.toUpperCase() + "_" + deptId;
+                    if (seenFiles.has(dupKey)) return;
+                    seenFiles.add(dupKey);
+
                     addNode(sNode, f.branch.toUpperCase(), dNode, GOLD);
                     addNode(deptId, f.dept.toUpperCase(), sNode, deptColor, null, null, true);
-                    addNode(f.fileId, smartName, deptId, deptColor, f.fileId, f.url, false, false, f.type);
+                    
+                    // Truyền f.fileName (tên file gốc nguyên bản) vào tham số cuối cùng của addNode
+                    addNode(f.fileId, smartName, deptId, deptColor, f.fileId, f.url, false, false, f.type, f.fileName);
                 }
             } else {
                 const bParent = f.type === 'UPDATE' ? 'branch_update' : 'branch_proposal';
                 const dNode = 'date_alt_' + bParent + '_' + dateId;
+                
+                const dupKey = f.fileName.toUpperCase() + "_" + dNode;
+                if (seenFiles.has(dupKey)) return;
+                seenFiles.add(dupKey);
+
                 addNode(dNode, f.dateLabel || "--/--/----", bParent, GOLD, null, null, false, true);
-                addNode(f.fileId, smartName, dNode, deptColor, f.fileId, f.url, false, false, f.type);
+                
+                // Truyền f.fileName (tên file gốc nguyên bản) vào tham số cuối cùng của addNode
+                addNode(f.fileId, smartName, dNode, deptColor, f.fileId, f.url, false, false, f.type, f.fileName);
             }
         });
     }
     return elements;
 }
 
-/**
- * 5. PANEL CHI TIẾT & ROBOT EXTRACTION
- */
 function updatePanelContent(nodeData) {
     currentFileId = nodeData.fileId;
     document.getElementById('dp-empty-state').style.display = 'none';
     document.getElementById('dp-content-state').style.display = 'flex';
-    const fileName = nodeData.label.split('\n').pop();
+    
+    const fileNameWithExt = nodeData.label.split('\n').pop();
+    // Tách lọc bỏ phần đuôi mở rộng .pdf / .xlsx / .xls theo yêu cầu của sếp
+    const fileNameClean = fileNameWithExt.replace(/\.(pdf|xlsx|xls)$/i, "");
 
     let aiZoneHTML = "";
     const isProcessable = (nodeData.type === 'UPDATE' || nodeData.type === 'PROPOSAL');
@@ -499,16 +512,48 @@ function updatePanelContent(nodeData) {
             </div>`;
     }
 
+    // 🚀 CẬP NHẬT GIAO DIỆN: Đổ dữ liệu nodeData.fullName (tên đầy đủ nguyên bản) vào nút Sửa Pencil
     document.getElementById('dp-file-list').innerHTML = `
-        <div class="existing-file-wrapper">
-            <div class="existing-file-info" onclick="window.open('${nodeData.url}', '_blank')" style="flex:1; overflow:hidden; display:flex; align-items:center;">
-                <i class="bi bi-file-earmark-pdf-fill file-pdf" style="margin-right:10px"></i>
-                <span class="file-name-text" style="color:#FFBA08 !important; font-size:11px">${fileName}</span>
+            <div class="existing-file-wrapper" style="padding-right: 5px !important;">
+                <div class="existing-file-info" onclick="window.open('${nodeData.url}', '_blank')" style="flex:1; overflow:hidden; display:flex; align-items:center;">
+                    <i class="bi bi-file-earmark-pdf-fill file-pdf" style="margin-right:10px"></i>
+                    <span class="file-name-text" style="color:#FFBA08 !important; font-size:12px; font-weight:700;">${fileNameClean}</span>
+                </div>
+                <!-- Nút chỉnh sửa tên file + Tooltip màu Vàng -->
+                <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative;">
+                    <button type="button" class="btn-trash-simple btn-scale-hover" onclick="triggerEditDrawing_Client('${nodeData.fileId}', '${escapeStr(nodeData.fullName || fileNameWithExt)}')" style="color: #FFBA08 !important;">
+                        <i class="bi bi-pencil-square" style="font-size: 15px;"></i>
+                    </button>
+                    <div class="trash-note-pop" style="bottom: -30px !important;">Rename</div>
+                </div>
+                <!-- Nút xóa tệp tin + Tooltip màu Đỏ -->
+                <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative;">
+                    <button type="button" class="btn-trash-simple btn-scale-hover btn-trash-red" onclick="triggerDeleteDrawing_Client('${nodeData.fileId}', '${escapeStr(nodeData.fullName || fileNameWithExt)}')" style="color: #ff4d4d !important;">
+                        <i class="bi bi-trash3" style="font-size: 14px;"></i>
+                    </button>
+                    <div class="trash-note-pop note-remove-red" style="bottom: -30px !important;">Delete</div>
+                </div>
+                
+                <!-- Vách ngăn dọc mỏng nhẹ mờ sương (1px) -->
+                <div style="width: 1px; height: 24px; background: rgba(255, 255, 255, 0.12); align-self: center; margin: 0 4px; flex-shrink: 0;"></div>
+                
+                <!-- Nút đóng slide panel có dải màu xám sáng + Tooltip màu Xám mờ -->
+                <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative; margin-right: 5px;">
+                    <button type="button" class="btn-trash-simple btn-scale-hover" onclick="closeFileDetail()" style="color: #E0E0E0 !important; opacity:0.75;">
+                        <i class="bi bi-x-lg" style="font-size: 15px; font-weight: bold;"></i>
+                    </button>
+                    <div class="trash-note-pop note-close-grey" style="bottom: -30px !important;">Close</div>
+                </div>
             </div>
-            <div onclick="closeFileDetail()" style="padding:10px; cursor:pointer; opacity:0.5"><i class="bi bi-x-lg"></i></div>
-        </div>
-        ${aiZoneHTML}`;
+            ${aiZoneHTML}`;
     
+    // Gán nút bấm thực thi xác nhận
+    const confirmDeleteBtn = document.getElementById("confirmDeleteDrawingBtn");
+    if (confirmDeleteBtn) confirmDeleteBtn.onclick = executeActualDeleteDrawing_Client;
+
+    const confirmEditBtn = document.getElementById("confirmEditDrawingBtn");
+    if (confirmEditBtn) confirmEditBtn.onclick = executeActualEditDrawing_Client;
+
     const taskListContainer = document.getElementById('dp-task-list');
     if (isProcessable) {
         renderTaskList_Drawing(currentFileId);
@@ -517,6 +562,144 @@ function updatePanelContent(nodeData) {
         taskListContainer.innerHTML = `<div class="empty-msg" style="color:#505966; font-size:11px; font-style:italic; padding:15px; text-align:center;">Không có dữ liệu trích xuất từ bản vẽ thiết kế thi công.</div>`;
         document.querySelector('button[onclick="addNewTaskItem()"]').style.display = 'none';
     }
+}
+
+/**
+ * ==========================================================================
+ * 9. TIẾN TRÌNH CHỈNH SỬA TÊN BẢN VẼ VÀ TỰ ĐỘNG TÁI ĐỊNH TUYẾN
+ * ==========================================================================
+ */
+let fileIdToEdit_Drawing = "";
+
+function triggerEditDrawing_Client(fileId, fileName) {
+    fileIdToEdit_Drawing = fileId;
+    const overlay = document.getElementById('drawing-edit-confirm-overlay');
+    const input = document.getElementById('drawing-edit-input-val');
+    if (overlay && input) {
+        input.value = fileName;
+        overlay.style.display = "flex";
+        setTimeout(() => { 
+            overlay.classList.add('show'); 
+            input.focus();
+            input.select();
+        }, 10);
+    }
+}
+
+function cancelEditDrawing_Client() {
+    const overlay = document.getElementById('drawing-edit-confirm-overlay');
+    if (overlay) {
+        overlay.classList.remove('show');
+        setTimeout(() => { overlay.style.display = "none"; }, 200);
+    }
+}
+
+function executeActualEditDrawing_Client() {
+    if (!fileIdToEdit_Drawing) return;
+    const newVal = document.getElementById('drawing-edit-input-val').value.trim();
+    if (!newVal) return alert("Sếp phải nhập tên file bản vẽ hợp lệ!");
+
+    cancelEditDrawing_Client();
+    const loading = document.getElementById("contractLoading");
+    if (loading) {
+        loading.style.display = "flex";
+        loading.querySelector('p').textContent = "SYSTEM RENAMING & RE-ROUTING DRAWING...";
+    }
+
+    callBackend("renameAndRouteDrawingFile_Backend", { fileId: fileIdToEdit_Drawing, newFileName: newVal })
+        .then(res => {
+            if (loading) loading.style.display = "none";
+            if (res) {
+                showToast_PL("✏️ Đã đổi tên và tự động tái định tuyến tệp tin thành công!", "success");
+                
+                // Đóng panel chi tiết và tải ngầm làm mới lại sơ đồ Mindmap
+                closeFileDetail();
+                if (selectedProjectDrawing) {
+                    renderMindmap(selectedProjectDrawing);
+                }
+            }
+            fileIdToEdit_Drawing = "";
+        })
+        .catch(err => {
+            if (loading) loading.style.display = "none";
+            alert("Lỗi sửa tên bản vẽ: " + (err.message || err));
+            if (selectedProjectDrawing) {
+                renderMindmap(selectedProjectDrawing);
+            }
+        });
+}
+
+/**
+ * ==========================================================================
+ * 10. TIẾN TRÌNH XÓA FILE BẢN VẼ GIẢ ĐỊNH (OPTIMISTIC NODE REMOVAL)
+ * ==========================================================================
+ */
+let fileIdToDelete_Drawing = "";
+
+function triggerDeleteDrawing_Client(fileId, fileName) {
+    fileIdToDelete_Drawing = fileId;
+    const overlay = document.getElementById('drawing-delete-confirm-overlay');
+    const dialog = overlay ? overlay.querySelector('.scan-delete-dialog') : null;
+    const nameDisplay = document.getElementById('delete-drawing-filename');
+    
+    if (overlay && nameDisplay) {
+        nameDisplay.textContent = fileName;
+        overlay.style.display = "flex";
+        setTimeout(() => { 
+            overlay.style.opacity = "1"; 
+            if (dialog) dialog.style.transform = "scale(1)"; 
+        }, 10);
+    }
+}
+
+function cancelDeleteDrawing_Client() {
+    const overlay = document.getElementById('drawing-delete-confirm-overlay');
+    const dialog = overlay ? overlay.querySelector('.scan-delete-dialog') : null;
+    if (overlay) {
+        overlay.style.opacity = "0";
+        if (dialog) dialog.style.transform = "scale(0.9)";
+        setTimeout(() => { overlay.style.display = "none"; }, 200);
+    }
+}
+
+function executeActualDeleteDrawing_Client() {
+    if (!fileIdToDelete_Drawing) return;
+    cancelDeleteDrawing_Client();
+    
+    const loading = document.getElementById("contractLoading");
+    if (loading) {
+        loading.style.display = "flex";
+        loading.querySelector('p').textContent = "SYSTEM DELETING DRAWING FILE...";
+    }
+    
+    // 🚀 XÓA GIẢ ĐỊNH (Optimistic UI Update): Xóa node lập tức khỏi đồ thị không chờ Server phản hồi
+    if (cyInstance) {
+        const nodeToDelete = cyInstance.getElementById(fileIdToDelete_Drawing);
+        if (nodeToDelete.length > 0) {
+            cyInstance.remove(nodeToDelete); 
+            closeFileDetail(); 
+        }
+    }
+    
+    callBackend("deleteDrawingFileAndTasks_Backend", fileIdToDelete_Drawing)
+        .then(res => {
+            if (loading) loading.style.display = "none";
+            if (res) {
+                showToast_PL("🗑️ Đã xóa bản vẽ thành công!", "success");
+                
+                if (selectedProjectDrawing) {
+                    renderMindmap(selectedProjectDrawing);
+                }
+            }
+            fileIdToDelete_Drawing = "";
+        })
+        .catch(err => {
+            if (loading) loading.style.display = "none";
+            alert("Lỗi xóa bản vẽ: " + (err.message || err));
+            if (selectedProjectDrawing) {
+                renderMindmap(selectedProjectDrawing);
+            }
+        });
 }
 
 /**

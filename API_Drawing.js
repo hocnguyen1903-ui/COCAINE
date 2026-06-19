@@ -1,3 +1,28 @@
+function checkAvailableModels() {
+  const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) throw new Error("Chưa cấu hình GEMINI_API_KEY trong Script Properties.");
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+  const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  
+  if (response.getResponseCode() !== 200) {
+    console.error("Lỗi API:", response.getContentText());
+    return;
+  }
+
+  const data = JSON.parse(response.getContentText());
+  
+  // Lọc lấy các model có hỗ trợ generateContent
+  const validModels = data.models.filter(m => 
+    m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent")
+  );
+
+  console.log(`[AI System] Tìm thấy ${validModels.length} model khả dụng cho generateContent:`);
+  validModels.forEach(m => {
+    // Tên model thực tế dùng cho URL sẽ là chuỗi sau tiền tố 'models/'
+    console.log(`=> Tên mã: "${m.name.replace('models/', '')}" | Tên hiển thị: ${m.displayName}`);
+  });
+}
 // MODULE DRAWING: BACKEND - QUÉT DRIVE & AI EXTRACTION (5-COLUMN ENGINE)
 // =========================================================================
 
@@ -197,10 +222,14 @@ function getFileBase64ForAI(fileId) {
   } catch (e) { return { error: e.toString() }; }
 }
 
+/**
+ * 3. AI EXTRACTION ENGINE (PDF OPTIMIZED & HIGH AVAILABILITY)
+ */
 function extractDataOnly(base64, mimeType = "application/pdf", fileType = "UPDATE") {
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
-    
+    // Nếu file > 20MB (tương đương ~27MB base64), chặn từ đầu để tránh sập RAM
+    if (base64.length > 28000000) throw new Error("File quá lớn, vượt giới hạn xử lý an toàn của hệ thống.");
+
     const promptProposal = `Role: Senior Construction Consultant.
 Task: Extract distinct work items AND their exact locations, condensed into concise strings.
 
@@ -240,60 +269,78 @@ Output format: Strict JSON only.
 {"notes":[{"note": "Target Category Name", "dept": "XD/MEP"}]}`;
 
     const finalPrompt = (fileType === "PROPOSAL") ? promptProposal : promptOriginalUpdate;
-
     const payload = {
       "contents": [{ "parts": [{ "text": finalPrompt }, { "inline_data": { "mime_type": mimeType, "data": base64 } }] }],
       "generationConfig": { "response_mime_type": "application/json", "temperature": 0.1 }
     };
     
-    // GỌI HÀM BACKOFF THAY VÌ GỌI TRỰC TIẾP URLFETCHAPP
     const options = { "method": "post", "contentType": "application/json", "payload": JSON.stringify(payload), "muteHttpExceptions": true };
-    const response = fetchWithBackoff(url, options);
     
-    const result = JSON.parse(response.getContentText());
-    if (result.error) throw new Error(result.error.message);
-    const text = result.candidates[0].content.parts[0].text.replace(/```json/gi, "").replace(/```/g, "").trim();
-    return JSON.parse(text);
-  } catch (e) { return { error: e.toString() }; }
+    // GỌI HÀM BACKOFF VỚI CHUỖI FALLBACK MODEL (Ưu tiên ổn định, trượt tuần tự)
+    const modelChain = [
+      "gemini-3.5-flash", // Ưu tiên 1: Tốc độ cao, chi phí thấp thế hệ mới
+      "gemini-2.5-flash", // Dự phòng 1: Ổn định
+      "gemini-2.0-flash", // Dự phòng 2: Rất nhẹ và ổn định
+      "gemini-2.5-pro"    // Chốt chặn cuối: Xử lý sâu nhưng quota thấp
+    ];
+    const responseText = fetchWithRobustFallback(payload, options, modelChain);
+    
+    const cleanText = responseText.replace(/```json/gi, "").replace(/```/g, "").trim();
+    return JSON.parse(cleanText);
+    
+  } catch (e) { 
+    return { error: e.toString() }; 
+  }
 }
 
 /**
- * Hàm gọi API có bọc lớp giáp Exponential Backoff
- * Time Complexity (Wait): O(2^n) với n là số lần retry.
+ * Lõi gọi API: Đa Fallback Model + Exponential Backoff + Jitter
+ * Tối ưu: Tự động trượt qua mảng model nếu gặp lỗi 404 hoặc kẹt server.
  */
-function fetchWithBackoff(url, options) {
-    const maxRetries = 3; 
-    const baseDelay = 2000; // Khởi điểm chờ 2 giây
-    
-    if (!options) options = {};
-    options.muteHttpExceptions = true; 
+function fetchWithRobustFallback(payloadBody, options, modelChain) {
+    const maxRetries = 5; // Tăng limit để cover chuỗi model dài
+    const baseDelay = 1500; 
+    let currentModelIndex = 0;
 
     for (let i = 0; i <= maxRetries; i++) {
+        let currentModel = modelChain[currentModelIndex];
         try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${GEMINI_API_KEY}`;
             const response = UrlFetchApp.fetch(url, options);
             const responseCode = response.getResponseCode();
+            const responseText = response.getContentText();
             
             if (responseCode === 200) {
-                return response;
+                const result = JSON.parse(responseText);
+                if (result.error) throw new Error(result.error.message);
+                return result.candidates[0].content.parts[0].text;
             }
             
-            if (responseCode === 429 || responseCode >= 500) {
-                if (i === maxRetries) {
-                    throw new Error("Lỗi API sau " + maxRetries + " lần thử: " + response.getContentText());
+            if (responseCode === 429 || responseCode >= 500 || responseCode === 404) {
+                if (i === maxRetries) throw new Error("Kiệt sức toàn bộ chuỗi Model sau " + maxRetries + " lần thử: " + responseText);
+                
+                // Trượt Model: Lỗi 404 (chuyển ngay), Lỗi kẹt server (chuyển sau lần thử 1)
+                if (responseCode === 404 || i >= 1) {
+                    if (currentModelIndex < modelChain.length - 1) {
+                        currentModelIndex++;
+                        console.warn(`[AI System] Cảnh báo model ${currentModel} (Mã lỗi ${responseCode}). Chuyển sang: ${modelChain[currentModelIndex]}`);
+                        if (responseCode === 404) continue; // 404 không cần chờ, gọi ngay model tiếp theo
+                    }
                 }
-                const waitTime = baseDelay * Math.pow(2, i); 
-                console.warn(`[AI System] Kẹt Server (Lỗi ${responseCode}). Đang chờ ${waitTime}ms để thử lại lần ${i + 1}...`);
+
+                const exponentialWait = baseDelay * Math.pow(2, i); 
+                const jitterWait = Math.floor(Math.random() * (exponentialWait * 0.3));
+                const waitTime = exponentialWait + jitterWait;
+                
+                console.warn(`[AI System] Lỗi Server ${responseCode}. Đang chờ ${waitTime}ms để thử lại...`);
                 Utilities.sleep(waitTime);
             } else {
-                throw new Error(`Lỗi Logic API ${responseCode}: ` + response.getContentText());
+                throw new Error(`Lỗi Logic API ${responseCode}: ` + responseText);
             }
             
         } catch (e) {
-            if (i === maxRetries) {
-                throw new Error("Đứt kết nối API hoàn toàn: " + e.message);
-            }
-            const waitTime = baseDelay * Math.pow(2, i);
-            console.warn(`[Network] Lỗi kết nối. Đang chờ ${waitTime}ms...`);
+            if (i === maxRetries) throw new Error("Đứt kết nối API hoàn toàn: " + e.message);
+            const waitTime = baseDelay * Math.pow(2, i) + Math.floor(Math.random() * 1000);
             Utilities.sleep(waitTime);
         }
     }
@@ -439,4 +486,95 @@ function removeVietnameseDiacritics(str) {
             .replace(/Đ/g, "D")
             .toLowerCase()
             .trim();
+}
+
+/**
+ * 6. SỬA TÊN BẢN VẼ VÀ TỰ ĐỘNG DI CHUYỂN THƯ MỤC NẾU THAY ĐỔI PHÂN NHÁNH
+ */
+function renameAndRouteDrawingFile_Backend(payload) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng an toàn tránh tranh chấp ghi đè
+    
+    const fileId = payload.fileId;
+    const newFileName = (payload.newFileName || "").normalize("NFC");
+    const lowerName = newFileName.toLowerCase();
+    
+    const file = DriveApp.getFileById(fileId);
+    
+    // Đổi tên tệp vật lý trên Drive chính chủ
+    file.setName(newFileName);
+    
+    // Phân tích tên tệp mới để tự động dọn dẹp và di chuyển thư mục con phù hợp
+    const parts = newFileName.split("_");
+    if (parts.length >= 3) {
+      const projectCode = parts[1].trim().toUpperCase();
+      let type = "";
+      let branch = "";
+      
+      const cleanName = removeVietnameseDiacritics(newFileName);
+      const hasHầm = cleanName.includes("ham") || cleanName.includes("hầm");
+      const hasThân = cleanName.includes("than") || cleanName.includes("thân");
+      
+      if (lowerName.includes("tkbvtc") || lowerName.includes("bvtktc") || lowerName.includes("bộ môn")) {
+        type = "ORIGINAL";
+        if ((hasHầm && hasThân) || (!hasHầm && !hasThân)) branch = "Chung";
+        else if (hasHầm) branch = "Hầm";
+        else branch = "Thân";
+      } 
+      else if (lowerName.includes("cập nhật") || lowerName.includes("update")) type = "UPDATE";
+      else if (lowerName.includes("pđx") || lowerName.includes("pdx") || lowerName.includes("đề xuất") || lowerName.includes("proposal")) type = "PROPOSAL";
+      
+      if (type) {
+        const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
+        const projectFolders = masterFolder.getFoldersByName(projectCode);
+        if (projectFolders.hasNext()) {
+          const projFolder = projectFolders.next();
+          let targetFolder = null;
+          let originalParentFolder = null;
+          
+          const subFolders = projFolder.getFolders();
+          while (subFolders.hasNext()) {
+            const sub = subFolders.next();
+            const subName = sub.getName().normalize("NFC").toLowerCase();
+            
+            if (type === "PROPOSAL" && (subName.includes("đề xuất") || subName.includes("proposal"))) { targetFolder = sub; break; }
+            else if (type === "UPDATE" && (subName.includes("cập nhật") || subName.includes("update"))) { targetFolder = sub; break; }
+            else if (subName.includes("bộ môn") || subName.includes("bản vẽ 3") || subName.includes("bvtktc")) { originalParentFolder = sub; }
+          }
+          
+          if (!targetFolder) {
+            if (type === "PROPOSAL") targetFolder = projFolder.createFolder("Đề xuất");
+            else if (type === "UPDATE") targetFolder = projFolder.createFolder("Cập nhật");
+            else if (type === "ORIGINAL") {
+              if (!originalParentFolder) originalParentFolder = projFolder.createFolder("Bộ môn");
+              
+              const branchFolders = originalParentFolder.getFolders();
+              const targetBranchLower = branch.toLowerCase();
+              while (branchFolders.hasNext()) {
+                const bSub = branchFolders.next();
+                if (bSub.getName().normalize("NFC").toLowerCase().includes(targetBranchLower)) { targetFolder = bSub; break; }
+              }
+              if (!targetFolder) {
+                targetFolder = originalParentFolder.createFolder("Phần " + branch);
+              }
+            }
+          }
+          
+          // Di chuyển file ngầm sang thư mục đích mới tương thích
+          if (targetFolder) {
+            const parent = file.getParents().next();
+            if (parent.getId() !== targetFolder.getId()) {
+              file.moveTo(targetFolder); // Di chuyển tệp tin cực kỳ nhanh bằng V8 engine chính chủ
+            }
+          }
+        }
+      }
+    }
+    return true;
+  } catch (e) {
+    throw new Error("Lỗi sửa tên bản vẽ: " + e.message);
+  } finally {
+    lock.releaseLock();
+  }
 }

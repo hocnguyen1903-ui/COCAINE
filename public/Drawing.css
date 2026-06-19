@@ -200,3 +200,39 @@
     /* Hào quang phát sáng màu vàng lỳ sang trọng đồng bộ */
     filter: drop-shadow(0 0 8px rgba(255, 186, 8, 0.35)) !important;
 }
+
+/* ==========================================================================
+   LUXURY HOVER SCALING & FLUID TOOLTIPS FOR DRAWING PANEL
+   ========================================================================== */
+/* 1. Hiệu ứng phóng to nhẹ biểu tượng khi di chuột vào (GPU Accelerated) */
+.btn-scale-hover {
+    transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+}
+.btn-scale-hover:hover {
+    transform: scale(1.15) !important; /* Phóng to nhẹ 1.15 lần mượt mà */
+    color: #ffffff !important;
+}
+.btn-scale-hover.btn-trash-red:hover {
+    color: #ff3333 !important;
+    filter: drop-shadow(0 0 5px rgba(255, 77, 77, 0.4));
+}
+
+/* 2. Thiết lập kích cỡ chữ nhỏ gọn lỳ, KHÔNG IN ĐẬM cho toàn bộ chú thích */
+.trash-note-pop {
+    font-weight: 500 !important; /* Chữ lỳ không in đậm */
+    font-size: 9.5px !important; /* Nhỏ gọn vừa đủ nhìn */
+    letter-spacing: 0.5px;
+    padding: 3px 8px !important;
+    border-radius: 4px !important;
+    background: rgba(3, 28, 53, 0.95) !important;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* 3. Phân lớp màu xám sáng mờ sương dành riêng cho nút ĐÓNG X */
+.note-close-grey {
+    color: #E0E0E0 !important;
+    border-color: rgba(224, 224, 224, 0.4) !important;
+}
+.note-close-grey::after {
+    border-color: transparent transparent rgba(224, 224, 224, 0.4) !important;
+}
