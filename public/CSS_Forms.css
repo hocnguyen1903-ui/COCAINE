@@ -29,7 +29,8 @@ label:focus-within {
 }
 
 /* Chỉ áp dụng cho các ô nhập liệu văn bản, loại trừ hoàn toàn checkbox, radio và file chọn */
-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+/* Chỉ áp dụng cho các ô nhập liệu văn bản, loại trừ hoàn toàn checkbox, radio, file chọn và ô mô tả tác vụ bản vẽ */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.task-desc-edit) {
     padding: 12px 20px; 
     border-radius: 35px; 
     font-size: 15px; 
@@ -42,12 +43,12 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
     box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):hover { 
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.task-desc-edit):hover { 
     background: rgba(255, 255, 255, 0.05) !important; 
     border-color: rgba(255, 192, 0, 0.3) !important; 
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus { 
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.task-desc-edit):focus { 
     background: rgba(0, 0, 0, 0.5) !important; 
     border-color: #FFBA08 !important; 
     box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 186, 8, 0.2); 
