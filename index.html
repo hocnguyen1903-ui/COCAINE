@@ -501,18 +501,18 @@
     
 </div>
 
-<!-- Modal xác nhận xóa dữ liệu HĐ/PLHĐ (Luxury Confirm) -->
-<div id="data-delete-confirm-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); z-index: 9999999; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s ease;">
-    <div class="scan-delete-dialog" style="border: 2px solid #ff4d4d; width: 320px; box-shadow: 0 0 30px rgba(255, 77, 77, 0.4); background: #031c35; border-radius: 12px; padding: 25px; text-align: center; display: flex; flex-direction: column; align-items: center;">
+<!-- Modal xác nhận xóa dữ liệu HĐ/PLHĐ (Đồng bộ cứng sang cấu trúc 340px Luxury và hoạt ảnh scale) -->
+<div id="data-delete-confirm-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 20000000; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
+    <div class="scan-delete-dialog" style="border: 2.5px solid #ff4d4d; width: 340px; box-shadow: 0 0 40px rgba(255, 77, 77, 0.5); background: #031c35; border-radius: 15px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; transform: scale(0.9); transition: transform 0.3s ease;">
         <i class="bi bi-exclamation-triangle-fill icon-alert-luxury" style="color: #ff4d4d; font-size: 50px; margin-bottom: 18px; filter: drop-shadow(0 0 12px rgba(255, 77, 77, 0.6));"></i>
-        <div style="color: white; font-size: 16px; font-weight: 800; letter-spacing: 1px; margin-bottom: 8px;">CONFIRM DATA DELETION!</div>
-        <div id="delete-data-mahd" style="color: #FFBA08; font-family: 'Courier New', Courier, monospace; font-weight: bold; background: rgba(0,0,0,0.3); padding: 5px 10px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; border: 1px solid rgba(255,186,8,0.2);"></div>
-        <div style="color: #95A1AF; font-size: 11px; line-height: 1.5; margin-bottom: 25px;">
-            Hành động này sẽ xóa vĩnh viễn dữ liệu trên <b style="color: #eee;">Sheet theo dõi</b> và các <b style="color: #eee;">File Scan</b> liên quan. <b style="color: #fff;">Không thể khôi phục!</b>
+        <div style="color: white; font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase;">CONFIRM DATA DELETION!</div>
+        <div id="delete-data-mahd" style="color: #FFBA08; font-family: 'Courier New', Courier, monospace; font-weight: bold; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 20px; font-size: 12px; border: 1px solid rgba(255,186,8,0.3); word-break: break-all; width: 100%; box-sizing: border-box; line-height: 1.4;"></div>
+        <div style="color: #95A1AF; font-size: 11.5px; line-height: 1.6; margin-bottom: 30px; padding: 0 10px;">
+            Hành động này sẽ xóa vĩnh viễn dữ liệu trên <b style="color: #eee;">Sheet theo dõi</b> và các <b style="color: #eee;">File Scan</b> liên quan. <br><b style="color: #fff;">Không thể khôi phục!</b>
         </div>
         <div style="display: flex; width: 100%; gap: 15px;">
-            <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 40px; border-radius: 8px;" onclick="closeDataDeleteModal()">CANCEL</button>
-            <button type="button" class="btn-danger-luxury" style="flex: 1; height: 40px; background: #ff4d4d !important; border-radius: 8px; color: white; font-weight: bold;" onclick="executeActualDeleteData_PL()">CONFIRM</button>
+            <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 45px; border-radius: 10px; font-size: 13px; font-weight: bold;" onclick="closeDataDeleteModal()">CANCEL</button>
+            <button type="button" class="btn-danger-luxury" style="flex: 1; height: 45px; background: #ff4d4d !important; border-radius: 10px; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);" onclick="executeActualDeleteData_PL()">CONFIRM</button>
         </div>
     </div>
 </div>

@@ -257,18 +257,24 @@ async function startUploadScan_PL() {
  */
 function deleteContractRow_PL() {
     const overlay = document.getElementById('data-delete-confirm-overlay');
+    const dialog = overlay ? overlay.querySelector('.scan-delete-dialog') : null;
     const maText = document.getElementById('delete-data-mahd');
     if (overlay && maText) {
         maText.textContent = editingMaHD_PL;
         overlay.style.display = 'flex';
-        setTimeout(() => { overlay.style.opacity = '1'; }, 10);
+        setTimeout(() => { 
+            overlay.style.opacity = '1'; 
+            if (dialog) dialog.style.transform = 'scale(1)';
+        }, 10);
     }
 }
 
 function closeDataDeleteModal() {
     const overlay = document.getElementById('data-delete-confirm-overlay');
+    const dialog = overlay ? overlay.querySelector('.scan-delete-dialog') : null;
     if (overlay) {
         overlay.style.opacity = '0';
+        if (dialog) dialog.style.transform = 'scale(0.9)';
         setTimeout(() => { overlay.style.display = 'none'; }, 200);
     }
 }
