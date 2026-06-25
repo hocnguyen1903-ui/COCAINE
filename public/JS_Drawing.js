@@ -38,9 +38,9 @@ function loadDrawingModule() {
         if (cyArea && (cyArea.innerHTML.trim() === "" || cyArea.querySelector('.existing-file-wrapper') === null)) {
             cyArea.innerHTML = `
                 <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; text-align: center; padding: 20px; box-sizing: border-box;">
-                    <i class="bi bi-diagram-3-fill" style="font-size: 44px; color: rgba(255, 18, 8, 0.15); margin-bottom: 18px; filter: drop-shadow(0 0 10px rgba(255,18,8,0.03));"></i>
-                    <h3 style="color: rgba(255, 18, 8, 0.35); font-size: 14.5px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 10px 0; font-family: 'Poppins', sans-serif;">MAP NOT INITIALIZED</h3>
-                    <p style="color: rgba(255, 255, 255, 0.25); font-size: 11px; line-height: 1.6; max-width: 320px; margin: 0; font-style: italic;">Sếp vui lòng chọn một Dự án ở ô tìm kiếm phía bên phải để bắt đầu khởi tạo bản đồ tư duy bản vẽ thiết kế.</p>
+                    <i class="bi bi-diagram-3-fill" style="font-size: 46px; color: rgba(255, 18, 8, 0.25); margin-bottom: 18px; filter: drop-shadow(0 0 10px rgba(255,18,8,0.03));"></i>
+                    <h3 style="color: rgba(255, 18, 8, 0.35); font-size: 16px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 10px 0; font-family: 'Poppins', sans-serif;">MAP NOT INITIALIZED</h3>
+                    <p style="color: rgba(255, 255, 255, 0.25); font-size: 12px; line-height: 1.6; max-width: 400px; margin: 0; font-style: italic;">Vui lòng chọn một Dự án bên phải để khởi tạo hồ sơ bản vẽ Mindmap.</p>
                 </div>
             `;
         }
@@ -493,21 +493,27 @@ function updatePanelContent(nodeData) {
     const isProcessable = (nodeData.type === 'UPDATE' || nodeData.type === 'PROPOSAL');
 
     if (isProcessable) {
+        // Giao diện AI tương lai (Sleek Horizontal)
         aiZoneHTML = `
-            <div id="ai-paste-zone" class="scan-drop-zone" onclick="extractFromCurrentSelected()">
-                <i class="bi bi-robot" id="ai-robot-icon" style="font-size:28px; color:#00BCD4; transition: all 0.3s;"></i>
-                <div style="display:flex; flex-direction:column; align-items:center; pointer-events:none; text-align:center;">
-                    <div id="ai-main-msg" style="font-size:11px; color:#E0E0E0; font-weight:700; letter-spacing:1px; margin-top:5px;">AI DATA EXTRACTION</div>
-                    <div id="ai-sub-msg" style="font-size:10px; color:#95A1AF; margin-top:6px; font-style:italic;">Trích xuất hạng mục từ ${nodeData.type === 'UPDATE' ? 'Bản vẽ cập nhật' : 'Phiếu đề xuất'}</div>
+            <div id="ai-paste-zone" class="ai-command-button" onclick="extractFromCurrentSelected()">
+                <div class="ai-icon-frame">
+                    <i class="bi bi-robot" id="ai-robot-icon" style="font-size: 24px; color: #00BCD4; transition: all 0.3s;"></i>
+                </div>
+                <div class="ai-command-text-wrapper">
+                    <div id="ai-main-msg" style="font-size: 11.5px; color: #FFFFFF; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;">AI DATA EXTRACTION</div>
+                    <div id="ai-sub-msg" style="font-size: 10px; color: #95A1AF; margin-top: 4px; font-style: italic; letter-spacing: 0.2px;">Chọn để trích xuất nội dung tự động</div>
                 </div>
             </div>`;
     } else {
+        // Giao diện khóa ngầm của bản vẽ gốc
         aiZoneHTML = `
-            <div class="scan-drop-zone" style="cursor: default; border-color: rgba(149, 161, 175, 0.1); background: rgba(0,0,0,0.1);">
-                <i class="bi bi-robot" style="font-size:28px; color:#505966; opacity: 0.3;"></i>
-                <div style="text-align:center;">
-                    <div style="font-size:10px; color:#505966; font-weight:700; letter-spacing:1px; margin-top:5px;">AI NOT SUPPORTED</div>
-                    <div style="font-size:10px; color:#505966; margin-top:4px;">Chỉ hỗ trợ PHIẾU ĐỀ XUẤT / BẢN VẼ CẬP NHẬT</div>
+            <div class="ai-command-button ai-command-disabled">
+                <div class="ai-icon-frame" style="background: rgba(149, 161, 175, 0.05); border-color: rgba(149, 161, 175, 0.2);">
+                    <i class="bi bi-robot" style="font-size: 24px; color: #505966; opacity: 0.4;"></i>
+                </div>
+                <div class="ai-command-text-wrapper">
+                    <div style="font-size: 11.5px; color: #505966; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;">AI NOT SUPPORTED</div>
+                    <div style="font-size: 10px; color: #505966; margin-top: 4px; font-style: italic; letter-spacing: 0.2px;">Chỉ áp dụng cho Phiếu đề xuất / Bản vẽ Cập nhật</div>
                 </div>
             </div>`;
     }

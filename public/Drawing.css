@@ -55,7 +55,7 @@
         min-height: 250px; 
         max-height: 700px; 
         overflow-y: auto; 
-        background: rgba(3, 24, 48, 0.95) !important;
+        background: rgba(3, 24, 48, 0.96) !important; /* Đã tăng độ đậm nền từ 0.85 lên 0.96 */
         border: 1.5px solid #FFBA08; 
         border-radius: 15px; 
         display: flex; 
@@ -163,16 +163,16 @@
     @media screen and (min-width: 769px) {
         .drawing-guide-wrapper { padding: 30px 25px; gap: 25px; justify-content: flex-start; }
         .guide-header-box { gap: 10px; margin-bottom: 10px; }
-        .guide-text { font-size: 12px; line-height: 1.7; }
+        .guide-text { font-size: 12.5px !important; line-height: 1.6 !important; } /* Tăng 0.5px lên 12.5px và giãn dòng 1.6 */
     }
     @media screen and (max-width: 768px) {
         .drawing-guide-wrapper { padding-top: 5px !important; gap: 8px !important; padding-left: 20px !important; padding-right: 20px !important; }
         .guide-header-box { margin-bottom: 2px !important; gap: 5px !important; }
-        .guide-text { font-size: 11px !important; line-height: 1.3 !important; }
+        .guide-text { font-size: 11.5px !important; line-height: 1.4 !important; } /* Tăng 0.5px lên 11.5px và giãn dòng 1.4 */
         .guide-icon { width: 36px; height: 36px; background: rgba(255, 186, 8, 0.1); border: 1px solid rgba(255, 186, 8, 0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #FFBA08; font-size: 18px; flex-shrink: 0; }
     }
     .guide-step { display: flex; align-items: flex-start; gap: 15px; text-align: left; }
-    .guide-icon { width: 36px; height: 36px; background: rgba(255, 186, 8, 0.1); border: 1px solid rgba(255, 186, 8, 0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #FFBA08; font-size: 18px; flex-shrink: 0; }
+    .guide-icon { width: 36px; height: 36px; background: rgba(255, 18, 8, 0.1); border: 1px solid rgba(255, 18, 8, 0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #FFBA08; font-size: 18px; flex-shrink: 0; }
 
     /* ==========================================================================
    LUXURY RESUMABLE UPLOAD ACTIVE ANIMATIONS (GOLD COMPOSITOR OPTIMIZED)
@@ -206,10 +206,10 @@
    ========================================================================== */
 /* 1. Hiệu ứng phóng to nhẹ biểu tượng khi di chuột vào (GPU Accelerated) */
 .btn-scale-hover {
-    transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+    transition: transform 0.15s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
 }
 .btn-scale-hover:hover {
-    transform: scale(1.15) !important; /* Phóng to nhẹ 1.15 lần mượt mà */
+    transform: scale(1.2) !important; /* Phóng to nhẹ 1.2 lần mượt mà */
     color: #ffffff !important;
 }
 .btn-scale-hover.btn-trash-red:hover {
@@ -224,8 +224,6 @@
     letter-spacing: 0.5px;
     padding: 3px 8px !important;
     border-radius: 4px !important;
-    background: rgba(3, 28, 53, 0.95) !important;
-    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 /* 3. Phân lớp màu xám sáng mờ sương dành riêng cho nút ĐÓNG X */
@@ -235,4 +233,71 @@
 }
 .note-close-grey::after {
     border-color: transparent transparent rgba(224, 224, 224, 0.4) !important;
+}
+
+/* ==========================================================================
+   FUTURISTIC AI COMMAND BUTTON (v6.2 - FIXED STATIC FRAME LUXURY)
+   ========================================================================== */
+.ai-command-button {
+    height: 85px !important;
+    padding: 12px 20px;
+    margin-bottom: 15px;
+    border: 1px solid rgba(0, 251, 255, 0.25) !important; /* Làm dịu nhẹ viền */
+    background: linear-gradient(135deg, rgba(3, 24, 48, 0.95), rgba(0, 251, 255, 0.03)) !important; /* Làm loãng mờ dải màu */
+    border-radius: 12px;
+    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    display: flex !important;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 18px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4); /* Giảm bóng đổ nổi rìa */
+}
+
+.ai-command-button:hover {
+    border-color: rgba(0, 251, 255, 0.38) !important; /* Đã giảm một nửa độ sáng khi hover viền (từ 0.75 xuống 0.38) */
+    background: linear-gradient(135deg, rgba(3, 24, 48, 0.98), rgba(0, 251, 255, 0.07)) !important; /* Đẩy nhẹ dải màu khi hover */
+    box-shadow: 0 6px 15px rgba(0, 251, 255, 0.08) !important; /* Hào quang mờ sương cực nhẹ cho máy yếu */
+    
+    /* 🚀 ĐÃ LOẠI BỎ hoàn toàn hiệu ứng di chuyển translateY để khung đứng im cố định tuyệt đối */
+}
+
+/* Khung chứa Robot phát sáng dịu mắt */
+.ai-icon-frame {
+    width: 44px;
+    height: 44px;
+    background: rgba(0, 251, 255, 0.04);
+    border: 1.5px solid rgba(0, 251, 255, 0.22);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.ai-command-button:hover .ai-icon-frame {
+    background: rgba(0, 251, 255, 0.1);
+    border-color: rgba(0, 251, 255, 0.8);
+    transform: scale(1.08) rotate(5deg); /* Giữ lại hoạt ảnh nhúc nhích nhẹ của riêng robot để tạo độ phản hồi trực quan */
+    box-shadow: 0 0 10px rgba(0, 251, 255, 0.2); /* Giảm chói hào quang */
+}
+
+.ai-command-text-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    pointer-events: none;
+}
+
+/* Trạng thái khóa của bản vẽ gốc */
+.ai-command-disabled {
+    cursor: default !important;
+    border-color: rgba(149, 161, 175, 0.15) !important;
+    background: rgba(0, 0, 0, 0.2) !important;
+    box-shadow: none !important;
+    transform: none !important;
 }

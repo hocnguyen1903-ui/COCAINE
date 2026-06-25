@@ -28,7 +28,8 @@ label:focus-within {
     color: #FFC000; 
 }
 
-input {
+/* Chỉ áp dụng cho các ô nhập liệu văn bản, loại trừ hoàn toàn checkbox, radio và file chọn */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
     padding: 12px 20px; 
     border-radius: 35px; 
     font-size: 15px; 
@@ -41,12 +42,12 @@ input {
     box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-input:hover { 
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):hover { 
     background: rgba(255, 255, 255, 0.05) !important; 
     border-color: rgba(255, 192, 0, 0.3) !important; 
 }
 
-input:focus { 
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus { 
     background: rgba(0, 0, 0, 0.5) !important; 
     border-color: #FFBA08 !important; 
     box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 186, 8, 0.2); 
@@ -148,21 +149,38 @@ input.readonly-dark {
     margin-right: 10px; 
 }
 
+/* Tối ưu hóa: Trả về trạng thái tĩnh hoàn hảo cho Checkbox và nhãn chữ đi kèm, triệt tiêu 100% lỗi chớp nháy */
 .checkbox-container label { 
-    font-size: 15px; 
-    color: #DBDBDB; 
-    margin: 0;
+    font-size: 15px !important; 
+    color: #DBDBDB !important; 
+    margin: 0 !important;
+    padding: 0 !important;
+    display: inline-block !important;
+    line-height: 1.2 !important; /* Giải phóng line-height 30px của label toàn cục */
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.checkbox-container label:hover {
+    color: white !important;
 }
 
 .checkbox-container input:checked ~ label { 
-    color: white; 
+    color: white !important; 
 }
 
 .checkbox-container input[type="checkbox"] { 
-    width: 15px; 
-    height: 15px; 
+    width: 15px !important; 
+    height: 15px !important; 
+    padding: 0 !important; /* Làm sạch lớp đệm của ô chọn */
+    margin: 0 !important;
     cursor: pointer; 
     accent-color: #FFC000; 
+    transition: none !important; /* Bỏ transition chuyển cảnh gây giật GPU */
+    box-shadow: none !important;
+    background: transparent !important;
+    border: none !important;
 }
 
 /* 4. LUXURY ELITE CALENDAR (FLATPICKR OVERRIDE) */

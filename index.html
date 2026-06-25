@@ -661,11 +661,13 @@
                 </div>
             </div>
 
-            <!-- Trạng thái chờ -->
-            <div id="dp-empty-state" style="flex: 1; display: flex; flex-direction: column; overflow-y: auto;">
-                <div class="drawing-guide-wrapper" style="padding-bottom: 15px !important; flex: 1; display: flex; flex-direction: column;">
-                    <div class="guide-header-box">
-                        <div class="guide-info-circle"><i class="bi bi-info"></i></div>
+            <!-- Trạng thái chờ (Đã bổ sung hướng dẫn 3 quy tắc đặt tên tự động điều hướng) -->
+            <div id="dp-empty-state" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; background: transparent;">
+                
+                <!-- Vùng cuộn chứa nội dung hướng dẫn hệ thống và đặt tên bản vẽ -->
+                <div class="drawing-guide-wrapper" style="flex: 1; overflow-y: auto; padding-bottom: 5px !important; display: flex; flex-direction: column; gap: 15px;">
+                    <div class="guide-header-box" style="margin-bottom: 5px;">
+                        <div class="guide-info-circle"><i>i</i></div>
                         <span class="guide-header-title">SYSTEM GUIDELINES</span>
                     </div>
                     <div class="guide-step">
@@ -676,36 +678,54 @@
                         <div class="guide-icon"><i class="bi bi-search"></i></div>
                         <div class="guide-text">Nhập hạng mục vào <b>Search item</b> và nhấn <span>Enter</span> để định vị nhanh chóng bản vẽ trên Mindmap.</div>
                     </div>
-                    <div class="guide-step">
-                        <div class="guide-icon"><i class="bi bi-mouse2"></i></div>
-                        <div class="guide-text">
-                            <b>Tương tác với Mindmap:</b><br>
-                            - <span>Click</span> node để xem nội dung trong BVCN / PĐX.<br>
-                            - <span>Double-click</span> để mở File scan.
-                        </div>
-                    </div>
-                    <div class="guide-step">
+                    <div class="guide-step" style="margin-bottom: 5px;">
                         <div class="guide-icon" style="color: #00fbff; border-color: rgba(0, 251, 255, 0.3);"><i class="bi bi-robot"></i></div>
                         <div class="guide-text">Chọn biểu tượng <b>Robot</b> để tự động trích xuất hạng mục từ BVCN / PĐX.</div>
                     </div>
-                    <div class="guide-step">
-                        <div class="guide-icon"><i class="bi bi-plus-circle"></i></div>
-                        <div class="guide-text">Có thể <b>Thêm hạng mục</b>, <b>Sửa</b> hoặc <b>Xóa</b> các mục không cần thiết.</div>
-                    </div>
-                    <div class="guide-step">
-                        <div class="guide-icon"><i class="bi bi-grip-vertical"></i></div>
-                        <div class="guide-text">Có thể kéo thả các hạng mục qua lại giữa <b>Xây dựng</b> và <b>Cơ điện</b>.</div>
+
+                    <!-- PHÂN MỤC HƯỚNG DẪN ĐẶT TÊN BẢN VẼ (AUTO-ROUTING) -->
+                    <div class="info-section-title" style="margin-top: 10px; margin-bottom: 5px; width: 100%;">QUY TẮC ĐẶT TÊN FILE</div>
+                    
+                    <!-- 1. Bản vẽ gốc TKTC (Đã bọc in nghiêng toàn phần dòng ví dụ và đồng bộ cỡ chữ 100%) -->
+                    <div class="guide-step" style="align-items: flex-start;">
+                        <div class="guide-icon" style="color: #50C878; border-color: rgba(80, 200, 120, 0.3); background: rgba(80, 200, 120, 0.05);"><i class="bi bi-file-earmark-fill"></i></div>
+                        <div class="guide-text">
+                            <b>Bản vẽ TKTC</b><br>
+                            <span style="color: #50C878; font-family: monospace; font-weight: bold; font-size: 11px; letter-spacing: 0px;">YYMMDD_MãDA_TKBVTC_BộMôn_Phần [thân/hầm/thân, hầm]</span><br>
+                            <span style="color: #95A1AF; font-style: italic; font-size: inherit;">Ex: 241120_BBT_TKBVTC_ARC_Phần thân.pdf</span><br>
+                        </div>
                     </div>
 
-                    <!-- 🚀 KHU VỰC KÉO THẢ TẢI BẢN VẼ PHÂN MẢNH (SÁT ĐÁY - CUỘN TỰ NHIÊN) -->
+                    <!-- 2. Bản vẽ cập nhật (Đã bọc in nghiêng toàn phần dòng ví dụ và đồng bộ cỡ chữ 100%) -->
+                    <div class="guide-step" style="align-items: flex-start;">
+                        <div class="guide-icon" style="color: #00BCD4; border-color: rgba(0, 188, 212, 0.3); background: rgba(0, 188, 212, 0.05);"><i class="bi bi-file-earmark-arrow-up-fill"></i></div>
+                        <div class="guide-text">
+                            <b>Bản vẽ Cập nhật</b><br>
+                            <span style="color: #00BCD4; font-family: monospace; font-weight: bold; font-size: 11px; letter-spacing: 0px;">YYMMDD_MãDA_Cập nhật [Nội dung]</span><br>
+                            <span style="color: #95A1AF; font-style: italic; font-size: inherit;">Ex: 260417_BBT_Cập nhật landscape.pdf</span>
+                        </div>
+                    </div>
+
+                    <!-- 3. Phiếu đề xuất (Đã bọc in nghiêng toàn phần dòng ví dụ và đồng bộ cỡ chữ 100%) -->
+                    <div class="guide-step" style="align-items: flex-start;">
+                        <div class="guide-icon" style="color: #FFBA08; border-color: rgba(255, 186, 8, 0.3); background: rgba(255, 186, 8, 0.05);"><i class="bi bi-file-earmark-medical-fill"></i></div>
+                        <div class="guide-text">
+                            <b>Phiếu đề xuất</b><br>
+                           <span style="color: #FFBA08; font-family: monospace; font-weight: bold; font-size: 11px; letter-spacing: 0px;">YYMMDD_MãDA_PĐX_[Nội dung]</span><br>
+                            <span style="color: #95A1AF; font-style: italic; font-size: inherit;">Ex: 260319_BBT_PĐX_Tháo dỡ cổng rào.pdf</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VÙNG TẢI FILE PHÂN MẢNH CỐ ĐỊNH SÁT ĐÁY PANEL -->
+                <div style="padding: 0 25px 15px 25px; flex-shrink: 0; width: 100%; box-sizing: border-box; background: transparent; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;">
                     <input type="file" id="drawing-upload-input" accept=".pdf, .xls, .xlsx" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; opacity: 0;" multiple>
-                    <div id="drawing-upload-zone" class="scan-drop-zone" style="height: 125px !important; margin-top: 25px; width: 100%;">
+                    <div id="drawing-upload-zone" class="scan-drop-zone" style="height: 100px !important; margin: 0 !important; width: 100%;">
                         <div id="drawing-state-empty" style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
                             <i class="bi bi-cloud-arrow-up-fill" style="font-size: 30px; color: #FFBA08; margin-bottom: 6px;"></i>
                             <div style="color: #E0E0E0; font-size: 13px; font-weight: 700; letter-spacing: 1px;">KÉO THẢ BẢN VẼ VÀO ĐÂY</div>
                             <div style="color: #95A1AF; font-size: 11px; margin-top: 4px; font-style: italic;">Hoặc click để chọn từ máy tính</div>
                         </div>
-                        <!-- Đồng bộ cứng tông màu vàng thương hiệu cho toàn bộ cụm bộ nạp -->
                         <div id="drawing-state-uploading" style="display: none; width: 100%; flex-direction: column; align-items: center; pointer-events: none;">
                             <i class="bi bi-cloud-arrow-up-fill luxury-upload-icon-active" style="font-size: 30px; color: #FFBA08; margin-bottom: 6px;"></i>
                             <div id="drawing-upload-status" style="color: #FFBA08; font-size: 12px; font-weight: bold; text-transform: uppercase;">XỬ LÝ TỆP TIN...</div>
