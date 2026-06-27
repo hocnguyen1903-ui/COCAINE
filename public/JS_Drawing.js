@@ -17,6 +17,10 @@ let syncCountdownInterval = null;
 let draggedElement = null; 
 let placeholder = document.createElement('div');
 placeholder.className = 'task-placeholder';
+let drawingUploadQueue = []; 
+let isUploading_Drawing = false;
+let projectFilesCache_Drawing = {};
+let pendingFetches_Drawing = new Set();
 
 /**
  * 2. KHỞI CHẠY & NẠP DỰ ÁN (ĐỒNG BỘ BỘ NẠP ĐÁY BẢNG HƯỚNG DẪN TĨNH)
@@ -150,16 +154,12 @@ function selectProject_Drawing(projectName) {
     const searchInput = document.getElementById("drawing-category-search");
     if(input) input.value = projectName;
     if(searchInput) searchInput.value = ""; 
-    
     document.getElementById("drawing-project-drop").classList.remove("show");
-    
-    // Đảm bảo giữ trạng thái chờ khi vừa chọn dự án
     document.getElementById('dp-empty-state').style.display = 'flex';
     document.getElementById('dp-content-state').style.display = 'none';
     
-    // SỬA LỖI: Tự động kích hoạt bộ lắng nghe kéo thả/click chọn file ngay khi sếp vừa chọn dự án
+    // Kích hoạt bộ lắng nghe ngay khi chọn dự án
     setTimeout(initDrawingUploadZone, 200);
-    
     renderMindmap(projectName);
 }
 
@@ -282,7 +282,6 @@ function renderMindmap(projectCode) {
     if(localLoader) localLoader.style.display = "flex";
     cyArea.style.opacity = "0";
 
-    // Thực hiện tải song song cấu trúc bản vẽ từ Drive và toàn bộ tác vụ trong Sheet
     Promise.all([
         callBackend("getMindmapData", projectCode),
         callBackend("getAllTasksByProject", projectCode)
@@ -290,7 +289,11 @@ function renderMindmap(projectCode) {
         if(localLoader) localLoader.style.display = "none";
         currentlyRenderedProject = projectCode; 
 
-        // Khởi tạo và đồng bộ dữ liệu vào Cache trên RAM Client
+        // 🚀 SỬA TẠI ĐÂY: Lưu danh sách file thô vào cache của riêng dự án này
+        if (mindmapData && mindmapData.files) {
+            projectFilesCache_Drawing[projectCode.toUpperCase()] = mindmapData.files;
+        }
+
         drawingTaskCache = {};
         
         // 1. Khởi tạo mảng trống cho tất cả FileID thuộc dự án để tránh gọi mạng đơn lẻ
@@ -520,38 +523,32 @@ function updatePanelContent(nodeData) {
 
     // 🚀 CẬP NHẬT GIAO DIỆN: Đổ dữ liệu nodeData.fullName (tên đầy đủ nguyên bản) vào nút Sửa Pencil
     document.getElementById('dp-file-list').innerHTML = `
-            <div class="existing-file-wrapper" style="padding-right: 5px !important;">
-                <div class="existing-file-info" onclick="window.open('${nodeData.url}', '_blank')" style="flex:1; overflow:hidden; display:flex; align-items:center;">
-                    <i class="bi bi-file-earmark-pdf-fill file-pdf" style="margin-right:10px"></i>
-                    <span class="file-name-text" style="color:#FFBA08 !important; font-size:12px; font-weight:700;">${fileNameClean}</span>
-                </div>
-                <!-- Nút chỉnh sửa tên file + Tooltip màu Vàng -->
-                <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative;">
-                    <button type="button" class="btn-trash-simple btn-scale-hover" onclick="triggerEditDrawing_Client('${nodeData.fileId}', '${escapeStr(nodeData.fullName || fileNameWithExt)}')" style="color: #FFBA08 !important;">
-                        <i class="bi bi-pencil-square" style="font-size: 15px;"></i>
-                    </button>
-                    <div class="trash-note-pop" style="bottom: -30px !important;">Rename</div>
-                </div>
-                <!-- Nút xóa tệp tin + Tooltip màu Đỏ -->
-                <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative;">
-                    <button type="button" class="btn-trash-simple btn-scale-hover btn-trash-red" onclick="triggerDeleteDrawing_Client('${nodeData.fileId}', '${escapeStr(nodeData.fullName || fileNameWithExt)}')" style="color: #ff4d4d !important;">
-                        <i class="bi bi-trash3" style="font-size: 14px;"></i>
-                    </button>
-                    <div class="trash-note-pop note-remove-red" style="bottom: -30px !important;">Delete</div>
-                </div>
-                
-                <!-- Vách ngăn dọc mỏng nhẹ mờ sương (1px) -->
-                <div style="width: 1px; height: 24px; background: rgba(255, 255, 255, 0.12); align-self: center; margin: 0 4px; flex-shrink: 0;"></div>
-                
-                <!-- Nút đóng slide panel có dải màu xám sáng + Tooltip màu Xám mờ -->
-                <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative; margin-right: 5px;">
-                    <button type="button" class="btn-trash-simple btn-scale-hover" onclick="closeFileDetail()" style="color: #E0E0E0 !important; opacity:0.75;">
-                        <i class="bi bi-x-lg" style="font-size: 15px; font-weight: bold;"></i>
-                    </button>
-                    <div class="trash-note-pop note-close-grey" style="bottom: -30px !important;">Close</div>
-                </div>
+        <div class="existing-file-wrapper" style="padding-right: 5px !important;">
+            <div class="existing-file-info" onclick="window.open('${nodeData.url}', '_blank')" style="flex:1; overflow:hidden; display:flex; align-items:center;">
+                <i class="bi bi-file-earmark-pdf-fill file-pdf" style="margin-right:10px"></i>
+                <span class="file-name-text" style="color:#FFBA08 !important; font-size:12px; font-weight:700;">${fileNameClean}</span>
             </div>
-            ${aiZoneHTML}`;
+            <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative;">
+                <button type="button" class="btn-trash-simple btn-scale-hover" onclick="triggerEditDrawing_Client('${nodeData.fileId}', '${escapeStr(nodeData.fullName || fileNameWithExt)}')" style="color: #FFBA08 !important;">
+                    <i class="bi bi-pencil-square" style="font-size: 15px;"></i>
+                </button>
+                <div class="trash-note-pop" style="bottom: -30px !important;">Rename</div>
+            </div>
+            <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative;">
+                <button type="button" class="btn-trash-simple btn-scale-hover btn-trash-red" onclick="triggerDeleteDrawing_Client('${nodeData.fileId}', '${escapeStr(nodeData.fullName || fileNameWithExt)}')" style="color: #ff4d4d !important;">
+                    <i class="bi bi-trash3" style="font-size: 14px;"></i>
+                </button>
+                <div class="trash-note-pop note-remove-red" style="bottom: -30px !important;">Delete</div>
+            </div>
+            <div style="width: 1px; height: 24px; background: rgba(255, 255, 255, 0.12); align-self: center; margin: 0 4px; flex-shrink: 0;"></div>
+            <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative; margin-right: 5px;">
+                <button type="button" class="btn-trash-simple btn-scale-hover" onclick="closeFileDetail()" style="color: #E0E0E0 !important; opacity:0.75;">
+                    <i class="bi bi-x-lg" style="font-size: 15px; font-weight: bold;"></i>
+                </button>
+                <div class="trash-note-pop note-close-grey" style="bottom: -30px !important;">Close</div>
+            </div>
+        </div>
+        ${aiZoneHTML}`;
     
     // Gán nút bấm thực thi xác nhận
     const confirmDeleteBtn = document.getElementById("confirmDeleteDrawingBtn");
@@ -670,42 +667,69 @@ function cancelDeleteDrawing_Client() {
 
 function executeActualDeleteDrawing_Client() {
     if (!fileIdToDelete_Drawing) return;
+    
+    const targetFileId = fileIdToDelete_Drawing; 
+    fileIdToDelete_Drawing = "";                  
+    
     cancelDeleteDrawing_Client();
     
-    const loading = document.getElementById("contractLoading");
-    if (loading) {
-        loading.style.display = "flex";
-        loading.querySelector('p').textContent = "SYSTEM DELETING DRAWING FILE...";
-    }
-    
-    // 🚀 XÓA GIẢ ĐỊNH (Optimistic UI Update): Xóa node lập tức khỏi đồ thị không chờ Server phản hồi
+    // 🚀 BƯỚC 1: XÓA GIẢ ĐỊNH VÀ TỰ ĐỘNG DỌN DẸP SẠCH CÁC NHÁNH CHA TRỐNG (RECURSIVE CLEANUP)
     if (cyInstance) {
-        const nodeToDelete = cyInstance.getElementById(fileIdToDelete_Drawing);
+        const nodeToDelete = cyInstance.getElementById(targetFileId);
         if (nodeToDelete.length > 0) {
-            cyInstance.remove(nodeToDelete); 
-            closeFileDetail(); 
+            closeFileDetail(); // Đóng panel chi tiết trước
+            
+            // Gọi hàm đệ quy dọn dẹp ngược lên gốc
+            removeEmptyParents_Drawing(nodeToDelete);
         }
     }
     
-    callBackend("deleteDrawingFileAndTasks_Backend", fileIdToDelete_Drawing)
+    // 🚀 ĐÃ ĐIỀU CHỈNH: Chỉ hiển thị duy nhất 1 thông báo xóa thành công ngay lập tức ở đây
+    showToast_PL("🗑️ Đã xóa bản vẽ thành công!", "success");
+    
+    // BƯỚC 2: GỌI BACKEND CHẠY NGẦM (Lặng lẽ xử lý trong nền, không spam thông báo lần 2)
+    callBackend("deleteDrawingFileAndTasks_Backend", targetFileId)
         .then(res => {
-            if (loading) loading.style.display = "none";
-            if (res) {
-                showToast_PL("🗑️ Đã xóa bản vẽ thành công!", "success");
-                
-                if (selectedProjectDrawing) {
-                    renderMindmap(selectedProjectDrawing);
-                }
-            }
-            fileIdToDelete_Drawing = "";
+            // Thành công chạy ngầm hoàn tất, không cần đưa ra thông báo trùng lặp
         })
         .catch(err => {
-            if (loading) loading.style.display = "none";
-            alert("Lỗi xóa bản vẽ: " + (err.message || err));
+            console.error("Lỗi xóa tệp ngầm:", err);
+            showToast_PL("⚠️ Không thể xóa bản vẽ trên Drive! Đang đồng bộ lại sơ đồ...", "error");
+            
+            // ROLLBACK: Chỉ đồng bộ lại sơ đồ nếu xảy ra lỗi thực tế để khôi phục trạng thái đúng
             if (selectedProjectDrawing) {
                 renderMindmap(selectedProjectDrawing);
             }
         });
+}
+
+function removeEmptyParents_Drawing(node) {
+    if (!cyInstance || !node) return;
+    
+    // 1. Tìm các cạnh đi vào node này (cạnh nối từ node cha tới node hiện tại)
+    const parentEdges = node.incomers('edge');
+    const parents = parentEdges.sources(); // Lấy danh sách các node cha
+    
+    // 2. Xóa node hiện tại khỏi sơ đồ (Cytoscape tự động xóa tất cả các cạnh kết nối với nó)
+    cyInstance.remove(node);
+    
+    // 3. Quét đệ quy ngược lên các node cha
+    parents.forEach(parent => {
+        const parentId = parent.id();
+        
+        // Danh sách các nhánh gốc cố định của hệ thống tuyệt đối không được xóa
+        const isPermanentRoot = ['root', 'branch_goc', 'branch_update', 'branch_proposal'].includes(parentId);
+        
+        if (!isPermanentRoot) {
+            // Kiểm tra xem sau khi con bị xóa, node cha này còn cạnh đi ra (tức là còn con khác) nào không
+            const outgoingEdges = parent.outgoers('edge');
+            
+            if (outgoingEdges.length === 0) {
+                // Nếu node cha hoàn toàn trống rỗng, tiếp tục dọn dẹp đệ quy ngược lên trên
+                removeEmptyParents_Drawing(parent);
+            }
+        }
+    });
 }
 
 /**
@@ -716,12 +740,17 @@ function initDrawingUploadZone() {
     const input = document.getElementById('drawing-upload-input');
     if (!zone || !input || zone.dataset.bound) return;
     
-    zone.dataset.bound = "true"; // Ghim cờ chặn gán trùng sự kiện gây lặp luồng
+    zone.dataset.bound = "true"; 
     
-    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('click', (e) => {
+        const stateEmpty = document.getElementById("drawing-state-empty");
+        if (stateEmpty && stateEmpty.style.display !== "none") {
+            input.click();
+        }
+    });
     input.addEventListener('change', (e) => {
         if (e.target.files && e.target.files.length > 0) {
-            uploadMultipleDrawingsChunked(e.target.files);
+            addFilesToDrawingQueue(e.target.files);
         }
         input.value = "";
     });
@@ -735,45 +764,220 @@ function initDrawingUploadZone() {
         e.preventDefault();
         zone.classList.remove('dragover');
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            uploadMultipleDrawingsChunked(e.dataTransfer.files);
+            addFilesToDrawingQueue(e.dataTransfer.files);
         }
     });
 }
 
-/**
- * THỰC THI TẢI TUẦN TỰ ĐA FILE PHÂN MẢNH (SEQUENTIAL BATCH RESUMABLE UPLOAD)
- */
-async function uploadMultipleDrawingsChunked(files) {
+function addFilesToDrawingQueue(files) {
     if (!files || !files.length) return;
     
-    const validFiles = Array.from(files).filter(f => {
-        const name = f.toLowerCase ? f.toLowerCase() : f.name.toLowerCase();
-        return f.type === "application/pdf" || name.endsWith(".xls") || name.endsWith(".xlsx");
+    const incomingFiles = Array.from(files).filter(f => {
+        const name = f.name.toLowerCase();
+        return name.endsWith(".pdf") || name.endsWith(".xls") || name.endsWith(".xlsx");
     });
     
-    if (validFiles.length === 0) {
-        showToast_PL("⚠️ Định dạng tệp không hợp lệ! Hệ thống chỉ hỗ trợ PDF và Excel.", "error");
+    if (incomingFiles.length === 0) {
+        showToast_PL("⚠️ Chỉ chấp nhận định dạng PDF hoặc Excel!", "error");
         return;
     }
-    
-    const zone = document.getElementById("drawing-upload-zone");
+
+    let hasDriveDuplicate = false; // Cờ kiểm tra trùng tệp trên Drive
+
+    incomingFiles.forEach(newFile => {
+        const isDuplicateInQueue = drawingUploadQueue.some(oldFile => 
+            oldFile.name === newFile.name && oldFile.size === newFile.size
+        );
+        if (!isDuplicateInQueue) {
+            drawingUploadQueue.push(newFile);
+            
+            // Nếu phát hiện trùng tên tệp tin thực tế trên sơ đồ Mindmap
+            if (checkIsDuplicateOnDrive(newFile.name)) {
+                hasDriveDuplicate = true;
+            }
+        }
+    });
+    renderDrawingQueueUI();
+}
+
+/**
+ * RENDER GIAO DIỆN HÀNG CHỜ (TỰ CO GIÃN THEO SỐ LƯỢNG FILE)
+ */
+function renderDrawingQueueUI() {
     const stateEmpty = document.getElementById("drawing-state-empty");
+    const stateQueue = document.getElementById("drawing-state-queue");
+    const stateUploading = document.getElementById("drawing-state-uploading");
+    const queueList = document.getElementById("drawing-queue-list");
+    
+    if (!stateEmpty || !stateQueue || !stateUploading || !queueList) return;
+    
+    // 🚀 SỬA TẠI ĐÂY: Nếu đang trong tiến trình tải lên, tuyệt đối KHÔNG can thiệp ẩn/hiện bảng trạng thái tổng
+    if (!isUploading_Drawing) {
+        if (drawingUploadQueue.length === 0) {
+            stateEmpty.style.display = "flex";
+            stateQueue.style.display = "none";
+            stateUploading.style.display = "none";
+            return;
+        }
+        
+        stateEmpty.style.display = "none";
+        stateQueue.style.display = "flex";
+        stateUploading.style.display = "none";
+    }
+    
+    // Đoạn mã render danh sách HTML bên dưới giữ nguyên...
+    let html = "";
+    drawingUploadQueue.forEach((file, index) => {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        
+        const { isValid, fileType } = validateDrawingFilename(file.name);
+        
+        // Kiểm tra xem tệp hiện tại có bị trùng tên trên Drive dự án hay không
+        const isDuplicateOnDrive = checkIsDuplicateOnDrive(file.name);
+        
+        let iconClass = "bi-file-earmark-x-fill";
+        let iconColor = "#ff4d4d"; 
+        
+        if (isValid) {
+            if (fileType === "ORIGINAL") {
+                iconClass = "bi-file-earmark-fill";
+                iconColor = "#50C878";
+            } else if (fileType === "UPDATE") {
+                iconClass = "bi-file-earmark-arrow-up-fill";
+                iconColor = "#00BCD4";
+            } else if (fileType === "PROPOSAL") {
+                iconClass = "bi-file-earmark-medical-fill";
+                iconColor = "#FFBA08";
+            }
+        }
+        
+        html += `
+        <div class="task-item" style="margin-bottom: 5px; border-color: ${isValid ? 'transparent' : 'rgba(255,77,77,0.3)'}; background: ${isValid ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255,77,77,0.05)'};">
+                <i class="bi ${iconClass}" style="color: ${iconColor} !important; font-size: 14px; flex-shrink: 0; margin-right: 5px;"></i>
+                
+                <input type="text" value="${file.name}" 
+                       class="task-desc-edit" 
+                       style="color: ${isValid ? 'rgba(255, 255, 255, 0.8)' : '#ff7777'} !important; font-weight: 500; height: 100%;"
+                       onchange="renameFileInDrawingQueue(this.value, ${index})"
+                       onclick="event.stopPropagation();"
+                >
+                
+                <!-- 🚀 THÊM MỚI: Huy hiệu cảnh báo trùng tệp thực tế trên Drive -->
+                ${isDuplicateOnDrive && isValid ? `
+                    <span style="font-size: 9px; color: #FFBA08; font-weight: bold; background: rgba(255,186,8,0.08); border: 1.2px solid rgba(255,186,8,0.3); padding: 1.5px 6px; border-radius: 4px; margin-right: 8px; flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px;">
+                        <i class="bi bi-exclamation-triangle-fill" style="font-size: 9px;"></i>TRÙNG FILE
+                    </span>` : ''
+                }
+                
+                <span style="font-size: 9.5px; color: #505966; font-style: italic; flex-shrink: 0; margin-right: 10px;">(${fileSizeMB}MB)</span>
+                
+                <i class="bi bi-trash3-fill" style="color:#ff4d4d; cursor:pointer; font-size:14px; opacity:0.5; transition: opacity 0.2s;" 
+                   onmouseover="this.style.opacity='1'" 
+                   onmouseout="this.style.opacity='0.5'" 
+                   onclick="removeFileFromDrawingQueue(event, ${index})"></i>
+            </div>`;
+    });
+    
+    queueList.innerHTML = html;
+}
+
+function removeFileFromDrawingQueue(event, index) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    drawingUploadQueue.splice(index, 1);
+    
+    // SỬA TẠI ĐÂY: Reset giá trị input thuần về rỗng để xóa cache trình duyệt
+    const fileInput = document.getElementById('drawing-upload-input');
+    if (fileInput) fileInput.value = "";
+    
+    renderDrawingQueueUI();
+}
+
+function clearDrawingUploadQueue(event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    drawingUploadQueue = [];
+    
+    // SỬA TẠI ĐÂY: Reset giá trị input thuần về rỗng khi hủy hàng chờ
+    const fileInput = document.getElementById('drawing-upload-input');
+    if (fileInput) fileInput.value = "";
+    
+    renderDrawingQueueUI();
+}
+
+/**
+ * TRUYỀN TẢI LÔ TUẦN TỰ (KẾT HỢP BỘ CHẶN BẮT BUỘC SỬA TÊN)
+ */
+async function startDrawingQueueUpload(event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (isUploading_Drawing || drawingUploadQueue.length === 0) return;
+    
+    const stateQueue = document.getElementById("drawing-state-queue");
     const stateUploading = document.getElementById("drawing-state-uploading");
     const statusText = document.getElementById("drawing-upload-status");
     const progressBar = document.getElementById("drawing-upload-progress");
+    const fileInput = document.getElementById("drawing-upload-input");
     
-    if (!zone || !stateEmpty || !stateUploading || !statusText || !progressBar) return;
+    if (!stateQueue || !stateUploading || !statusText || !progressBar) return;
     
-    stateEmpty.style.display = "none";
+    // 🚀 BƯỚC 1: KHÓA CHỐNG BẤM NHANH (Đợi tiến trình đối chiếu ngầm Drive hoàn tất)
+    let isCheckingDuplicates = false;
+    for (let f of drawingUploadQueue) {
+        const parts = f.name.split("_");
+        if (parts.length >= 2) {
+            const projectCode = parts[1].trim().toUpperCase();
+            if (pendingFetches_Drawing.has(projectCode)) {
+                isCheckingDuplicates = true;
+                break;
+            }
+        }
+    }
+    
+    if (isCheckingDuplicates) {
+        showToast_PL("⏳ Đang kiểm tra trùng lặp, vui lòng đợi 1 giây rồi tiếp tục!", "error");
+        return;
+    }
+
+    // 🚀 BƯỚC 2: KIỂM TRA HÀNG LOẠT VỚI HÀM CHUẨN HÓA (ĐỊNH DẠNG TÊN & NGÀY THÁNG)
+    let hasInvalidFile = false;
+    for (let f of drawingUploadQueue) {
+        const { isValid } = validateDrawingFilename(f.name);
+        if (!isValid) {
+            hasInvalidFile = true;
+            break;
+        }
+    }
+    
+    if (hasInvalidFile) {
+        showToast_PL("⚠️ Sai tên file (đỏ). Hãy sửa trước khi UP!", "error");
+        return;
+    }
+    
+    // 🚀 BƯỚC 3: KIỂM TRA CỨNG TRÙNG LẶP THỰC TẾ TRÊN DRIVE DỰ ÁN (KHÔNG CHO PHÉP UP FILE TRÙNG)
+    let hasDuplicateFile = false;
+    for (let f of drawingUploadQueue) {
+        if (checkIsDuplicateOnDrive(f.name)) {
+            hasDuplicateFile = true;
+            break;
+        }
+    }
+    
+    if (hasDuplicateFile) {
+        showToast_PL("⚠️ Trùng tên hoặc file đã được UP. Vui lòng kiểm tra lại!", "error");
+        return;
+    }
+    
+    // 🚀 BƯỚC 4: TIẾN HÀNH TẢI LÊN NẾU TẤT CẢ HỢP LỆ
+    isUploading_Drawing = true;
+    stateQueue.style.display = "none";
     stateUploading.style.display = "flex";
     progressBar.style.width = "0%";
     
-    let lastTargetProjectCode = ""; // Biến theo dõi mã dự án của file vừa tải lên
-
     try {
-        for (let idx = 0; idx < validFiles.length; idx++) {
-            const file = validFiles[idx];
-            statusText.textContent = `[${idx + 1}/${validFiles.length}] INIT SESSION...`;
+        const filesToUpload = [...drawingUploadQueue]; 
+        
+        for (let idx = 0; idx < filesToUpload.length; idx++) {
+            let file = filesToUpload[idx];
+            
+            statusText.textContent = `[${idx + 1}/${filesToUpload.length}] INIT SESSION...`;
             
             const session = await callBackend("getDrawingUploadSession_Backend", {
                 fileName: file.name,
@@ -785,7 +989,6 @@ async function uploadMultipleDrawingsChunked(files) {
                 throw new Error(`Lỗi tải tệp [${file.name}]: ` + (session ? session.error : "Không thể khởi tạo phiên."));
             }
             
-            lastTargetProjectCode = session.projectCode; // Ghi nhận mã dự án đích
             const uploadUrl = session.uploadUrl;
             const chunkSize = 5 * 1024 * 1024; 
             const totalChunks = Math.ceil(file.size / chunkSize);
@@ -795,8 +998,8 @@ async function uploadMultipleDrawingsChunked(files) {
                 const end = Math.min(start + chunkSize, file.size);
                 const chunkBlob = file.slice(start, end);
                 
-                const currentOverallPercent = Math.round(((idx / validFiles.length) * 100) + (((i + 1) / totalChunks) * (100 / validFiles.length)));
-                statusText.textContent = `[${idx + 1}/${validFiles.length}] UPLOADING... ${currentOverallPercent}%`;
+                const currentOverallPercent = Math.round(((idx / filesToUpload.length) * 100) + (((i + 1) / totalChunks) * (100 / filesToUpload.length)));
+                statusText.textContent = `[${idx + 1}/${filesToUpload.length}] UPLOADING... ${currentOverallPercent}%`;
                 progressBar.style.width = currentOverallPercent + "%";
                 
                 try {
@@ -818,30 +1021,33 @@ async function uploadMultipleDrawingsChunked(files) {
                     } else throw fetchError;
                 }
             }
+            
+            drawingUploadQueue = drawingUploadQueue.filter(f => f.name !== file.name || f.size !== file.size);
+            renderDrawingQueueUI();
         }
         
-        statusText.textContent = "UPDATING DASHBOARD...";
+        statusText.textContent = "COMPLETE!";
         progressBar.style.width = "100%";
-        showToast_PL(`🚀 Đã tải lên thành công lô ${validFiles.length} bản vẽ!`, "success");
+        showToast_PL(`🚀 Đã tải lên toàn bộ bản vẽ!`, "success");
         
-        // 🚀 TỰ ĐỘNG CHUYỂN HƯỚNG THÔNG MINH (Auto-Switch Project)
-        // Nếu sếp quăng file của một dự án hoàn toàn mới tinh (hoặc dự án khác dự án đang xem),
-        // hệ thống lập tức tự động quét lại danh sách và bung thẳng Mindmap của dự án đó ra màn hình!
-        if (lastTargetProjectCode) {
-            if (!isDrawingListLoaded || !activeDrawingProjects.includes(lastTargetProjectCode)) {
-                await fetchActiveProjectsForDrawing(true); // Ép quét lại Drive để nhận thư mục mới
-            }
-            selectProject_Drawing(lastTargetProjectCode); // Tự động bung Mindmap
-        } else if (selectedProjectDrawing) {
+        drawingUploadQueue = [];
+        if (fileInput) fileInput.value = ""; 
+        isUploading_Drawing = false; // Tắt cờ trạng thái trước khi renderDrawingQueueUI để khôi phục bảng rỗng về đúng vị trí
+        renderDrawingQueueUI();
+        
+        if (selectedProjectDrawing) {
             renderMindmap(selectedProjectDrawing);
         }
         
     } catch (e) {
         console.error("Lỗi tải tệp phân mảnh:", e);
         alert(e.message || e);
-    } finally {
-        stateEmpty.style.display = "flex";
+        isUploading_Drawing = false; // Tắt cờ trạng thái lỗi để khôi phục bảng hàng chờ hiển thị lại
         stateUploading.style.display = "none";
+        stateQueue.style.display = "flex";
+        renderDrawingQueueUI(); 
+    } finally {
+        isUploading_Drawing = false;
     }
 }
 
@@ -874,7 +1080,22 @@ function displayTasksHTML(tasks) {
 
 function renderGroupItems(items) {
     if (items.length === 0) return `<div class="empty-msg" style="color:#505966; font-size:11px; font-style:italic; padding:15px; text-align:center;">Không có dữ liệu ...</div>`;
-    return items.map(t => `<div class="task-item" draggable="false" ondragstart="handleDragStart(event)" ondragend="handleDragEnd(event)" id="task-${t.taskId}"><div class="drag-handle" onmousedown="this.parentElement.setAttribute('draggable', 'true')"><i class="bi bi-grip-vertical"></i></div><input type="text" class="task-desc-edit" value="${t.description}" onblur="updateTaskDescInline('${t.taskId}', this.value)" onkeydown="if(event.key==='Enter') this.blur()"><i class="bi bi-trash3-fill" style="color:#ff4d4d; cursor:pointer; font-size:14px; opacity:0.5;" onclick="deleteTask_Drawing('${t.taskId}')"></i></div>`).join("");
+    
+    return items.map(t => `
+        <div class="task-item" draggable="false" ondragstart="handleDragStart(event)" ondragend="handleDragEnd(event)" id="task-${t.taskId}">
+            <div class="drag-handle" onmousedown="this.parentElement.setAttribute('draggable', 'true')">
+                <i class="bi bi-grip-vertical"></i>
+            </div>
+            
+            <input type="text" class="task-desc-edit" value="${t.description}" onblur="updateTaskDescInline('${t.taskId}', this.value)" onkeydown="if(event.key==='Enter') this.blur()">
+            
+            <!-- SỬA TẠI ĐÂY: Thêm hiệu ứng transition, onmouseover rực lên 1.0 và onmouseout mờ về 0.5 -->
+            <i class="bi bi-trash3-fill" style="color:#ff4d4d; cursor:pointer; font-size:14px; opacity:0.5; transition: opacity 0.2s;" 
+               onmouseover="this.style.opacity='1'" 
+               onmouseout="this.style.opacity='0.5'" 
+               onclick="deleteTask_Drawing('${t.taskId}')"></i>
+        </div>`
+    ).join("");
 }
 
 /**
@@ -1167,4 +1388,164 @@ function deleteTask_Drawing(id) {
     drawingTaskCache[currentFileId] = drawingTaskCache[currentFileId].filter(x => x.taskId !== id);
     displayTasksHTML(drawingTaskCache[currentFileId]);
     triggerDrawingSync_10s();
+}
+
+function removeVietnameseDiacritics(str) {
+  if (!str) return "";
+  return str.normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") // Xóa các dấu thanh
+            .replace(/đ/g, "d")
+            .replace(/Đ/g, "D")
+            .toLowerCase()
+            .trim();
+}
+
+function renameFileInDrawingQueue(newName, index) {
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
+        showToast_PL("⚠️ Tên tệp tin không được phép để trống!", "error");
+        renderDrawingQueueUI(); // Vẽ lại để khôi phục tên cũ
+        return;
+    }
+    
+    const file = drawingUploadQueue[index];
+    if (file.name === trimmedName) return; // Không có gì thay đổi
+    
+    // Khởi tạo một đối tượng File ảo mới với tên mới được chỉnh sửa
+    const blob = file.slice(0, file.size, file.type);
+    const renamedFile = new File([blob], trimmedName, { type: file.type });
+    
+    // Ghi đè vào đúng vị trí tệp cũ trong hàng chờ
+    drawingUploadQueue[index] = renamedFile;
+    
+    // Tự động render lại UI để cập nhật trạng thái hợp lệ (Màu đỏ -> Trắng/Vàng)
+    renderDrawingQueueUI();
+}
+
+/**
+ * KIỂM TRA ĐỊNH DẠNG NGÀY THÁNG LỊCH THỰC TẾ (YYMMDD)
+ */
+function isValidYYMMDD(yyStr, mmStr, ddStr) {
+    const yy = parseInt(yyStr, 10);
+    const mm = parseInt(mmStr, 10);
+    const dd = parseInt(ddStr, 10);
+    
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return false;
+    
+    const year = 2000 + yy; // Quy ước chuẩn: năm 20YY
+    const date = new Date(year, mm - 1, dd);
+    
+    // Kiểm tra xem ngày tháng lịch thực tế có bị tràn ngày (vd: 31/04 tự động nhảy sang 01/05) hay không
+    return date.getFullYear() === year && date.getMonth() === (mm - 1) && date.getDate() === dd;
+}
+
+/**
+ * HÀM CHUẨN HÓA KIỂM TRA ĐỊNH DẠNG TÊN BẢN VẼ (DÙNG CHUNG)
+ */
+function validateDrawingFilename(fileName) {
+    const parts = fileName.split("_");
+    if (parts.length < 3) {
+        return { isValid: false, fileType: "INVALID" };
+    }
+    
+    // 1. Kiểm tra định dạng ngày tháng (6 chữ số đầu tệp)
+    const datePart = parts[0];
+    const dateMatch = datePart.match(/^(\d{2})(\d{2})(\d{2})$/);
+    if (!dateMatch) {
+        return { isValid: false, fileType: "INVALID" };
+    }
+    
+    const yy = dateMatch[1];
+    const mm = dateMatch[2];
+    const dd = dateMatch[3];
+    if (!isValidYYMMDD(yy, mm, dd)) {
+        return { isValid: false, fileType: "INVALID" };
+    }
+    
+    // 2. Kiểm tra phân loại danh mục
+    const cleanName = removeVietnameseDiacritics(fileName);
+    const isOriginal = cleanName.includes("tkbvtc") || cleanName.includes("bvtktc") || cleanName.includes("bộ môn");
+    const isUpdate = cleanName.includes("cập nhật") || cleanName.includes("update");
+    const isProposal = cleanName.includes("pđx") || cleanName.includes("pdx") || cleanName.includes("đề xuất") || cleanName.includes("proposal");
+    
+    let fileType = "INVALID";
+    let isValid = true;
+    
+    if (isOriginal) {
+        fileType = "ORIGINAL";
+    } else if (isUpdate) {
+        fileType = "UPDATE";
+    } else if (isProposal) {
+        fileType = "PROPOSAL";
+    } else {
+        isValid = false;
+    }
+    
+    return { isValid, fileType };
+}
+
+/**
+ * KIỂM TRA XEM TÊN TỆP TIN ĐÃ TỒN TẠI TRÊN DRIVE DỰ ÁN NÀY CHƯA (DỰA TRÊN MINDMAP CHỦ THỂ)
+ */
+function checkIsDuplicateOnDrive(fileName) {
+    const parts = fileName.split("_");
+    if (parts.length < 2) return false;
+    
+    // Bóc tách mã dự án trực tiếp từ tên file sếp kéo vào
+    const projectCode = parts[1].trim().toUpperCase();
+    const filesList = projectFilesCache_Drawing[projectCode];
+    
+    // Nếu dự án này chưa có sẵn trong bộ nhớ tạm (Cache), kích hoạt tải ngầm ngay lập tức
+    if (!filesList) {
+        fetchProjectFilesSilently_Drawing(projectCode);
+        return false;
+    }
+    
+    // Hàm chuẩn hóa tiếng Việt dựng sẵn NFC và loại bỏ khoảng trắng thừa
+    const cleanStr = (str) => {
+        return (str || "")
+            .normalize("NFC")
+            .replace(/\s+/g, " ")
+            .trim()
+            .toUpperCase();
+    };
+    
+    const upperName = cleanStr(fileName);
+    
+    // So khớp chéo trực tiếp trên danh sách tệp tin của dự án tương ứng
+    const isDuplicate = filesList.some(f => {
+        const originalDriveName = cleanStr(f.fileName);
+        return originalDriveName === upperName;
+    });
+    
+    console.log(`[Cross-Project Duplicate Check] Dự án: ${projectCode} | Tệp: "${fileName}" | Trùng: ${isDuplicate}`);
+    return isDuplicate;
+}
+
+/**
+ * TẢI NGẦM DANH SÁCH FILE CỦA DỰ ÁN CHỈ ĐỊNH ĐỂ KIỂM TRA CHÉO TRÙNG LẬP (SILENT BACKGROUND FETCH)
+ */
+function fetchProjectFilesSilently_Drawing(projectCode) {
+    const code = projectCode.toUpperCase().trim();
+    if (!code || projectFilesCache_Drawing[code] || pendingFetches_Drawing.has(code)) return;
+    
+    // Khóa luồng tạm thời để tránh sếp kéo nhiều file của cùng dự án gây spam gọi mạng
+    pendingFetches_Drawing.add(code);
+    
+    // Gọi ngầm lên server quét thư mục Drive của dự án tương ứng
+    callBackend("getMindmapData", code)
+        .then(mindmapData => {
+            pendingFetches_Drawing.delete(code);
+            if (mindmapData && mindmapData.files) {
+                // Lưu vào cache riêng của dự án
+                projectFilesCache_Drawing[code] = mindmapData.files;
+                
+                // Vẽ lại giao diện hàng chờ để ngay lập tức hiển thị nhãn "Trùng tên"
+                renderDrawingQueueUI();
+            }
+        })
+        .catch(err => {
+            pendingFetches_Drawing.delete(code);
+            console.error(`[Silent Fetch] Không thể tải ngầm dữ liệu Drive cho dự án ${code}:`, err);
+        });
 }

@@ -578,3 +578,43 @@ function renameAndRouteDrawingFile_Backend(payload) {
     lock.releaseLock();
   }
 }
+
+/**
+ * BACKEND: XÓA FILE BẢN VẼ TRÊN DRIVE VÀ DỌN DẸP SẠCH CÁC TASK LIÊN QUAN TRONG SHEET "TASK_LOG"
+ */
+function deleteDrawingFileAndTasks_Backend(fileId) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); // Khóa luồng tránh tranh chấp dòng ghi sheet
+    
+    // 1. Thực hiện đưa file trên Google Drive vào thùng rác
+    try {
+      const file = DriveApp.getFileById(fileId);
+      file.setTrashed(true);
+    } catch (driveError) {
+      // Trường hợp file đã bị xóa tay trên Drive trước đó, vẫn tiếp tục để dọn dẹp Task trong sheet
+      console.warn("Không tìm thấy file trên Drive hoặc file đã bị xóa: " + driveError.message);
+    }
+    
+    // 2. Thực hiện quét dọn dẹp các hàng công việc liên quan trong sheet "Task_Log"
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sheet = ss.getSheetByName("Task_Log");
+    if (sheet) {
+      const data = sheet.getDataRange().getValues();
+      
+      // Duyệt từ dưới lên trên (để tránh bị lệch chỉ số index dòng khi thực hiện deleteRow)
+      for (let i = data.length - 1; i >= 1; i--) {
+        if (data[i][2] === fileId) { // Cột index 2 tương ứng với File_ID trong bảng Task_Log
+          sheet.deleteRow(i + 1);
+        }
+      }
+    }
+    
+    SpreadsheetApp.flush();
+    return true;
+  } catch (e) {
+    throw new Error("Lỗi xử lý xóa bản vẽ từ máy chủ: " + e.message);
+  } finally {
+    lock.releaseLock(); // Giải phóng khóa luồng
+  }
+}

@@ -108,16 +108,38 @@
     }
     .icon-flashing-centered { animation: flashGentleCentered 1s infinite ease-in-out !important; }
     
-    /* 5. AI ROBOT BUTTON */
-    .scan-drop-zone {
-        height: 85px !important; padding: 12px; margin-bottom: 15px; 
-        border: 1.5px dashed rgba(0, 188, 212, 0.4); background: rgba(0, 188, 212, 0.03);
-        border-radius: 10px; transition: background-color 0.3s, border-color 0.3s;
-        cursor: pointer; position: relative; overflow: hidden; outline: none;
-        display: flex !important; flex-direction: column; align-items: center; justify-content: center;
-    }
-    .scan-drop-zone:hover, .scan-drop-zone:focus { border-color: #00BCD4; background: rgba(0, 188, 212, 0.08); }
-    .scan-drop-zone:hover i.bi-robot, .scan-drop-zone:focus i.bi-robot { color: #00fbff !important; filter: drop-shadow(0 0 10px #00BCD4); transform: scale(1.1); animation: none !important; }
+    /* 5. AI ROBOT BUTTON - ĐỒNG BỘ MÀU NỀN VỚI TAB PL */
+#drawing-upload-zone.scan-drop-zone {
+    height: 85px !important; 
+    padding: 12px; 
+    margin-bottom: 15px; 
+    
+    /* Giữ nguyên viền đứt nét Vàng Gold sắc nét */
+    border: 1.5px dashed rgba(255, 186, 8, 0.45) !important; 
+    
+    /* ĐÃ ĐỔI: Sử dụng màu đen mờ sương nhẹ chuẩn của tab PL */
+    background: rgba(0, 0, 0, 0.25) !important; 
+    
+    border-radius: 10px; 
+    transition: background-color 0.3s, border-color 0.3s;
+    cursor: pointer; 
+    position: relative; 
+    overflow: hidden; 
+    outline: none;
+    display: flex !important; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center;
+}
+
+/* Hiệu ứng khi di chuột (hover) đồng bộ hoàn toàn với tab PL */
+#drawing-upload-zone.scan-drop-zone:hover, 
+#drawing-upload-zone.scan-drop-zone:focus { 
+    border-color: #FFBA08 !important; 
+    
+    /* ĐÃ ĐỔI: Chuyển sang hào quang vàng nhẹ chuẩn của tab PL */
+    background: rgba(255, 186, 8, 0.05) !important; 
+}
 
     /* 6. TRẠNG THÁI ĐANG XỬ LÝ */
     .ai-extracting-active { animation: aiPulseBackground 2s ease-in-out infinite !important; pointer-events: none !important; border-style: dashed !important; }

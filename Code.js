@@ -360,6 +360,7 @@ function doPost(e) {
     "approveUser_InApp": () => approveUser_InApp(payload), 
     "getDrawingUploadSession_Backend": () => getDrawingUploadSession_Backend(payload),
     "renameAndRouteDrawingFile_Backend": () => renameAndRouteDrawingFile_Backend(payload),
+    "deleteDrawingFileAndTasks_Backend": () => deleteDrawingFileAndTasks_Backend(payload),
     "rejectUser_InApp": () => rejectUser_InApp(payload)    
   };
 
