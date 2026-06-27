@@ -58,13 +58,23 @@ function formatInput_HD(input) {
 }
 
 /**
- * 6. Định dạng nhập liệu tiền tệ cho Tab PL
+ * 6. Định dạng nhập liệu tiền tệ cho Tab PL (Đã hỗ trợ nhập dấu trừ âm (-) cho giá trị giảm)
  */
 function formatInput_PL(input) {
-    let value = input.value.replace(/\D/g, "");
-    if (input.id === "field2-pl" || input.id === "ep-input-val") {
-        input.value = value.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    } 
+    const val = input.value;
+    // Kiểm tra nhận diện dấu trừ (-) nằm ở vị trí đầu tiên của ô nhập liệu
+    const isNegative = val.startsWith("-");
+    
+    // Loại bỏ sạch các ký tự không phải số (\D)
+    let cleanVal = val.replace(/\D/g, "");
+    
+    // Định dạng phân tách dấu chấm hàng nghìn
+    if (cleanVal !== "") {
+        cleanVal = cleanVal.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
+    
+    // Ghép dấu trừ âm quay lại đầu chuỗi nếu có
+    input.value = isNegative ? ("-" + cleanVal) : cleanVal;
 }
 
 /**
