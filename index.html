@@ -716,17 +716,20 @@
 </div>
                 </div>
 
-                <!-- VÙNG TẢI FILE PHÂN MẢNH CỐ ĐỊNH SÁT ĐÁY PANEL (ĐÃ TÍCH HỢP HÀNG CHỜ VÀ BAO GỒM NÚT CANCEL/UPLOAD) -->
-                <div style="padding: 0 25px 15px 25px; flex-shrink: 0; width: 100%; box-sizing: border-box; background: transparent; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;">
-                    <input type="file" id="drawing-upload-input" accept=".pdf, .xls, .xlsx" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; opacity: 0;" multiple>
-                <div id="drawing-upload-zone" class="scan-drop-zone" style="min-height: 100px; height: auto !important; margin-top: auto !important; margin-bottom: 5px !important; width: 100%; padding: 12px !important; box-sizing: border-box;">
-                        
-                        <!-- 1. Trạng thái trống (Chờ kéo thả hoặc click chọn) -->
-                        <div id="drawing-state-empty" style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
-                            <i class="bi bi-cloud-arrow-up" style="font-size: 30px; color: #FFBA08; margin-bottom: 6px;"></i>
-                            <div style="color: #E0E0E0; font-size: 13px; font-weight: 700; letter-spacing: 1px;">Drag & drop FILE here!</div>
-                            <div style="color: #95A1AF; font-size: 11px; margin-top: 4px; font-style: italic;">Or click to browse from computer</div>
-                        </div>
+                <!-- VÙNG TẢI FILE PHÂN MẢNH CỐ ĐỊNH SÁT ĐÁY PANEL (ĐÃ ĐỒNG BỘ ĐỐI XỨNG 10PX CẢ 4 HƯỚNG) -->
+<!-- ĐÃ ĐỒNG BỘ: Sử dụng padding: 10px đều cho cả Trên - Dưới - Trái - Phải để tạo độ cân đối tuyệt đối -->
+<div style="padding: 15px; flex-shrink: 0; width: 100%; box-sizing: border-box; background: transparent; border-top: 1px solid rgba(255,255,255,0.05);">
+    <input type="file" id="drawing-upload-input" accept=".pdf, .xls, .xlsx" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; opacity: 0;" multiple>
+    
+    <!-- Giữ nguyên margin-bottom 0px sát đáy gọn gàng -->
+    <div id="drawing-upload-zone" class="scan-drop-zone" style="min-height: 100px; height: auto !important; margin-top: auto !important; margin-bottom: 0px !important; width: 100%; padding: 12px !important; box-sizing: border-box;">
+            
+            <!-- 1. Trạng thái trống (Chờ kéo thả hoặc click chọn) -->
+            <div id="drawing-state-empty" style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
+                <i class="bi bi-cloud-arrow-up" style="font-size: 36px; color: #FFBA08; margin-bottom: 8px;"></i>
+                <div style="color: #E0E0E0; font-size: 13px; font-weight: 700; letter-spacing: 1px;">Drag & drop FILE here!</div>
+                <div style="color: #95A1AF; font-size: 11px; margin-top: 4px; font-style: italic;">Or click to browse from computer</div>
+            </div>
 
                         <!-- 2. Trạng thái Hàng chờ (Đồng bộ với tab PLHD, có nút X xóa từng file, nút Cancel & Upload) -->
                         <div id="drawing-state-queue" style="display: none; width: 100%; flex-direction: column; text-align: left;">
