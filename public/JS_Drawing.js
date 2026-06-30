@@ -1464,9 +1464,11 @@ function validateDrawingFilename(fileName) {
     
     // 2. Kiểm tra phân loại danh mục
     const cleanName = removeVietnameseDiacritics(fileName);
-    const isOriginal = cleanName.includes("tkbvtc") || cleanName.includes("bvtktc") || cleanName.includes("bộ môn");
-    const isUpdate = cleanName.includes("cập nhật") || cleanName.includes("update");
-    const isProposal = cleanName.includes("pđx") || cleanName.includes("pdx") || cleanName.includes("đề xuất") || cleanName.includes("proposal");
+    
+    // 🚀 SỬA TẠI ĐÂY: Khử dấu toàn bộ chuỗi so khớp để tương thích 100% với cleanName đã được sạch dấu
+    const isOriginal = cleanName.includes("tkbvtc") || cleanName.includes("bvtktc") || cleanName.includes("bo mon");
+    const isUpdate = cleanName.includes("cap nhat") || cleanName.includes("update");
+    const isProposal = cleanName.includes("pdx") || cleanName.includes("de xuat") || cleanName.includes("proposal");
     
     let fileType = "INVALID";
     let isValid = true;
