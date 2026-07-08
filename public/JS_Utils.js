@@ -234,10 +234,27 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
     if (!isInput) displayEl.textContent = formatDateToVietnamese(today);
     else displayEl.value = "";
 
+    // Bảo vệ ngôn ngữ: Đảm bảo sử dụng tệp bản địa hóa Tiếng Việt của Flatpickr CDN
+    const activeLocale = (typeof flatpickr !== 'undefined' && flatpickr.l10ns && flatpickr.l10ns.vi) 
+        ? flatpickr.l10ns.vi 
+        : "vi";
+
     return flatpickr(inputSelector, {
         defaultDate: today,
         dateFormat: "d/m/Y",
-        locale: "vi",
+        locale: activeLocale,
+        
+        // 🚀 BỔ SUNG: Bộ dịch ngược ngày tiếng Việt tự động để Flatpickr luôn mở đúng ngày được chọn
+        parseDate: (datestr, format) => {
+            if (!datestr) return today;
+            // Bóc tách số ngày, tháng, năm từ chuỗi "ngày DD tháng MM năm YYYY"
+            const match = datestr.match(/ngày\s+(\d{2})\s+tháng\s+(\d{2})\s+năm\s+(\d{4})/);
+            if (match) {
+                return new Date(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10));
+            }
+            return flatpickr.parseDate(datestr, format);
+        },
+
         onReady: function(selectedDates, dateStr, instance) {
             const clearBtn = document.createElement("div");
             clearBtn.className = "flatpickr-clear-btn";

@@ -242,7 +242,20 @@ input.readonly-dark {
    MODULE: LUXURY FLAT CALENDAR (FLATPICKR OVERRIDE)
    - Style: Minimalist Flat + Bcons Gold Accent (No Glow/No Shadow)
    ========================================================================== */
-
+.flatpickr-calendar input.cur-year {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    width: 48px !important;       /* Độ rộng tối ưu cho 4 chữ số năm */
+    height: auto !important;
+    color: #FFBA08 !important;     /* Giữ tông màu vàng Gold sang trọng */
+    font-size: inherit !important;
+    font-weight: 700 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    display: inline-block !important;
+}
 /* 1. KHUNG TỔNG THỂ: Kính mờ và Viền vàng (Bỏ bóng đổ) */
 .flatpickr-calendar {
     background: rgba(3, 28, 53, 0.98) !important; /* Tăng độ đậm nền */

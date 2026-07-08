@@ -14,7 +14,9 @@ function writeToSheetAndExportDoc_PL(data) {
     const dateVal = data.date || "Không có ngày";
     sheet.getRange("B3:E3").setValues([[dateVal, data.field8 || "Không có số HĐ", data.field2 || "", data.field9 || ""]]);
     sheet.getRange("BF3:BG3").setValues([[data.selectedBF3 || "", data.field10 || ""]]);
-    sheet.getRange("BL3").setValue(data.adjustmentIds || "");
+    const blCell = sheet.getRange("BL3");
+    blCell.setNumberFormat("@"); // Thiết lập định dạng là Plain Text (Văn bản thuần)
+    blCell.setValue(data.adjustmentIds || "");
 
     SpreadsheetApp.flush(); 
 

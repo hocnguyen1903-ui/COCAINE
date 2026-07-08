@@ -393,7 +393,7 @@ function getDrawingUploadSession_Backend(payload) {
     }
     else if (lowerName.includes("cập nhật") || lowerName.includes("update")) type = "UPDATE";
     else if (lowerName.includes("pđx") || lowerName.includes("pdx") || lowerName.includes("đề xuất") || lowerName.includes("proposal")) type = "PROPOSAL";
-    else throw new Error("Không thể nhận diện loại bản vẽ! Tên file phải chứa từ khóa: 'TKBVTC', 'Cập nhật', hoặc 'PĐX'.");
+    else throw new Error("Không thể nhận diện loại bản vẽ! Tên file phải chứa từ khóa: 'BVTKTC', 'Cập nhật', hoặc 'PĐX'.");
     
     const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
     const projectFolders = masterFolder.getFoldersByName(projectCode);

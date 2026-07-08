@@ -167,6 +167,12 @@ async function loadSystemData(isSilent = false) {
                 updateContractNo_PL();
             }
 
+            // 🚀 BỔ SUNG TẠI ĐÂY: Nếu sếp đang mở tab Drawing, tiến hành tái khởi tạo sạch sau khi nạp dữ liệu xác thực
+            if (activeTabId === 'tab-drawing' && typeof loadDrawingModule === 'function') {
+                isDrawingListLoaded = false; // Reset cờ để tải lại danh sách dự án sạch từ Drive
+                loadDrawingModule();
+            }
+
             // 🚀 MỞ QUẢ CHUÔNG THÔNG BÁO CHO TẤT CẢ MỌI NGƯỜI ĐÃ ĐĂNG NHẬP THÀNH CÔNG
             if (name) {
                 const bellContainer = document.getElementById('bellNotificationContainer');
