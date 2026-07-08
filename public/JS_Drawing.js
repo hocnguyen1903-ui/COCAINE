@@ -289,7 +289,17 @@ function renderMindmap(projectCode) {
         if(localLoader) localLoader.style.display = "none";
         currentlyRenderedProject = projectCode; 
 
-        currentProjectFiles_Drawing = (mindmapData && mindmapData.files) ? mindmapData.files : [];
+        // 🚀 BỌC BẢO VỆ: Chặn lỗi sập luồng nếu dữ liệu truyền về bị rỗng
+        if (!mindmapData) {
+            throw new Error("Không nhận được dữ liệu cấu trúc bản vẽ từ máy chủ!");
+        }
+
+        // Ghi nhận trực tiếp vào cache đa dự án mới
+        if (mindmapData.files) {
+            projectFilesCache_Drawing[projectCode.toUpperCase()] = mindmapData.files;
+        } else {
+            projectFilesCache_Drawing[projectCode.toUpperCase()] = [];
+        }
 
         drawingTaskCache = {};
         
