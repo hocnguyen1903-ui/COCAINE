@@ -274,7 +274,7 @@ function flashNode_Drawing(node) {
 }
 
 /**
- * 4. HÀM VẼ MINDMAP
+ * 4. HÀM VẼ MINDMAP (ĐÃ TỐI ƯU THUẬT TOÁN GẬP/MỞ NHÁNH CHỐNG CHỒNG CHÉO)
  */
 function renderMindmap(projectCode) {
     const localLoader = document.getElementById("drawing-local-loader");
@@ -289,21 +289,16 @@ function renderMindmap(projectCode) {
         if(localLoader) localLoader.style.display = "none";
         currentlyRenderedProject = projectCode; 
 
-        // 🚀 SỬA TẠI ĐÂY: Lưu danh sách file thô vào cache của riêng dự án này
-        if (mindmapData && mindmapData.files) {
-            projectFilesCache_Drawing[projectCode.toUpperCase()] = mindmapData.files;
-        }
+        currentProjectFiles_Drawing = (mindmapData && mindmapData.files) ? mindmapData.files : [];
 
         drawingTaskCache = {};
         
-        // 1. Khởi tạo mảng trống cho tất cả FileID thuộc dự án để tránh gọi mạng đơn lẻ
         if (mindmapData && mindmapData.files) {
             mindmapData.files.forEach(f => {
                 drawingTaskCache[f.fileId] = [];
             });
         }
 
-        // 2. Điền dữ liệu tác vụ thực tế tải hàng loạt từ server vào Cache
         if (projectTasks && Array.isArray(projectTasks)) {
             projectTasks.forEach(task => {
                 if (drawingTaskCache[task.fileId] !== undefined) {
@@ -356,12 +351,63 @@ function renderMindmap(projectCode) {
                     { selector: 'node:selected', style: { 'background-color': '#FFBA08', 'background-opacity': 0.2, 'border-width': (el) => el.style('border-width') } }
                 ]
             });
+
+            // 🚀 XỬ LÝ ẨN MẶC ĐỊNH BẰNG CÁCH LƯU VÀO BỘ NHỚ VÀ XÓA KHỎI BẢN ĐỒ
+            const branchGoc = cyInstance.getElementById('branch_goc');
+            if (branchGoc.length > 0 && branchGoc.successors().length > 0) {
+                branchGoc.data('collapsed', true);
+                branchGoc.data('originalLabel', branchGoc.data('label'));
+                branchGoc.data('label', branchGoc.data('originalLabel') + ' [ + ]');
+                
+                // Bóc tách toàn bộ Node con cất vào bộ nhớ tạm (scratch) rồi gỡ khỏi bản đồ
+                branchGoc.scratch('hiddenElements', branchGoc.successors());
+                cyInstance.remove(branchGoc.successors());
+            }
+
             cyInstance.resize();
             cyInstance.layout({ name: 'dagre', rankDir: 'LR', nodeSep: 45, rankSep: 90, animate: false, fit: true, padding: 20, stop: () => { cyArea.style.opacity = "1"; cyInstance.resize(); } }).run();
+            
+            // 🚀 BẮT SỰ KIỆN CLICK MỞ RỘNG/THU GỌN VỚI THUẬT TOÁN ĐỒNG BỘ LAYOUT
+            cyInstance.on('tap', 'node#branch_goc', function(evt) {
+                const node = evt.target;
+                const isCollapsed = node.data('collapsed');
+                
+                if (isCollapsed) {
+                    // ĐANG GẬP -> BẤM ĐỂ MỞ
+                    const hiddenElements = node.scratch('hiddenElements');
+                    if (hiddenElements) {
+                        // Khôi phục lại các Node con lên bản đồ
+                        cyInstance.add(hiddenElements);
+                    }
+                    node.data('collapsed', false);
+                    node.data('label', node.data('originalLabel') + ' [ - ]');
+                } else {
+                    // ĐANG MỞ -> BẤM ĐỂ GẬP
+                    if (node.successors().length === 0) return; // Nhánh trống thì bỏ qua
+                    
+                    node.data('collapsed', true);
+                    node.data('label', node.data('originalLabel') + ' [ + ]');
+                    
+                    // Cất các Node con vào bộ nhớ tạm và gỡ khỏi bản đồ
+                    node.scratch('hiddenElements', node.successors());
+                    cyInstance.remove(node.successors());
+                    
+                    closeFileDetail(); // Đóng panel chi tiết nếu đang xem file thuộc nhánh này
+                }
+                
+                // Dàn lại Layout (Thuật toán sẽ tính toán lại kích thước và xếp siêu mượt)
+                cyInstance.layout({ name: 'dagre', rankDir: 'LR', nodeSep: 45, rankSep: 90, animate: true, animationDuration: 350, fit: true, padding: 20 }).run();
+            });
+
             cyInstance.on('tap', 'node', (evt) => { if (evt.target.data('fileId')) updatePanelContent(evt.target.data()); });
             cyInstance.on('dbltap', 'node', (evt) => { if (evt.target.data('fileId') && evt.target.data('url') !== "#") window.open(evt.target.data('url'), '_blank'); });
             cyInstance.on('mouseover', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'pointer');
             cyInstance.on('mouseout', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'default');
+            
+            // Đổi trỏ chuột hình bàn tay báo hiệu nút này có thể bấm
+            cyInstance.on('mouseover', 'node#branch_goc', () => document.getElementById('cy').style.cursor = 'pointer');
+            cyInstance.on('mouseout', 'node#branch_goc', () => document.getElementById('cy').style.cursor = 'default');
+            
         }, 100);
     }).catch(err => {
         if(localLoader) localLoader.style.display = "none";
