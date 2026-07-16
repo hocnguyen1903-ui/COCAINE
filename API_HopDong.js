@@ -39,7 +39,8 @@ function getContractTemplateId_HD(type) {
 }
 
 function createContractFile_HD(id, name) {
-  const file = DriveApp.getFileById(id).makeCopy(name);
+  const destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
+  const file = DriveApp.getFileById(id).makeCopy(name, destinationFolder);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
   return file;
 }
@@ -263,7 +264,8 @@ function writeToSheetAndExportDoc_TB(data) {
 
     // TẠO VÀ XỬ LÝ DOCS
     const docTemplateId = "1oyp4fMSu-AJuLY6Dvb7zZX6R1FjYLDreLBaoOsEDhEc";
-    const copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(data.fileName);
+    const destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
+    const copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(data.fileName, destinationFolder);
     copiedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
     
     const doc = DocumentApp.openById(copiedFile.getId());

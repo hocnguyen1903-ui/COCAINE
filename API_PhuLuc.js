@@ -42,7 +42,8 @@ function writeToSheetAndExportDoc_PL(data) {
     const selectedNDs = data.selectedNDs || [];
     const fileName = generateFileName_PL(data.field8);
 
-    const copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(fileName);
+    const destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
+    const copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(fileName, destinationFolder);
     copiedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); 
 
     const copiedDoc = DocumentApp.openById(copiedFile.getId());
@@ -163,7 +164,18 @@ function updateContractData_PL(maHD, editType, newValue) {
 
 function exportToNewSpreadsheet_PL(filteredA) {
   try {
+    // 🚀 BỔ SUNG KHÓA PHÒNG VỆ: Chặn đứng lỗi nếu mảng truyền lên bị rỗng
+    if (!filteredA || !Array.isArray(filteredA)) {
+      throw new Error("Hệ thống không nhận được mảng dữ liệu xuất tệp Spreadsheet hợp lệ!");
+    }
+
     const newSS = SpreadsheetApp.create("DATA HỢP ĐỒNG");
+    
+    // 🚀 SỬA TẠI ĐÂY: Tự động di chuyển tệp Spreadsheet vừa tạo vào thư mục xuất bản chỉ định
+    const file = DriveApp.getFileById(newSS.getId());
+    const destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
+    file.moveTo(destinationFolder);
+
     const sheet = newSS.getActiveSheet();
     sheet.appendRow(["NGÀY KÝ", "SỐ HỢP ĐỒNG / PLHĐ", "DỰ ÁN", "TÊN NHÀ THẦU", "TÊN GÓI THẦU", "GIÁ TRỊ (VND)", "NGƯỜI THỰC HIỆN"]);
     

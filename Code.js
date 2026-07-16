@@ -2,6 +2,7 @@ const SHEET_ID = "1y73SqPevgBN7s0_uhUhYQoGD1OXDbDgvHHXbLQD1EH0";
 const SHEET_NAME_TBKQ = "TBKQTT";
 const SHEET_NAME_SO_TB = "SO THONG BAO";
 const MASTER_FOLDER_ID = '1zStGfH5eitVgbxHF-bhrQGE4NWoKlCpw';
+const EXPORT_FOLDER_ID = "1pyq3zmQHligiYxr2MqvEr9aijByqqkhB";
 
 // --- ĐỊNH DANH TOÀN CỤC CHO THIẾT BỊ ĐANG GỌI API ---
 var GLOBAL_STAFF_NAME = "UNKNOWN";
