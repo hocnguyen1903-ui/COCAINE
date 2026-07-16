@@ -666,30 +666,66 @@ function executeActualEditDrawing_Client() {
     const newVal = document.getElementById('drawing-edit-input-val').value.trim();
     if (!newVal) return alert("Sếp phải nhập tên file bản vẽ hợp lệ!");
 
-    cancelEditDrawing_Client();
-    const loading = document.getElementById("contractLoading");
-    if (loading) {
-        loading.style.display = "flex";
-        loading.querySelector('p').textContent = "SYSTEM RENAMING & RE-ROUTING DRAWING...";
+    const targetFileId = fileIdToEdit_Drawing;
+    fileIdToEdit_Drawing = ""; // Giải phóng ngay biến toàn cục
+    
+    cancelEditDrawing_Client(); // Đóng modal nhập liệu sửa tên tệp
+
+    // 1. LẤY THÔNG TIN ĐỂ CHUẨN BỊ SAO LƯU PHÒNG HỜ HOÀN TÁC (ROLLBACK)
+    let originalLabel = "";
+    let originalFullName = "";
+    let nodeToEdit = null;
+
+    if (cyInstance) {
+        nodeToEdit = cyInstance.getElementById(targetFileId);
+        if (nodeToEdit.length > 0) {
+            originalLabel = nodeToEdit.data('label');
+            originalFullName = nodeToEdit.data('fullName');
+
+            // Tính toán nhãn rút gọn (smartName) mới giống như lúc khởi tạo trên sơ đồ
+            const ext = newVal.toLowerCase().endsWith(".pdf") ? ".pdf" : newVal.toLowerCase().endsWith(".xlsx") ? ".xlsx" : ".xls";
+            let namePart = newVal.replace(/\.(pdf|xlsx|xls)$/i, "");
+            const projectCode = selectedProjectDrawing.toString();
+
+            const patterns = [
+                new RegExp(projectCode, 'gi'),
+                /PĐX/gi, /BVTKTC/gi, /TKBVTC/gi, /STR/gi, /ARC/gi, /MEP/gi, /\d{6}/g
+            ];
+
+            patterns.forEach(p => { namePart = namePart.replace(p, ""); });
+            let cleanName = namePart.replace(/_+/g, "_").replace(/\s+/g, " ").replace(/^[_ \s]+|[_ \s]+$/g, "");
+            const smartName = cleanName ? (cleanName + ext) : newVal;
+
+            // 2. CẬP NHẬT NHÃN MỚI LẬP TỨC TRÊN SƠ ĐỒ TRONG 0.01 GIÂY
+            nodeToEdit.data('label', smartName);
+            nodeToEdit.data('fullName', newVal);
+            
+            closeFileDetail(); // Đóng panel chi tiết bên trái
+        }
     }
 
-    callBackend("renameAndRouteDrawingFile_Backend", { fileId: fileIdToEdit_Drawing, newFileName: newVal })
+    // 🚀 ĐÃ GOM: Chỉ hiển thị duy nhất 1 thông báo thành công tức thời ở đây
+    showToast_PL("✏️ Đã đổi tên bản vẽ thành công!", "success");
+
+    // 3. GỌI BACKEND THAY ĐỔI VẬT LÝ TRÊN GOOGLE DRIVE TRONG NỀN (LẶNG LẼ)
+    callBackend("renameAndRouteDrawingFile_Backend", { fileId: targetFileId, newFileName: newVal })
         .then(res => {
-            if (loading) loading.style.display = "none";
             if (res) {
-                showToast_PL("✏️ Đã đổi tên và tự động tái định tuyến tệp tin thành công!", "success");
-                
-                // Đóng panel chi tiết và tải ngầm làm mới lại sơ đồ Mindmap
-                closeFileDetail();
+                // Thành công chạy ngầm im lặng, không spam thông báo lần 2
                 if (selectedProjectDrawing) {
                     renderMindmap(selectedProjectDrawing);
                 }
             }
-            fileIdToEdit_Drawing = "";
         })
         .catch(err => {
-            if (loading) loading.style.display = "none";
-            alert("Lỗi sửa tên bản vẽ: " + (err.message || err));
+            console.error("Lỗi đổi tên tệp ngầm:", err);
+            showToast_PL("⚠️ Lỗi mạng! Không thể sửa tên trên Drive, đang khôi phục...", "error");
+            
+            // ROLLBACK: Khôi phục lại tên tệp gốc nếu đổi tên bị lỗi mạng
+            if (nodeToEdit && nodeToEdit.length > 0) {
+                nodeToEdit.data('label', originalLabel);
+                nodeToEdit.data('fullName', originalFullName);
+            }
             if (selectedProjectDrawing) {
                 renderMindmap(selectedProjectDrawing);
             }

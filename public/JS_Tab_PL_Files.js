@@ -346,35 +346,53 @@ function cancelDeleteScan_PL() {
 }
 
 /**
- * Thực thi xóa file vĩnh viễn trên Drive và cập nhật hiển thị
+ * THỰC THI XÓA FILE SCAN RIÊNG LẺ CHẠY NGẦM (OPTIMISTIC BACKGROUND DELETION)
  */
 function executeActualDelete_PL() {
     if (!fileIdToProcess) return;
-    cancelDeleteScan_PL(); 
-    const loading = document.getElementById("contractLoading");
-    if(loading) {
-        loading.style.display = "flex";
-        loading.querySelector('p').textContent = "SYSTEM DELETING SCAN FILE...";
-    }
-    callBackend("deleteScanFilePermanently", [currentScanMaHD, fileIdToProcess])
+    
+    const targetFileId = fileIdToProcess;
+    fileIdToProcess = ""; // Giải phóng biến toàn cục ngay lập tức
+    cancelDeleteScan_PL(); // Đóng nhanh hộp thoại xác nhận xóa
+
+    // 1. SAO LƯU DỮ LIỆU ĐỂ PHỤC VỤ HOÀN TÁC (ROLLBACK) NẾU LỖI MẠNG
+    const item = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === currentScanMaHD);
+    if (!item) return;
+
+    const originalScanId = item.scanId; // Bản sao lưu danh sách file scan thô gốc
+
+    // 2. XÓA GIẢ ĐỊNH NGAY LẬP TỨC TRÊN GIAO DIỆN (0.1 GIÂY - KHÔNG KHÓA MÀN HÌNH)
+    const updatedFiles = item.scanId.split(";;").filter(f => f && !f.startsWith(targetFileId + "|"));
+    item.scanId = updatedFiles.join(";;");
+    PRECOMPUTED_PL_DATA = null;
+    
+    renderExistingFiles_PL(currentScanMaHD); // Vẽ lại danh sách file trong khung scan ngay lập tức
+    executeFilter_PL(false);                 // Cập nhật lại icon xanh/vàng trên dashboard ngay lập tức
+
+    // Hiển thị duy nhất 1 thông báo thành công
+    showToast_PL("🗑️ Đã xóa file scan thành công!", "success");
+
+    // 3. GỌI BACKEND CHẠY NGẦM LẶNG LẼ TRÊN SPREADSHEET VÀ DRIVE
+    callBackend("deleteScanFilePermanently", [currentScanMaHD, targetFileId])
         .then(res => {
-            if(loading) loading.style.display = "none";
             if (res && res.success) {
-                const item = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === currentScanMaHD);
-                if (item) {
-                    const files = item.scanId.split(";;").filter(f => f && !f.startsWith(fileIdToProcess + "|"));
-                    item.scanId = files.join(";;");
-                    PRECOMPUTED_PL_DATA = null;
-                    renderExistingFiles_PL(currentScanMaHD); 
-                    executeFilter_PL(false);
-                }
-                showToast_PL("🗑️ Đã xóa file thành công", "success");
-                fileIdToProcess = ""; 
-            } else alert("Lỗi xóa file: " + (res ? res.error : "Unknown"));
+                // Thành công lặng lẽ, không cần thông báo lần 2
+            } else {
+                throw new Error(res ? res.error : "Không xác nhận được từ máy chủ");
+            }
         })
         .catch(err => {
-            if(loading) loading.style.display = "none";
-            alert("Lỗi kết nối Server: " + (err.message || err));
+            console.error("Lỗi xóa file scan ngầm:", err);
+            showToast_PL("⚠️ Lỗi mạng! Không thể xóa file trên Drive, đang khôi phục...", "error");
+            
+            // 🚀 BƯỚC PHÒNG VỆ (ROLLBACK): Khôi phục lại tệp tin cũ nếu xóa ngầm bị thất bại
+            const restoreItem = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === currentScanMaHD);
+            if (restoreItem) {
+                restoreItem.scanId = originalScanId;
+                PRECOMPUTED_PL_DATA = null;
+                renderExistingFiles_PL(currentScanMaHD);
+                executeFilter_PL(false);
+            }
         });
 }
 

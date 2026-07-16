@@ -1000,54 +1000,63 @@ function undoBatchAction_PL(mail) {
 async function commitApprovalBatch_PL() {
     if (pendingApprovalBatch_PL.length === 0) return;
 
-    // 1. Hiện bảng tải đen toàn màn hình duy nhất 1 lần để báo đang đồng bộ lô dữ liệu
-    const loading = document.getElementById("contractLoading");
-    if (loading) {
-        loading.style.display = "flex";
-        loading.querySelector('p').textContent = `ĐANG XỬ LÝ LÔ ${pendingApprovalBatch_PL.length} YÊU CẦU...`;
-    }
-
-    // Sao lưu lại mảng hàng chờ để xử lý hoạt ảnh bay thẻ
+    // Sao lưu lại mảng hàng chờ và danh sách gốc để đề phòng lỗi mạng cần phục hồi (Rollback)
     const currentBatch = [...pendingApprovalBatch_PL];
-    pendingApprovalBatch_PL = []; // Dọn sạch hàng chờ toàn cục ngay để sẵn sàng nhận đợt bấm mới
+    const originalPendingUsers = [...pendingUsersList_PL];
+    
+    pendingApprovalBatch_PL = []; // Dọn sạch hàng chờ toàn cục ngay để sẵn sàng nhận đợt mới
 
+    // 1. XÓA GIẢ ĐỊNH CÁC THẺ CARD TRÊN UI NGAY LẬP TỨC (0-DELAY)
+    currentBatch.forEach(item => {
+        // Xóa khỏi danh sách bộ nhớ tạm thời của máy khách
+        pendingUsersList_PL = pendingUsersList_PL.filter(u => u.mail !== item.mail);
+        
+        // Kích hoạt hoạt ảnh bay thẻ mượt mà sang 2 bên màn hình
+        const safeId = getSafeId_PL(item.mail);
+        const card = document.getElementById(`user-card-${safeId}`);
+        if (card) {
+            card.style.transform = item.action === "APPROVE" ? "translateX(80px)" : "translateX(-80px)";
+            card.style.opacity = "0";
+        }
+    });
+
+    // Cập nhật số lượng chuông thông báo lập tức
+    updateBellBadge();
+
+    // Đợi hiệu ứng trượt bay thẻ 300ms rồi render lại danh sách và tự động đóng dropdown nếu trống
+    setTimeout(() => {
+        renderBellList();
+        if (pendingUsersList_PL.length === 0) {
+            const bellDropdown = document.getElementById('bellDropdown');
+            if (bellDropdown) bellDropdown.style.display = 'none';
+        }
+    }, 300);
+
+    // 🚀 ĐÃ GOM: Chỉ hiển thị duy nhất 1 thông báo thành công tức thời ở đây
+    showToast_PL(`🚀 Đã phê duyệt ${currentBatch.length} tài khoản thành công!`, "success");
+
+    // 2. GỌI BACKEND TUẦN TỰ TRONG NỀN (LẶNG LẼ)
     try {
-        // 2. CHẠY TUẦN TỰ (SEQUENTIAL) ĐỂ TRÁNH LOCK FILE GOOGLE SHEETS
         for (const item of currentBatch) {
             const action = item.action === "APPROVE" ? "approveUser_InApp" : "rejectUser_InApp";
             
-            // Gửi lệnh lên Server và chờ phản hồi thành công rồi mới đi tiếp người sau
             const success = await callBackend(action, item.mail);
-            
-            if (success) {
-                // Xóa khỏi danh sách bộ nhớ tạm
-                pendingUsersList_PL = pendingUsersList_PL.filter(u => u.mail !== item.mail);
-                
-                // Hiệu ứng bay thẻ
-                const safeId = getSafeId_PL(item.mail);
-                const card = document.getElementById(`user-card-${safeId}`);
-                if (card) {
-                    card.style.transform = item.action === "APPROVE" ? "translateX(50px)" : "translateX(-50px)";
-                    card.style.opacity = "0";
-                }
+            if (!success) {
+                throw new Error(`Duyệt tài khoản ${item.mail} thất bại!`);
             }
         }
-
-        // 3. Hoàn tất toàn bộ lô sau khi Server phản hồi đầy đủ
-        setTimeout(() => {
-            if (loading) loading.style.display = "none";
-            updateBellBadge();
-            renderBellList();
-
-            if (pendingUsersList_PL.length === 0) {
-                document.getElementById('bellDropdown').style.display = 'none';
-            }
-        }, 400);
+        
+        // Đồng bộ lặng lẽ danh sách sau cùng trong nền
+        loadSystemData(true);
 
     } catch (e) {
-        if (loading) loading.style.display = "none";
-        alert("Lỗi xử lý lô: " + e.message);
-        // Nếu lỗi xảy ra, khôi phục lại danh sách chờ duyệt ban đầu
+        console.error("Lỗi xử lý duyệt lô ngầm:", e);
+        showToast_PL("⚠️ Gặp lỗi khi duyệt tài khoản ngầm! Đang khôi phục lại dữ liệu...", "error");
+        
+        // ROLLBACK: Khôi phục lại danh sách cũ nếu xảy ra lỗi mạng thực tế
+        pendingUsersList_PL = originalPendingUsers;
+        updateBellBadge();
+        renderBellList();
         loadSystemData(true);
     }
 }
