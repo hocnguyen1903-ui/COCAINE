@@ -54,28 +54,36 @@ function loadDrawingModule() {
 /* --- public/JS_Drawing.js --- */
 
 function fetchActiveProjectsForDrawing(forceRefresh = false) {
-    // 1. Chỉ chạy quét nếu chưa tải lần nào, hoặc khi người dùng chủ động nhấn nút Sync (forceRefresh = true)
+    // 🚀 ƯU TIÊN 1: Nếu danh sách đã được nạp chung trong SYSTEM_DATA từ lúc sếp mở trang, lấy ra dùng ngay lập tức (0 giây)
+    if (!forceRefresh && SYSTEM_DATA && SYSTEM_DATA.drawingProjects && SYSTEM_DATA.drawingProjects.length > 0) {
+        activeDrawingProjects = SYSTEM_DATA.drawingProjects;
+        isDrawingListLoaded = true;
+        return;
+    }
+
+    // ƯU TIÊN 2: Tránh gọi trùng lặp nếu danh sách đã tải
     if (!forceRefresh && isDrawingListLoaded && activeDrawingProjects.length > 0) return;
 
     const input = document.getElementById("drawing-project-search");
     const syncBtnIcon = document.querySelector("#btn-sync-drawing i");
 
-    // Ngăn chặn việc bấm Sync liên tục khi tiến trình đang chạy
     if (syncBtnIcon && syncBtnIcon.classList.contains('spinning')) return;
 
-    // Hiển thị trạng thái tải cho người dùng thấy rõ
     if (input) {
         input.disabled = true;
         input.placeholder = "Loading projects from Drive...";
     }
     if (syncBtnIcon) syncBtnIcon.classList.add('spinning');
 
-    // 2. Gọi Backend quét trực tiếp tên các thư mục dự án trên Google Drive
+    // 🚀 DỰ PHÒNG: Chỉ gọi mạng nếu chưa nạp hoặc sếp chủ động bấm nút làm mới (forceRefresh = true)
     callBackend("getActiveProjectFolders_Backend").then(folderNames => {
         activeDrawingProjects = folderNames || [];
         isDrawingListLoaded = true;
         
-        // Trả lại trạng thái sẵn sàng cho ô nhập liệu
+        // Đồng bộ ngược lại vào SYSTEM_DATA để bộ nhớ đệm luôn sạch
+        if (!SYSTEM_DATA) SYSTEM_DATA = {};
+        SYSTEM_DATA.drawingProjects = activeDrawingProjects;
+        
         if (input) {
             input.disabled = false;
             input.placeholder = "Project";
@@ -83,7 +91,7 @@ function fetchActiveProjectsForDrawing(forceRefresh = false) {
         if (syncBtnIcon) syncBtnIcon.classList.remove('spinning');
     }).catch(err => {
         console.error("Lỗi tải danh sách thư mục từ Drive:", err);
-        isDrawingListLoaded = false; // Cho phép thử lại lần sau
+        isDrawingListLoaded = false; 
         if (input) {
             input.disabled = false;
             input.placeholder = "Failed to load projects";
@@ -1382,6 +1390,11 @@ function handleDrop(e, targetTeam) {
 }
 
 function addNewTaskItem() {
+    // 🚀 BỔ SUNG: Chụp lại trạng thái gốc trước khi chèn phần tử trống để cho phép hoàn tác xóa bỏ dòng mới hoàn toàn nếu bấm Undo
+    if (!drawingTaskSnapshot) {
+        drawingTaskSnapshot = JSON.parse(JSON.stringify(drawingTaskCache[currentFileId] || []));
+    }
+
     const tempId = "T-" + Date.now();
     // Tạo item trống mặc định cho ngăn XD
     const newItem = { taskId: tempId, description: "", team: "XD" };
@@ -1420,30 +1433,54 @@ function updateTaskDescInline(id, val) {
 
     const trimmedVal = val.trim();
     const isNewItem = id.startsWith("T-");
+
+    if (!isNewItem && !drawingTaskSnapshot) {
+        drawingTaskSnapshot = JSON.parse(JSON.stringify(drawingTaskCache[currentFileId] || []));
+    }
     
     // Nếu để trống -> Xóa
     if (trimmedVal === "") {
         drawingTaskCache[currentFileId].splice(taskIndex, 1);
         displayTasksHTML(drawingTaskCache[currentFileId]);
         
-        // Nếu là hàng cũ bị xóa trắng nội dung -> Sync 10s để cập nhật
-        if (!isNewItem) triggerDrawingSync_10s();
-        else cancelDrawingSync(); // Hàng mới bấm thêm rồi bỏ -> Chỉ dọn UI
+        // 🚀 ĐỒNG BỘ TRẠNG THÁI REAL-TIME: 
+        if (checkTasksUnchanged()) {
+            cancelDrawingSync(); 
+        } else {
+            triggerDrawingSync_10s();
+        }
     } else {
         // NẾU CÓ NỘI DUNG -> CẬP NHẬT CACHE
         if (drawingTaskCache[currentFileId][taskIndex].description !== trimmedVal) {
             drawingTaskCache[currentFileId][taskIndex].description = trimmedVal;
             
-            // "NHẬP XONG LÀ DỨT LUÔN" -> Sync ngay lập tức
-            syncDrawingImmediately();
+            // 🚀 ĐỒNG BỘ TRẠNG THÁI REAL-TIME:
+            if (checkTasksUnchanged()) {
+                cancelDrawingSync();
+            } else {
+                triggerDrawingSync_10s();
+            }
         }
     }
 }
 
 function deleteTask_Drawing(id) {
+    const isNewItem = id.startsWith("T-");
+    
+    if (!isNewItem && !drawingTaskSnapshot) {
+        drawingTaskSnapshot = JSON.parse(JSON.stringify(drawingTaskCache[currentFileId] || []));
+    }
+    
     drawingTaskCache[currentFileId] = drawingTaskCache[currentFileId].filter(x => x.taskId !== id);
     displayTasksHTML(drawingTaskCache[currentFileId]);
-    triggerDrawingSync_10s();
+    
+    // 🚀 ĐỒNG BỘ TRẠNG THÁI REAL-TIME: 
+    // Nếu danh sách quay về trùng khớp hoàn toàn với bản gốc trước khi sửa đổi, hủy đếm ngược ngay lập tức
+    if (checkTasksUnchanged()) {
+        cancelDrawingSync(); 
+    } else {
+        triggerDrawingSync_10s();
+    }
 }
 
 function removeVietnameseDiacritics(str) {
@@ -1606,4 +1643,22 @@ function fetchProjectFilesSilently_Drawing(projectCode) {
             pendingFetches_Drawing.delete(code);
             console.error(`[Silent Fetch] Không thể tải ngầm dữ liệu Drive cho dự án ${code}:`, err);
         });
+}
+
+/**
+ * KIỂM TRA XEM DANH SÁCH HIỆN TẠI CÓ TRÙNG KHỚP HOÀN TOÀN VỚI BẢN SAO LƯU GỐC HAY KHÔNG
+ */
+function checkTasksUnchanged() {
+    if (!drawingTaskSnapshot || !drawingTaskCache[currentFileId]) return true;
+    
+    const active = drawingTaskCache[currentFileId];
+    const snap = drawingTaskSnapshot;
+    
+    if (active.length !== snap.length) return false;
+    
+    return active.every((t, i) => 
+        t.taskId === snap[i].taskId && 
+        t.team === snap[i].team &&
+        t.description.trim() === snap[i].description.trim()
+    );
 }

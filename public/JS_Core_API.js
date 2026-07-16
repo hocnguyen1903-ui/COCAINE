@@ -42,8 +42,9 @@ async function openTab(tabId, triggerIntro = true) {
 
     // Kích hoạt mô-đun Drawing khi chuyển qua tab-drawing
     if (tabId === 'tab-drawing') {
-    // 🚀 Đợi chuyển động trượt của Tab hoàn tất 350ms để container #cy đạt kích thước vật lý chuẩn xác 100% trước khi vẽ sơ đồ
-    setTimeout(loadDrawingModule, 350);
+    if (!isInitialLoad) {
+        setTimeout(loadDrawingModule, 350);
+    }
     setTimeout(initDrawingUploadZone, 150);
 }
 

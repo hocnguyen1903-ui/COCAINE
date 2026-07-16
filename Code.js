@@ -218,12 +218,24 @@ function getSystemData(token) {
     }
   });
 
+  // 🚀 BỔ SUNG: Quét ngầm luôn danh sách thư mục dự án trên Drive của phân hệ Drawing
+  let drawingProjects = [];
+  try {
+    const folders = DriveApp.getFolderById(MASTER_FOLDER_ID).getFolders();
+    while (folders.hasNext()) {
+      drawingProjects.push(folders.next().getName().toUpperCase());
+    }
+  } catch (driveErr) {
+    console.error("Lỗi quét Drive ngầm trong getSystemData: " + driveErr.toString());
+  }
+
   return {
     hd: { project: projectHD, pack: packHD, warranty: warrantyHD, contractor: contractorHD },
     pl: { field0: field0PL },
     transferMap: transferMap,
     pendingUsers: pendingUsers, 
-    currentUserRole: GLOBAL_STAFF_ROLE ? GLOBAL_STAFF_ROLE.toUpperCase().trim() : "USER" 
+    currentUserRole: GLOBAL_STAFF_ROLE ? GLOBAL_STAFF_ROLE.toUpperCase().trim() : "USER",
+    drawingProjects: drawingProjects // 🚀 GỘP CHUNG VÀ TRẢ VỀ DỰ ÁN Ở ĐÂY
   };
 }
 
