@@ -282,7 +282,81 @@ function flashNode_Drawing(node) {
 }
 
 /**
- * 4. HÀM VẼ MINDMAP (ĐÃ TỐI ƯU THUẬT TOÁN GẬP/MỞ NHÁNH CHỐNG CHỒNG CHÉO)
+ * HÀM CƯỠNG CHẾ TỌA ĐỘ DỌC: Ép sơ đồ gióng thẳng hàng trục đứng chuẩn xác theo thời gian
+ */
+function enforceChronologicalYPositions() {
+    if (!cyInstance) return;
+
+    const branchIds = ['branch_proposal', 'branch_update', 'branch_goc'];
+
+    // 1. Lặp qua 3 nhánh mẹ để xếp lại thứ tự các ngày bên trong
+    branchIds.forEach(branchId => {
+        const branch = cyInstance.getElementById(branchId);
+        if (branch.length === 0) return;
+
+        const dateNodes = branch.outgoers('node').filter(n => n.data('isDate'));
+        if (dateNodes.length <= 1) return;
+
+        // Sắp xếp Mới nhất -> Cũ nhất
+        const sortedDateNodes = dateNodes.toArray().sort((a, b) => {
+            return (b.data('sortValue') || 0) - (a.data('sortValue') || 0);
+        });
+
+        // Lấy tọa độ Y trên cùng của toàn bộ khối ngày này làm điểm bắt đầu
+        const allElements = dateNodes.union(dateNodes.successors());
+        let currentY = allElements.boundingBox().y1;
+
+        sortedDateNodes.forEach(dateNode => {
+            const cluster = dateNode.union(dateNode.successors());
+            const clusterBB = cluster.boundingBox();
+
+            const diffY = currentY - clusterBB.y1;
+
+            // Bế nguyên cụm dịch chuyển về đúng tọa độ Y
+            cluster.forEach(el => {
+                if (el.isNode()) {
+                    el.position('y', el.position('y') + diffY);
+                }
+            });
+
+            // Tịnh tiến Y cho cụm tiếp theo (cộng thêm chiều cao cụm vừa xếp + 20px đệm)
+            currentY += clusterBB.h + 20; 
+        });
+    });
+
+    // 2. Chỉnh lại khoảng cách giữa 3 nhánh mẹ để tránh đè nhau sau khi xếp lại
+    const branches = branchIds.map(id => cyInstance.getElementById(id)).filter(b => b.length > 0);
+    if (branches.length > 1) {
+        let mainY = branches[0].union(branches[0].successors()).boundingBox().y1;
+
+        branches.forEach(branch => {
+            const cluster = branch.union(branch.successors());
+            const clusterBB = cluster.boundingBox();
+
+            const diffY = mainY - clusterBB.y1;
+
+            cluster.forEach(el => {
+                if (el.isNode()) {
+                    el.position('y', el.position('y') + diffY);
+                }
+            });
+
+            mainY += clusterBB.h + 40; // Khoảng cách giữa các nhánh mẹ (40px)
+        });
+
+        // Đặt lại vị trí node Root ở chính giữa trục Y
+        const rootNode = cyInstance.getElementById('root');
+        if (rootNode.length > 0) {
+            const allBranchesCluster = cyInstance.collection();
+            branches.forEach(b => allBranchesCluster.merge(b.union(b.successors())));
+            const branchesBB = allBranchesCluster.boundingBox();
+            rootNode.position('y', branchesBB.y1 + branchesBB.h / 2);
+        }
+    }
+}
+
+/**
+ * 4. HÀM VẼ MINDMAP (ĐÃ FIX LỖI CHỒNG NODE VÀ LỆCH TÂM)
  */
 function renderMindmap(projectCode) {
     const localLoader = document.getElementById("drawing-local-loader");
@@ -370,51 +444,186 @@ function renderMindmap(projectCode) {
                 ]
             });
 
-            // 🚀 XỬ LÝ ẨN MẶC ĐỊNH BẰNG CÁCH LƯU VÀO BỘ NHỚ VÀ XÓA KHỎI BẢN ĐỒ
             const branchGoc = cyInstance.getElementById('branch_goc');
             if (branchGoc.length > 0 && branchGoc.successors().length > 0) {
                 branchGoc.data('collapsed', true);
                 branchGoc.data('originalLabel', branchGoc.data('label'));
                 branchGoc.data('label', branchGoc.data('originalLabel') + ' [ + ]');
                 
-                // Bóc tách toàn bộ Node con cất vào bộ nhớ tạm (scratch) rồi gỡ khỏi bản đồ
                 branchGoc.scratch('hiddenElements', branchGoc.successors());
                 cyInstance.remove(branchGoc.successors());
             }
 
             cyInstance.resize();
-            cyInstance.layout({ name: 'dagre', rankDir: 'LR', nodeSep: 45, rankSep: 90, animate: false, fit: true, padding: 20, stop: () => { cyArea.style.opacity = "1"; cyInstance.resize(); } }).run();
             
-            // 🚀 BẮT SỰ KIỆN CLICK MỞ RỘNG/THU GỌN VỚI THUẬT TOÁN ĐỒNG BỘ LAYOUT
+            // -------------------------------------------------------------
+            // LẦN RENDER KHỞI TẠO ĐẦU TIÊN
+            // -------------------------------------------------------------
+            cyInstance.layout({ 
+                name: 'dagre', 
+                rankDir: 'LR', 
+                nodeSep: 45, 
+                rankSep: 90, 
+                animate: false, 
+                fit: true, 
+                padding: 20, 
+                sort: (a, b) => {
+                        const getPri = (n) => {
+                            if (n.id() === 'root') return 1;
+                            if (['branch_goc', 'branch_update', 'branch_proposal'].includes(n.id())) return 2;
+                            if (n.data('isDate')) return 3;
+                            if (n.id().includes('_Thân') || n.id().includes('_Hầm')) return 4;
+                            if (n.data('isDept')) return 5;
+                            return 6;
+                        };
+                        const pA = getPri(a);
+                        const pB = getPri(b);
+                        if (pA !== pB) return pA - pB;
+                        
+                        if (pA === 2) { 
+                            const BRANCH_PRIORITY = { 'branch_proposal': 1, 'branch_update': 2, 'branch_goc': 3 };
+                            return (BRANCH_PRIORITY[a.id()] || 0) - (BRANCH_PRIORITY[b.id()] || 0);
+                        }
+                        
+                        // 🚀 SỬA TẠI ĐÂY: Áp dụng ưu tiên sortValue cho TẤT CẢ các cấp Node (Ngày, Thân/Hầm, Bộ Môn, File)
+                        const svA = a.data('sortValue') || 0;
+                        const svB = b.data('sortValue') || 0;
+                        if (svA !== svB) {
+                            return svB - svA; // Trả về số dương nếu svB > svA -> Đẩy cái mới nhất lên trên
+                        }
+                        
+                        // Nếu cùng một ngày (sortValue bằng nhau), xếp theo thứ tự bảng chữ cái tự nhiên A-Z
+                        const nameA = a.data('fullName') || a.data('label') || "";
+                        const nameB = b.data('fullName') || b.data('label') || "";
+                        return nameA.localeCompare(nameB, 'vi', { numeric: true, sensitivity: 'base' });
+                    },
+                stop: () => { 
+                    // 🚀 BỎ COMMENT HÀM NÀY ĐỂ KÍCH HOẠT ÉP TỌA ĐỘ THỜI GIAN
+                    enforceChronologicalYPositions(); 
+                    
+                    cyArea.style.opacity = "1"; 
+                    cyInstance.resize(); 
+                    cyInstance.fit(null, 20);
+                } 
+            }).run();
+            
+            // -------------------------------------------------------------
+            // KHI CLICK BUNG NỞ/THU GỌN NODE BẢN VẼ TKTC
+            // -------------------------------------------------------------
             cyInstance.on('tap', 'node#branch_goc', function(evt) {
                 const node = evt.target;
                 const isCollapsed = node.data('collapsed');
-                
+
+                // 🚀 1. LƯU TỌA ĐỘ NODE VÀ THÔNG SỐ CAMERA HIỆN TẠI (TRƯỚC KHI BAY)
+                cyInstance.nodes().forEach(n => {
+                    n.scratch('startPos', { ...n.position() });
+                });
+                const startZoom = cyInstance.zoom();
+                const startPan = { ...cyInstance.pan() };
+
                 if (isCollapsed) {
-                    // ĐANG GẬP -> BẤM ĐỂ MỞ
                     const hiddenElements = node.scratch('hiddenElements');
                     if (hiddenElements) {
-                        // Khôi phục lại các Node con lên bản đồ
                         cyInstance.add(hiddenElements);
+
+                        const parentPos = node.position();
+                        hiddenElements.forEach(el => {
+                            if (el.isNode()) {
+                                el.position({ x: parentPos.x, y: parentPos.y });
+                                el.scratch('startPos', { x: parentPos.x, y: parentPos.y });
+                            }
+                        });
                     }
                     node.data('collapsed', false);
                     node.data('label', node.data('originalLabel') + ' [ - ]');
                 } else {
-                    // ĐANG MỞ -> BẤM ĐỂ GẬP
-                    if (node.successors().length === 0) return; // Nhánh trống thì bỏ qua
-                    
+                    if (node.successors().length === 0) return;
+
                     node.data('collapsed', true);
                     node.data('label', node.data('originalLabel') + ' [ + ]');
-                    
-                    // Cất các Node con vào bộ nhớ tạm và gỡ khỏi bản đồ
+
                     node.scratch('hiddenElements', node.successors());
                     cyInstance.remove(node.successors());
-                    
-                    closeFileDetail(); // Đóng panel chi tiết nếu đang xem file thuộc nhánh này
+
+                    closeFileDetail();
                 }
-                
-                // Dàn lại Layout (Thuật toán sẽ tính toán lại kích thước và xếp siêu mượt)
-                cyInstance.layout({ name: 'dagre', rankDir: 'LR', nodeSep: 45, rankSep: 90, animate: true, animationDuration: 350, fit: true, padding: 20 }).run();
+
+                cyInstance.layout({ 
+                    name: 'dagre', 
+                    rankDir: 'LR', 
+                    nodeSep: 45, 
+                    rankSep: 90, 
+                    animate: false, 
+                    fit: false, 
+                    padding: 20,
+                    sort: (a, b) => {
+                        const getPri = (n) => {
+                            if (n.id() === 'root') return 1;
+                            if (['branch_goc', 'branch_update', 'branch_proposal'].includes(n.id())) return 2;
+                            if (n.data('isDate')) return 3;
+                            if (n.id().includes('_Thân') || n.id().includes('_Hầm')) return 4;
+                            if (n.data('isDept')) return 5;
+                            return 6;
+                        };
+                        const pA = getPri(a);
+                        const pB = getPri(b);
+                        if (pA !== pB) return pA - pB;
+                        
+                        if (pA === 2) { 
+                            const BRANCH_PRIORITY = { 'branch_proposal': 1, 'branch_update': 2, 'branch_goc': 3 };
+                            return (BRANCH_PRIORITY[a.id()] || 0) - (BRANCH_PRIORITY[b.id()] || 0);
+                        }
+                        
+                        const svA = a.data('sortValue') || 0;
+                        const svB = b.data('sortValue') || 0;
+                        if (svA !== svB) {
+                            return svB - svA; 
+                        }
+                        
+                        const nameA = a.data('fullName') || a.data('label') || "";
+                        const nameB = b.data('fullName') || b.data('label') || "";
+                        return nameA.localeCompare(nameB, 'vi', { numeric: true, sensitivity: 'base' });
+                    },
+                    stop: () => {
+                        // 1. TÍNH TOÁN NGẦM VÀ ÉP TỌA ĐỘ ĐÍCH THẲNG HÀNG
+                        enforceChronologicalYPositions(); 
+                        
+                        // 2. LƯU TỌA ĐỘ ĐÍCH CỦA TẤT CẢ CÁC NODE
+                        const endPositions = new Map();
+                        cyInstance.nodes().forEach(n => endPositions.set(n.id(), { ...n.position() }));
+
+                        // 🚀 3. ĐO ĐẠC KHUNG HÌNH (Lấy thông số Zoom & Pan lý tưởng để bao quát toàn bộ sơ đồ)
+                        cyInstance.fit(null, 20); // Ép fit ẩn (người dùng không thấy vì nó xảy ra trong 0ms)
+                        const targetZoom = cyInstance.zoom();
+                        const targetPan = { ...cyInstance.pan() };
+
+                        // 🚀 4. TRẢ CAMERA VÀ NODE VỀ VỊ TRÍ XUẤT PHÁT
+                        cyInstance.zoom(startZoom);
+                        cyInstance.pan(startPan);
+                        
+                        cyInstance.nodes().forEach(n => {
+                            const startPos = n.scratch('startPos');
+                            if (startPos) n.position(startPos);
+                        });
+
+                        // 🚀 5. BẮT ĐẦU HOẠT ẢNH: Camera lùi/tiến chuẩn xác đồng thời với các Node tủa ra
+                        cyInstance.nodes().forEach(n => {
+                            n.animate({
+                                position: endPositions.get(n.id()),
+                                duration: 350,
+                                easing: 'ease-out-cubic'
+                            });
+                        });
+                        
+                        // Camera di chuyển đồng nhịp
+                        cyInstance.animate({
+                            zoom: targetZoom,
+                            pan: targetPan,
+                            duration: 350,
+                            easing: 'ease-out-cubic'
+                        });
+                    }
+                }).run();
             });
 
             cyInstance.on('tap', 'node', (evt) => { if (evt.target.data('fileId')) updatePanelContent(evt.target.data()); });
@@ -422,7 +631,6 @@ function renderMindmap(projectCode) {
             cyInstance.on('mouseover', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'pointer');
             cyInstance.on('mouseout', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'default');
             
-            // Đổi trỏ chuột hình bàn tay báo hiệu nút này có thể bấm
             cyInstance.on('mouseover', 'node#branch_goc', () => document.getElementById('cy').style.cursor = 'pointer');
             cyInstance.on('mouseout', 'node#branch_goc', () => document.getElementById('cy').style.cursor = 'default');
             
@@ -438,11 +646,11 @@ function buildCytoscapeElements(data) {
     const GOLD = '#FFBA08', DEPT_COLORS = { 'STR': '#BCC6CC', 'ARC': '#50C878', 'MEP': '#CD7F32', 'KHÁC': GOLD };
     const DEPT_ORDER = { 'STR': 1, 'ARC': 2, 'MEP': 3, 'KHÁC': 4 };
 
-    // Nâng cấp addNode để lưu trữ thêm trường tên file gốc đầy đủ (fullName) dùng riêng cho Edit Panel
-    function addNode(id, label, parentId, nodeColor, fileId = null, url = null, isDept = false, isDate = false, type = null, fullName = null) {
+    // Nâng cấp addNode để lưu trữ thêm trường tên file gốc đầy đủ (fullName) và sortValue dùng định vị trực quan
+    function addNode(id, label, parentId, nodeColor, fileId = null, url = null, isDept = false, isDate = false, type = null, fullName = null, sortValue = 0) {
         if (!addedNodes.has(id)) {
             elements.push({ 
-                data: { id, label, color: nodeColor, fileId, url, isDept, isDate, type, fullName },
+                data: { id, label, color: nodeColor, fileId, url, isDept, isDate, type, fullName, sortValue },
                 selectable: !!fileId 
             });
             addedNodes.add(id);
@@ -460,16 +668,29 @@ function buildCytoscapeElements(data) {
         }
     }
 
-    addNode('root', data.projectCode.toUpperCase(), null, GOLD); 
-    addNode('branch_goc', 'BẢN VẼ TKTC', 'root', GOLD);
-    addNode('branch_update', 'BẢN VẼ CẬP NHẬT', 'root', GOLD);
-    addNode('branch_proposal', 'PHIẾU ĐỀ XUẤT', 'root', GOLD);
+    addNode('root', data.projectCode.toUpperCase(), null, GOLD, null, null, false, false, null, null, 0); 
+    addNode('branch_goc', 'BẢN VẼ TKTC', 'root', GOLD, null, null, false, false, null, null, 0);
+    addNode('branch_update', 'BẢN VẼ CẬP NHẬT', 'root', GOLD, null, null, false, false, null, null, 0);
+    addNode('branch_proposal', 'PHIẾU ĐỀ XUẤT', 'root', GOLD, null, null, false, false, null, null, 0);
 
     if(data.files) {
+        // Bản đồ phân hạng ưu tiên cứng mục mẹ từ trên xuống (PROPOSAL -> UPDATE -> ORIGINAL)
+        const TYPE_PRIORITY = { 'PROPOSAL': 1, 'UPDATE': 2, 'ORIGINAL': 3 };
+        
         data.files.sort((a, b) => {
-            if (a.type !== b.type) return (a.type === 'ORIGINAL' ? -1 : 1);
-            if (a.sortValue !== b.sortValue) return a.sortValue - b.sortValue;
-            return (DEPT_ORDER[a.dept.toUpperCase()] || 4) - (DEPT_ORDER[b.dept.toUpperCase()] || 4);
+            const pA = TYPE_PRIORITY[a.type] || 4;
+            const pB = TYPE_PRIORITY[b.type] || 4;
+            if (pA !== pB) return pA - pB; // Ưu tiên xếp nhánh mẹ trước
+            
+            // 🚀 SỬA TẠI ĐÂY: Sắp xếp theo sortValue giảm dần (Mới nhất đứng trước)
+            const svA = a.sortValue || 0;
+            const svB = b.sortValue || 0;
+            if (svA !== svB) {
+                return svB - svA;
+            }
+            
+            // Nếu cùng một ngày, xếp theo tên A-Z
+            return a.fileName.localeCompare(b.fileName, 'vi', { numeric: true, sensitivity: 'base' });
         });
 
         const seenFiles = new Set();
@@ -495,7 +716,7 @@ function buildCytoscapeElements(data) {
             
             if (f.type === 'ORIGINAL') {
                 const dNode = 'date_goc_' + dateId;
-                addNode(dNode, f.dateLabel || "--/--/----", 'branch_goc', GOLD, null, null, false, true);
+                addNode(dNode, f.dateLabel || "--/--/----", 'branch_goc', GOLD, null, null, false, true, null, null, f.sortValue);
                 
                 if (f.branch === 'Chung') {
                     const sNodeThân = dNode + '_Thân', deptIdThân = sNodeThân + '_' + f.dept;
@@ -505,14 +726,13 @@ function buildCytoscapeElements(data) {
                     if (seenFiles.has(dupKey)) return;
                     seenFiles.add(dupKey);
 
-                    addNode(sNodeThân, 'THÂN', dNode, GOLD);
-                    addNode(deptIdThân, f.dept.toUpperCase(), sNodeThân, deptColor, null, null, true);
+                    addNode(sNodeThân, 'THÂN', dNode, GOLD, null, null, false, false, null, null, f.sortValue);
+                    addNode(deptIdThân, f.dept.toUpperCase(), sNodeThân, deptColor, null, null, true, false, null, null, f.sortValue);
 
-                    addNode(sNodeHầm, 'HẦM', dNode, GOLD);
-                    addNode(deptIdHầm, f.dept.toUpperCase(), sNodeHầm, deptColor, null, null, true);
+                    addNode(sNodeHầm, 'HẦM', dNode, GOLD, null, null, false, false, null, null, f.sortValue);
+                    addNode(deptIdHầm, f.dept.toUpperCase(), sNodeHầm, deptColor, null, null, true, false, null, null, f.sortValue);
 
-                    // Truyền f.fileName (tên file gốc nguyên bản) vào tham số cuối cùng của addNode
-                    addNode(f.fileId, smartName, null, deptColor, f.fileId, f.url, false, false, f.type, f.fileName);
+                    addNode(f.fileId, smartName, null, deptColor, f.fileId, f.url, false, false, f.type, f.fileName, f.sortValue);
 
                     elements.push({ data: { source: deptIdThân, target: f.fileId, color: deptColor, arrowShape: 'triangle' }, selectable: false });
                     elements.push({ data: { source: deptIdHầm, target: f.fileId, color: deptColor, arrowShape: 'triangle' }, selectable: false });
@@ -523,11 +743,10 @@ function buildCytoscapeElements(data) {
                     if (seenFiles.has(dupKey)) return;
                     seenFiles.add(dupKey);
 
-                    addNode(sNode, f.branch.toUpperCase(), dNode, GOLD);
-                    addNode(deptId, f.dept.toUpperCase(), sNode, deptColor, null, null, true);
+                    addNode(sNode, f.branch.toUpperCase(), dNode, GOLD, null, null, false, false, null, null, f.sortValue);
+                    addNode(deptId, f.dept.toUpperCase(), sNode, deptColor, null, null, true, false, null, null, f.sortValue);
                     
-                    // Truyền f.fileName (tên file gốc nguyên bản) vào tham số cuối cùng của addNode
-                    addNode(f.fileId, smartName, deptId, deptColor, f.fileId, f.url, false, false, f.type, f.fileName);
+                    addNode(f.fileId, smartName, deptId, deptColor, f.fileId, f.url, false, false, f.type, f.fileName, f.sortValue);
                 }
             } else {
                 const bParent = f.type === 'UPDATE' ? 'branch_update' : 'branch_proposal';
@@ -537,10 +756,9 @@ function buildCytoscapeElements(data) {
                 if (seenFiles.has(dupKey)) return;
                 seenFiles.add(dupKey);
 
-                addNode(dNode, f.dateLabel || "--/--/----", bParent, GOLD, null, null, false, true);
+                addNode(dNode, f.dateLabel || "--/--/----", bParent, GOLD, null, null, false, true, null, null, f.sortValue);
                 
-                // Truyền f.fileName (tên file gốc nguyên bản) vào tham số cuối cùng của addNode
-                addNode(f.fileId, smartName, dNode, deptColor, f.fileId, f.url, false, false, f.type, f.fileName);
+                addNode(f.fileId, smartName, dNode, deptColor, f.fileId, f.url, false, false, f.type, f.fileName, f.sortValue);
             }
         });
     }
@@ -1018,7 +1236,6 @@ async function startDrawingQueueUpload(event) {
     
     if (!stateQueue || !stateUploading || !statusText || !progressBar) return;
     
-    // 🚀 BƯỚC 1: KHÓA CHỐNG BẤM NHANH (Đợi tiến trình đối chiếu ngầm Drive hoàn tất)
     let isCheckingDuplicates = false;
     for (let f of drawingUploadQueue) {
         const parts = f.name.split("_");
@@ -1036,7 +1253,6 @@ async function startDrawingQueueUpload(event) {
         return;
     }
 
-    // 🚀 BƯỚC 2: KIỂM TRA HÀNG LOẠT VỚI HÀM CHUẨN HÓA (ĐỊNH DẠNG TÊN & NGÀY THÁNG)
     let hasInvalidFile = false;
     for (let f of drawingUploadQueue) {
         const { isValid } = validateDrawingFilename(f.name);
@@ -1051,7 +1267,6 @@ async function startDrawingQueueUpload(event) {
         return;
     }
     
-    // 🚀 BƯỚC 3: KIỂM TRA CỨNG TRÙNG LẶP THỰC TẾ TRÊN DRIVE DỰ ÁN (KHÔNG CHO PHÉP UP FILE TRÙNG)
     let hasDuplicateFile = false;
     for (let f of drawingUploadQueue) {
         if (checkIsDuplicateOnDrive(f.name)) {
@@ -1065,7 +1280,6 @@ async function startDrawingQueueUpload(event) {
         return;
     }
     
-    // 🚀 BƯỚC 4: TIẾN HÀNH TẢI LÊN NẾU TẤT CẢ HỢP LỆ
     isUploading_Drawing = true;
     stateQueue.style.display = "none";
     stateUploading.style.display = "flex";
@@ -1126,23 +1340,43 @@ async function startDrawingQueueUpload(event) {
             renderDrawingQueueUI();
         }
         
-        statusText.textContent = "COMPLETE!";
+        statusText.textContent = "SAVING TO DATABASE...";
         progressBar.style.width = "100%";
-        showToast_PL(`🚀 Đã tải lên toàn bộ bản vẽ!`, "success");
+        
+        // 🚀 1. Bóc tách danh sách mã dự án duy nhất từ các file vừa tải lên
+        const uploadedProjectCodes = [...new Set(filesToUpload.map(f => {
+            const parts = f.name.split("_");
+            return parts.length >= 2 ? parts[1].trim().toUpperCase() : "";
+        }).filter(Boolean))];
+
+        // 🚀 2. Tự động đồng bộ cấu trúc vào Sheet Drawing_Log cho tất cả dự án có file vừa up
+        for (const projCode of uploadedProjectCodes) {
+            await callBackend("syncDrawingsToSheet_Backend", projCode);
+        }
+        
+        showToast_PL(`🚀 Đã tải lên thành công!`, "success");
         
         drawingUploadQueue = [];
         if (fileInput) fileInput.value = ""; 
-        isUploading_Drawing = false; // Tắt cờ trạng thái trước khi renderDrawingQueueUI để khôi phục bảng rỗng về đúng vị trí
+        isUploading_Drawing = false;
         renderDrawingQueueUI();
         
-        if (selectedProjectDrawing) {
-            renderMindmap(selectedProjectDrawing);
+        // 🚀 3. Tự động chuyển vùng chọn và hiển thị ngay tức thì lên Mindmap
+        const targetProj = selectedProjectDrawing || uploadedProjectCodes[0];
+        if (targetProj) {
+            selectedProjectDrawing = targetProj;
+            const projInput = document.getElementById("drawing-project-search");
+            if (projInput) projInput.value = targetProj;
+            
+            // Xóa rỗng cache trạng thái rỗng và hiển thị sơ đồ Mindmap
+            document.getElementById('dp-empty-state').style.display = 'none';
+            renderMindmap(targetProj);
         }
         
     } catch (e) {
         console.error("Lỗi tải tệp phân mảnh:", e);
         alert(e.message || e);
-        isUploading_Drawing = false; // Tắt cờ trạng thái lỗi để khôi phục bảng hàng chờ hiển thị lại
+        isUploading_Drawing = false;
         stateUploading.style.display = "none";
         stateQueue.style.display = "flex";
         renderDrawingQueueUI(); 

@@ -8,19 +8,52 @@ const EXPORT_FOLDER_ID = "1pyq3zmQHligiYxr2MqvEr9aijByqqkhB";
 var GLOBAL_STAFF_NAME = "UNKNOWN";
 var GLOBAL_STAFF_ROLE = "USER"; // Mặc định quyền của phiên làm việc là USER
 
+
+// --- CẤU HÌNH KHÓA TRUYỀN TIN THỜI GIAN THỰC ABLY ---
+const ABLY_API_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8RU";
+
 /**
- * Xử lý xác thực Token qua kiến trúc Hybrid (Bóc tách phân quyền Name|Role)
+ * Xử lý xác thực Token qua kiến trúc 3 tầng (Cache -> Properties -> Sheet User_Registry)
  */
 function authenticateAndGetName(token) {
   if (!token) throw new Error("UNAUTHORIZED: Phiên làm việc không tồn tại, vui lòng đăng nhập!");
   
+  // TẦNG 1: CacheService (Siêu nhanh 5ms)
   const cache = CacheService.getScriptCache();
   let cachedVal = cache.get(token);
   
+  // TẦNG 2: PropertiesService (Bền vững 50ms)
   if (!cachedVal) {
     const props = PropertiesService.getScriptProperties();
     cachedVal = props.getProperty(token);
     if (cachedVal) cache.put(token, cachedVal, 21600);
+  }
+  
+  // TẦNG 3: Phục hồi phiên vĩnh viễn từ Cột F Sheet User_Registry
+  if (!cachedVal) {
+    try {
+      const ss = SpreadsheetApp.openById(SHEET_ID);
+      const sheet = ss.getSheetByName("User_Registry");
+      if (sheet) {
+        const data = sheet.getDataRange().getValues();
+        for (let i = 1; i < data.length; i++) {
+          const uToken = data[i][5]?.toString().trim(); // Cột F (Cột 6) lưu Token
+          const uStatus = data[i][3]?.toString().toUpperCase().trim();
+          if (uToken === token && uStatus === "ACTIVE") {
+            const uName = data[i][1]?.toString().toUpperCase().trim();
+            const uRole = data[i][4]?.toString().toUpperCase().trim() || "USER";
+            cachedVal = uName + "|" + uRole;
+            
+            // Nạp ngược lại vào Cache và Properties để các request sau phản hồi tức thì
+            PropertiesService.getScriptProperties().setProperty(token, cachedVal);
+            cache.put(token, cachedVal, 21600);
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Lỗi phục hồi phiên từ Sheet: " + e.message);
+    }
   }
   
   if (cachedVal && cachedVal.includes("|")) {
@@ -33,11 +66,8 @@ function authenticateAndGetName(token) {
   throw new Error("UNAUTHORIZED: Phiên làm việc đã hết hạn hoặc bị thu hồi, vui lòng đăng nhập lại!");
 }
 
-// --- CẤU HÌNH KHÓA TRUYỀN TIN THỜI GIAN THỰC ABLY ---
-const ABLY_API_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8RU";
-
 /**
- * Xác thực thông tin đăng nhập từ Sheet "User_Registry"
+ * Xác thực thông tin đăng nhập từ Sheet "User_Registry" (Lưu Token bền vững vào Cột F)
  */
 function loginUser(mail, password) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -50,6 +80,7 @@ function loginUser(mail, password) {
   let storedPassword = "";
   let status = "PENDING";
   let role = "USER"; 
+  let matchedRow = -1;
   
   for (let i = 1; i < data.length; i++) {
     if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
@@ -57,6 +88,7 @@ function loginUser(mail, password) {
       storedPassword = data[i][2]?.toString().trim(); // Cột C (Password)
       status = data[i][3] ? data[i][3].toString().toUpperCase().trim() : "PENDING"; // Cột D (Status)
       role = data[i][4] ? data[i][4].toString().toUpperCase().trim() : "USER"; // Cột E (Role)
+      matchedRow = i + 1;
       break;
     }
   }
@@ -79,6 +111,12 @@ function loginUser(mail, password) {
   
   PropertiesService.getScriptProperties().setProperty(token, tokenValue);
   CacheService.getScriptCache().put(token, tokenValue, 21600);
+  
+  // Lưu token vào Cột F (Cột 6) trên Sheet User_Registry
+  if (matchedRow > 0) {
+    sheet.getRange(matchedRow, 6).setValue(token);
+    SpreadsheetApp.flush(); // Bắt buộc flush để hoàn tất ghi Sheet và phản hồi HTTP 200 ngay tức khắc
+  }
   
   return { success: true, token: token, name: matchedName, role: role }; 
 }
@@ -374,6 +412,7 @@ function doPost(e) {
     "getDrawingUploadSession_Backend": () => getDrawingUploadSession_Backend(payload),
     "renameAndRouteDrawingFile_Backend": () => renameAndRouteDrawingFile_Backend(payload),
     "deleteDrawingFileAndTasks_Backend": () => deleteDrawingFileAndTasks_Backend(payload),
+    "syncDrawingsToSheet_Backend": () => syncDrawingsToSheet_Backend(payload),
     "rejectUser_InApp": () => rejectUser_InApp(payload)    
   };
 

@@ -29,40 +29,272 @@ function checkAvailableModels() {
 const GEMINI_API_KEY = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
 
 /**
- * 1. LẤY DỮ LIỆU MINDMAP TỪ FOLDER DỰ ÁN
+ * 1. LẤY DỮ LIỆU MINDMAP TỪ GOOGLE SHEET (Nếu chưa có dữ liệu, tự động quét Drive lần đầu)
  */
 function getMindmapData(projectCode) {
   try {
-    const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
-    const projectFolders = masterFolder.getFoldersByName(projectCode);
-    if (!projectFolders.hasNext()) return { projectCode: projectCode, files: [] };
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sheet = ss.getSheetByName("Drawing_Log") || ss.insertSheet("Drawing_Log");
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(["Mã dự án", "File_ID", "File_Name", "Date_Label", "Sort_Value", "Type", "Branch", "Dept", "URL"]);
+    }
     
-    const projectFolder = projectFolders.next();
-    const allFiles = [];
-    const subFolders = projectFolder.getFolders();
-
-    while (subFolders.hasNext()) {
-      const folder = subFolders.next();
-      const folderName = folder.getName().toLowerCase();
-
-      if (folderName.includes("bộ môn") || folderName.includes("bản vẽ 3") || folderName.includes("bvtktc")) {
-        const branchFolders = folder.getFolders();
-        while (branchFolders.hasNext()) {
-          const bFolder = branchFolders.next();
-          const bName = bFolder.getName().toLowerCase();
-          const branchTag = bName.includes("hầm") ? "Hầm" : "Thân";
-          scanFilesForMindmap(bFolder, allFiles, "ORIGINAL", branchTag);
-        }
-      } 
-      else if (folderName.includes("cập nhật") || folderName.includes("update")) {
-        scanFilesForMindmap(folder, allFiles, "UPDATE", "");
-      }
-      else if (folderName.includes("đề xuất") || folderName.includes("proposal")) {
-        scanFilesForMindmap(folder, allFiles, "PROPOSAL", "");
+    // Sử dụng getDisplayValues() thay vì getValues() để giữ nguyên định dạng văn bản thuần dd/mm/yyyy của ô ngày tháng
+    const data = sheet.getDataRange().getDisplayValues();
+    const projectFiles = [];
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0].toString().toUpperCase() === projectCode.toUpperCase()) {
+        projectFiles.push({
+          fileId: data[i][1],
+          fileName: data[i][2],
+          dateLabel: data[i][3], // Đảm bảo chuỗi text dạng "dd/mm/yyyy" nguyên bản
+          sortValue: parseInt(data[i][4]) || 0,
+          type: data[i][5],
+          branch: data[i][6],
+          dept: data[i][7],
+          url: data[i][8]
+        });
       }
     }
+    
+    // Nếu chưa có dữ liệu lưu trên Sheet, tự động đồng bộ từ Drive sang lần đầu tiên
+    if (projectFiles.length === 0) {
+      return syncDrawingsToSheet_Backend(projectCode);
+    }
+    
+    // Sắp xếp theo tên file để đồng bộ hoàn toàn với thứ tự hiển thị tự nhiên của Drive
+    projectFiles.sort((a, b) => a.fileName.localeCompare(b.fileName, 'vi', { numeric: true, sensitivity: 'base' }));
+    
+    return { projectCode: projectCode, files: projectFiles };
+  } catch (e) { 
+    throw new Error("Lỗi đọc dữ liệu Bản vẽ từ Sheet: " + e.message); 
+  }
+}
+
+/**
+ * HÀM ĐỒNG BỘ: Quét Drive vật lý và ghi cấu trúc chuẩn hóa vào Sheet Drawing_Log
+ */
+function syncDrawingsToSheet_Backend(projectCode) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    
+    // 🚀 BẢO VỆ CHỐNG TRỄ PHÂN TÁN: Dừng nghỉ 1.2s để máy chủ Drive kịp lập chỉ mục file vừa upload
+    Utilities.sleep(1200);
+    
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sheet = ss.getSheetByName("Drawing_Log") || ss.insertSheet("Drawing_Log");
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(["Mã dự án", "File_ID", "File_Name", "Date_Label", "Sort_Value", "Type", "Branch", "Dept", "URL"]);
+    }
+    
+    const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
+    const projectFolders = masterFolder.getFoldersByName(projectCode);
+    const allFiles = [];
+    
+    if (projectFolders.hasNext()) {
+      const projectFolder = projectFolders.next();
+      const subFolders = projectFolder.getFolders();
+
+      while (subFolders.hasNext()) {
+        const folder = subFolders.next();
+        const folderName = folder.getName().toLowerCase();
+
+        if (folderName.includes("bộ môn") || folderName.includes("bản vẽ 3") || folderName.includes("bvtktc")) {
+          const branchFolders = folder.getFolders();
+          while (branchFolders.hasNext()) {
+            const bFolder = branchFolders.next();
+            const bName = bFolder.getName().toLowerCase();
+            const branchTag = bName.includes("hầm") ? "Hầm" : "Thân";
+            scanFilesForMindmap(bFolder, allFiles, "ORIGINAL", branchTag);
+          }
+        } 
+        else if (folderName.includes("cập nhật") || folderName.includes("update")) {
+          scanFilesForMindmap(folder, allFiles, "UPDATE", "");
+        }
+        else if (folderName.includes("đề xuất") || folderName.includes("proposal")) {
+          scanFilesForMindmap(folder, allFiles, "PROPOSAL", "");
+        }
+      }
+    }
+    
+    // Xóa dữ liệu cũ của dự án này trong Sheet
+    const data = sheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (data[i][0].toString().toUpperCase() === projectCode.toUpperCase()) {
+        sheet.deleteRow(i + 1);
+      }
+    }
+    
+    // Ghi mảng file vừa quét mới vào Sheet
+    if (allFiles.length > 0) {
+      allFiles.sort((a, b) => a.fileName.localeCompare(b.fileName, 'vi', { numeric: true, sensitivity: 'base' }));
+      const rowsToInsert = allFiles.map(f => [
+        projectCode.toUpperCase(),
+        f.fileId,
+        f.fileName,
+        f.dateLabel,
+        f.sortValue,
+        f.type,
+        f.branch,
+        f.dept,
+        f.url
+      ]);
+      sheet.getRange(sheet.getLastRow() + 1, 1, rowsToInsert.length, 9).setValues(rowsToInsert);
+    }
+    
+    SpreadsheetApp.flush();
     return { projectCode: projectCode, files: allFiles };
-  } catch (e) { throw new Error("Drive System Error: " + e.message); }
+  } catch (e) {
+    throw new Error("Lỗi đồng bộ cấu trúc Drive sang Sheet: " + e.message);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 6. SỬA TÊN BẢN VẼ VÀ TỰ ĐỘNG TÁI ĐỊNH TUYẾN TRÊN DRIVE & CẬP NHẬT SHEET
+ */
+function renameAndRouteDrawingFile_Backend(payload) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+    
+    const fileId = payload.fileId;
+    const newFileName = (payload.newFileName || "").normalize("NFC");
+    const lowerName = newFileName.toLowerCase();
+    
+    const file = DriveApp.getFileById(fileId);
+    file.setName(newFileName);
+    
+    const parts = newFileName.split("_");
+    if (parts.length >= 3) {
+      const projectCode = parts[1].trim().toUpperCase();
+      let type = "";
+      let branch = "";
+      
+      const cleanName = removeVietnameseDiacritics(newFileName);
+      const hasHầm = cleanName.includes("ham") || cleanName.includes("hầm");
+      const hasThân = cleanName.includes("than") || cleanName.includes("thân");
+      
+      if (lowerName.includes("tkbvtc") || lowerName.includes("bvtktc") || lowerName.includes("bộ môn")) {
+        type = "ORIGINAL";
+        if ((hasHầm && hasThân) || (!hasHầm && !hasThân)) branch = "Chung";
+        else if (hasHầm) branch = "Hầm";
+        else branch = "Thân";
+      } 
+      else if (lowerName.includes("cập nhật") || lowerName.includes("update")) type = "UPDATE";
+      else if (lowerName.includes("pđx") || lowerName.includes("pdx") || lowerName.includes("đề xuất") || lowerName.includes("proposal")) type = "PROPOSAL";
+      
+      if (type) {
+        const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
+        const projectFolders = masterFolder.getFoldersByName(projectCode);
+        if (projectFolders.hasNext()) {
+          const projFolder = projectFolders.next();
+          let targetFolder = null;
+          let originalParentFolder = null;
+          
+          const subFolders = projFolder.getFolders();
+          while (subFolders.hasNext()) {
+            const sub = subFolders.next();
+            const subName = sub.getName().normalize("NFC").toLowerCase();
+            
+            if (type === "PROPOSAL" && (subName.includes("đề xuất") || subName.includes("proposal"))) { targetFolder = sub; break; }
+            else if (type === "UPDATE" && (subName.includes("cập nhật") || subName.includes("update"))) { targetFolder = sub; break; }
+            else if (subName.includes("bộ môn") || subName.includes("bản vẽ 3") || subName.includes("bvtktc")) { originalParentFolder = sub; }
+          }
+          
+          if (!targetFolder) {
+            if (type === "PROPOSAL") targetFolder = projFolder.createFolder("Đề xuất");
+            else if (type === "UPDATE") targetFolder = projFolder.createFolder("Cập nhật");
+            else if (type === "ORIGINAL") {
+              if (!originalParentFolder) originalParentFolder = projFolder.createFolder("Bộ môn");
+              
+              const branchFolders = originalParentFolder.getFolders();
+              const targetBranchLower = branch.toLowerCase();
+              while (branchFolders.hasNext()) {
+                const bSub = branchFolders.next();
+                if (bSub.getName().normalize("NFC").toLowerCase().includes(targetBranchLower)) { targetFolder = bSub; break; }
+              }
+              if (!targetFolder) {
+                targetFolder = originalParentFolder.createFolder("Phần " + branch);
+              }
+            }
+          }
+          
+          if (targetFolder) {
+            const parent = file.getParents().next();
+            if (parent.getId() !== targetFolder.getId()) {
+              file.moveTo(targetFolder);
+            }
+          }
+        }
+      }
+      
+      // Đồng bộ lại Sheet ngay lập tức
+      syncDrawingsToSheet_Backend(projectCode);
+    }
+    return true;
+  } catch (e) {
+    throw new Error("Lỗi sửa tên bản vẽ: " + e.message);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * XÓA FILE DRIVE VÀ DỌN SẠCH TASK LIÊN QUAN TRÊN SHEET TASK_LOG & DRAWING_LOG
+ */
+function deleteDrawingFileAndTasks_Backend(fileId) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+    
+    let projectCode = "";
+    try {
+      const file = DriveApp.getFileById(fileId);
+      const name = file.getName();
+      const parts = name.split("_");
+      if (parts.length >= 2) {
+        projectCode = parts[1].trim().toUpperCase();
+      }
+      file.setTrashed(true);
+    } catch (driveError) {
+      console.warn("Không tìm thấy file trên Drive hoặc đã bị xóa trước đó: " + driveError.message);
+    }
+    
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    
+    // 1. Dọn dẹp Task_Log
+    const taskSheet = ss.getSheetByName("Task_Log");
+    if (taskSheet) {
+      const data = taskSheet.getDataRange().getValues();
+      for (let i = data.length - 1; i >= 1; i--) {
+        if (data[i][2] === fileId) {
+          taskSheet.deleteRow(i + 1);
+        }
+      }
+    }
+    
+    // 2. Dọn dẹp Drawing_Log
+    const drawSheet = ss.getSheetByName("Drawing_Log");
+    if (drawSheet) {
+      const data = drawSheet.getDataRange().getValues();
+      for (let i = data.length - 1; i >= 1; i--) {
+        if (data[i][1] === fileId) {
+          drawSheet.deleteRow(i + 1);
+        }
+      }
+    }
+    
+    SpreadsheetApp.flush();
+    return true;
+  } catch (e) {
+    throw new Error("Lỗi xử lý xóa bản vẽ từ máy chủ: " + e.message);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function scanFilesForMindmap(folder, fileArray, type, branch) {
@@ -488,133 +720,3 @@ function removeVietnameseDiacritics(str) {
             .trim();
 }
 
-/**
- * 6. SỬA TÊN BẢN VẼ VÀ TỰ ĐỘNG DI CHUYỂN THƯ MỤC NẾU THAY ĐỔI PHÂN NHÁNH
- */
-function renameAndRouteDrawingFile_Backend(payload) {
-  const lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(20000); // Khóa luồng an toàn tránh tranh chấp ghi đè
-    
-    const fileId = payload.fileId;
-    const newFileName = (payload.newFileName || "").normalize("NFC");
-    const lowerName = newFileName.toLowerCase();
-    
-    const file = DriveApp.getFileById(fileId);
-    
-    // Đổi tên tệp vật lý trên Drive chính chủ
-    file.setName(newFileName);
-    
-    // Phân tích tên tệp mới để tự động dọn dẹp và di chuyển thư mục con phù hợp
-    const parts = newFileName.split("_");
-    if (parts.length >= 3) {
-      const projectCode = parts[1].trim().toUpperCase();
-      let type = "";
-      let branch = "";
-      
-      const cleanName = removeVietnameseDiacritics(newFileName);
-      const hasHầm = cleanName.includes("ham") || cleanName.includes("hầm");
-      const hasThân = cleanName.includes("than") || cleanName.includes("thân");
-      
-      if (lowerName.includes("tkbvtc") || lowerName.includes("bvtktc") || lowerName.includes("bộ môn")) {
-        type = "ORIGINAL";
-        if ((hasHầm && hasThân) || (!hasHầm && !hasThân)) branch = "Chung";
-        else if (hasHầm) branch = "Hầm";
-        else branch = "Thân";
-      } 
-      else if (lowerName.includes("cập nhật") || lowerName.includes("update")) type = "UPDATE";
-      else if (lowerName.includes("pđx") || lowerName.includes("pdx") || lowerName.includes("đề xuất") || lowerName.includes("proposal")) type = "PROPOSAL";
-      
-      if (type) {
-        const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
-        const projectFolders = masterFolder.getFoldersByName(projectCode);
-        if (projectFolders.hasNext()) {
-          const projFolder = projectFolders.next();
-          let targetFolder = null;
-          let originalParentFolder = null;
-          
-          const subFolders = projFolder.getFolders();
-          while (subFolders.hasNext()) {
-            const sub = subFolders.next();
-            const subName = sub.getName().normalize("NFC").toLowerCase();
-            
-            if (type === "PROPOSAL" && (subName.includes("đề xuất") || subName.includes("proposal"))) { targetFolder = sub; break; }
-            else if (type === "UPDATE" && (subName.includes("cập nhật") || subName.includes("update"))) { targetFolder = sub; break; }
-            else if (subName.includes("bộ môn") || subName.includes("bản vẽ 3") || subName.includes("bvtktc")) { originalParentFolder = sub; }
-          }
-          
-          if (!targetFolder) {
-            if (type === "PROPOSAL") targetFolder = projFolder.createFolder("Đề xuất");
-            else if (type === "UPDATE") targetFolder = projFolder.createFolder("Cập nhật");
-            else if (type === "ORIGINAL") {
-              if (!originalParentFolder) originalParentFolder = projFolder.createFolder("Bộ môn");
-              
-              const branchFolders = originalParentFolder.getFolders();
-              const targetBranchLower = branch.toLowerCase();
-              while (branchFolders.hasNext()) {
-                const bSub = branchFolders.next();
-                if (bSub.getName().normalize("NFC").toLowerCase().includes(targetBranchLower)) { targetFolder = bSub; break; }
-              }
-              if (!targetFolder) {
-                targetFolder = originalParentFolder.createFolder("Phần " + branch);
-              }
-            }
-          }
-          
-          // Di chuyển file ngầm sang thư mục đích mới tương thích
-          if (targetFolder) {
-            const parent = file.getParents().next();
-            if (parent.getId() !== targetFolder.getId()) {
-              file.moveTo(targetFolder); // Di chuyển tệp tin cực kỳ nhanh bằng V8 engine chính chủ
-            }
-          }
-        }
-      }
-    }
-    return true;
-  } catch (e) {
-    throw new Error("Lỗi sửa tên bản vẽ: " + e.message);
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/**
- * BACKEND: XÓA FILE BẢN VẼ TRÊN DRIVE VÀ DỌN DẸP SẠCH CÁC TASK LIÊN QUAN TRONG SHEET "TASK_LOG"
- */
-function deleteDrawingFileAndTasks_Backend(fileId) {
-  const lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(20000); // Khóa luồng tránh tranh chấp dòng ghi sheet
-    
-    // 1. Thực hiện đưa file trên Google Drive vào thùng rác
-    try {
-      const file = DriveApp.getFileById(fileId);
-      file.setTrashed(true);
-    } catch (driveError) {
-      // Trường hợp file đã bị xóa tay trên Drive trước đó, vẫn tiếp tục để dọn dẹp Task trong sheet
-      console.warn("Không tìm thấy file trên Drive hoặc file đã bị xóa: " + driveError.message);
-    }
-    
-    // 2. Thực hiện quét dọn dẹp các hàng công việc liên quan trong sheet "Task_Log"
-    const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sheet = ss.getSheetByName("Task_Log");
-    if (sheet) {
-      const data = sheet.getDataRange().getValues();
-      
-      // Duyệt từ dưới lên trên (để tránh bị lệch chỉ số index dòng khi thực hiện deleteRow)
-      for (let i = data.length - 1; i >= 1; i--) {
-        if (data[i][2] === fileId) { // Cột index 2 tương ứng với File_ID trong bảng Task_Log
-          sheet.deleteRow(i + 1);
-        }
-      }
-    }
-    
-    SpreadsheetApp.flush();
-    return true;
-  } catch (e) {
-    throw new Error("Lỗi xử lý xóa bản vẽ từ máy chủ: " + e.message);
-  } finally {
-    lock.releaseLock(); // Giải phóng khóa luồng
-  }
-}

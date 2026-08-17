@@ -298,31 +298,99 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0
 /**
  * Thực thi gọi API đính kèm bảo mật Token
  */
-async function callBackend(action, data = {}) {
+async function callBackend(action, data = {}, retries = 2) {
     const token = localStorage.getItem('bcons_session_token');
     
-    // Cho phép cả hành động đăng nhập (loginUser) và đăng ký (registerUser) bỏ qua màng lọc Token khi chưa đăng nhập
+    // Cho phép hành động login/register đi qua mà không cần token
     if (!token && action !== "loginUser" && action !== "registerUser") {
         showLoginUI();
         throw new Error("UNAUTHORIZED: Yêu cầu đăng nhập!");
     }
 
-    const resp = await fetch(GAS_API_URL, { 
-        method: 'POST', 
-        mode: 'cors', 
-        body: JSON.stringify({ action, data, token }) 
-    });
-    const res = await resp.json();
-    
-    if (res.status === "error") {
-        if (res.message.includes("UNAUTHORIZED")) {
-            localStorage.removeItem('bcons_session_token');
-            localStorage.removeItem('bcons_staff_identity');
-            showLoginUI();
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            const resp = await fetch(GAS_API_URL, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                redirect: 'follow', // Bắt buộc cho phép theo dõi mã chuyển hướng 302 của Google
+                body: JSON.stringify({ action, data, token }) 
+            });
+            
+            const rawText = await resp.text();
+            let res;
+            try {
+                res = JSON.parse(rawText);
+            } catch (jsonErr) {
+                throw new Error("Máy chủ Google đang khởi động lại hoặc trả về phản hồi không hợp lệ.");
+            }
+            
+            if (res.status === "error") {
+                if (res.message && res.message.includes("UNAUTHORIZED")) {
+                    localStorage.removeItem('bcons_session_token');
+                    localStorage.removeItem('bcons_staff_identity');
+                    showLoginUI();
+                }
+                throw new Error(res.message);
+            }
+            return res.data;
+            
+        } catch (err) {
+            const isUnauthorized = err.message && err.message.includes("UNAUTHORIZED");
+            // Nếu là lỗi hết hạn phiên thực sự hoặc đã hết 2 lần thử lại -> ném lỗi
+            if (isUnauthorized || attempt === retries) {
+                throw err;
+            }
+            // Nếu là lỗi nghẽn mạng/cold-start tạm thời -> dừng chờ 800ms rồi tự động thử lại
+            await new Promise(r => setTimeout(r, 800 * Math.pow(1.5, attempt)));
         }
-        throw new Error(res.message);
     }
-    return res.data;
+}
+
+/**
+ * Xử lý sự kiện nhấn nút SIGN IN (Đồng bộ tên và quyền lên Client)
+ */
+async function performLogin() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value.trim();
+    
+    if (!mail || !password) {
+        alert("Sếp vui lòng điền đầy đủ thông tin đăng nhập!");
+        return;
+    }
+
+    const loginBtn = document.getElementById('loginSubmitBtn') || document.querySelector('#loginOverlay .submit-button');
+    if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.textContent = "VERIFYING...";
+    }
+
+    try {
+        const res = await callBackend("loginUser", { mail, password });
+        if (res && res.token) {
+            localStorage.setItem('bcons_session_token', res.token);
+            localStorage.setItem('bcons_staff_identity', res.name);
+            localStorage.setItem('bcons_staff_role', res.role || "USER"); // Lưu quyền vĩnh viễn trên máy
+            
+            // Gán tên lên Header ngay lần đầu đăng nhập thành công
+            const displayEl = document.getElementById('staffNameDisplay');
+            if (displayEl) {
+                displayEl.textContent = res.name;
+            }
+            
+            document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
+            showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
+            
+            // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
+            loadSystemData();
+        }
+    } catch (err) {
+        alert(err.message || "Xác thực thất bại!");
+    } finally {
+        if (loginBtn) {
+            loginBtn.disabled = false;
+            loginBtn.textContent = "SIGN IN";
+        }
+    }
 }
 
 /**
@@ -768,49 +836,6 @@ function handleMobileSwipe() {
 
 // --- KHAI BÁO KEY KẾT NỐI ABLY PHÍA CLIENT (DÙNG CHUNG KHÓA Ở BƯỚC 2) ---
 const ABLY_CLIENT_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8RU";
-
-/**
- * Xử lý sự kiện nhấn nút SIGN IN (Đồng bộ tên và quyền lên Client)
- */
-async function performLogin() {
-    const mail = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value.trim();
-    
-    if (!mail || !password) {
-        alert("Sếp vui lòng điền đầy đủ thông tin đăng nhập!");
-        return;
-    }
-
-    const loginBtn = document.querySelector('#loginOverlay .submit-button');
-    loginBtn.disabled = true;
-    loginBtn.textContent = "VERIFYING...";
-
-    try {
-        const res = await callBackend("loginUser", { mail, password });
-        if (res && res.token) {
-            localStorage.setItem('bcons_session_token', res.token);
-            localStorage.setItem('bcons_staff_identity', res.name);
-            localStorage.setItem('bcons_staff_role', res.role || "USER"); // Lưu quyền vĩnh viễn trên máy
-            
-            // Gán tên lên Header ngay lần đầu đăng nhập thành công
-            const displayEl = document.getElementById('staffNameDisplay');
-            if (displayEl) {
-                displayEl.textContent = res.name;
-            }
-            
-            document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
-            showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
-            
-            // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
-            loadSystemData();
-        }
-    } catch (err) {
-        alert(err.message || "Xác thực thất bại!");
-    } finally {
-        loginBtn.disabled = false;
-        loginBtn.textContent = "SIGN IN";
-    }
-}
 
 /**
  * Trình dựng danh sách chờ duyệt (Chỉ hiện nút APPROVE/REJECT đối với quyền ADMIN)
