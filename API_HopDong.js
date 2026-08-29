@@ -60,7 +60,9 @@ function getLatestContractNumber_HD(targetYear) {
   if (lastRow < 3) return "00";
   const data = sheet.getRange(3, 5, lastRow - 2, 1).getValues(); 
   let maxStt = 0;
-  const regex = new RegExp("^(\\d+)\\/" + targetYear + "\\/HĐTCXD", "i");
+  
+  // Chỉ so khớp phần [Số_TT]/[Năm]/ bất kể loại hợp đồng phía sau (HĐTCXD, HĐDV, HĐMB, ...)
+  const regex = new RegExp("^(\\d+)\\/" + targetYear + "\\/", "i");
   for (let i = 0; i < data.length; i++) {
     const val = data[i][0].toString().trim();
     const match = val.match(regex);

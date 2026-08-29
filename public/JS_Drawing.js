@@ -284,73 +284,143 @@ function flashNode_Drawing(node) {
 /**
  * HÀM CƯỠNG CHẾ TỌA ĐỘ DỌC: Ép sơ đồ gióng thẳng hàng trục đứng chuẩn xác theo thời gian
  */
-function enforceChronologicalYPositions() {
+function enforceBidirectionalLayout() {
     if (!cyInstance) return;
 
-    const branchIds = ['branch_proposal', 'branch_update', 'branch_goc'];
+    const rootNode = cyInstance.getElementById('root');
+    if (rootNode.length === 0) return;
+    const rootPos = rootNode.position();
+    const Y_root = rootPos.y;
 
-    // 1. Lặp qua 3 nhánh mẹ để xếp lại thứ tự các ngày bên trong
-    branchIds.forEach(branchId => {
+    const branchProposal = cyInstance.getElementById('branch_proposal');
+    const branchGoc = cyInstance.getElementById('branch_goc');
+    const branchUpdate = cyInstance.getElementById('branch_update');
+
+    // ==========================================================
+    // 1. CỤM BÊN TRÁI: LẬT TRỤC X VÀ SẮP XẾP NGÀY NỘI BỘ
+    // ==========================================================
+    const leftBranchIds = ['branch_proposal', 'branch_goc'];
+    leftBranchIds.forEach(branchId => {
         const branch = cyInstance.getElementById(branchId);
         if (branch.length === 0) return;
 
-        const dateNodes = branch.outgoers('node').filter(n => n.data('isDate'));
-        if (dateNodes.length <= 1) return;
-
-        // Sắp xếp Mới nhất -> Cũ nhất
-        const sortedDateNodes = dateNodes.toArray().sort((a, b) => {
-            return (b.data('sortValue') || 0) - (a.data('sortValue') || 0);
+        const leftElements = branch.union(branch.successors());
+        leftElements.forEach(el => {
+            if (el.isNode()) {
+                const currentX = el.position('x');
+                if (currentX > rootPos.x) {
+                    const diffX = currentX - rootPos.x;
+                    el.position('x', rootPos.x - diffX);
+                }
+            }
         });
 
-        // Lấy tọa độ Y trên cùng của toàn bộ khối ngày này làm điểm bắt đầu
-        const allElements = dateNodes.union(dateNodes.successors());
-        let currentY = allElements.boundingBox().y1;
-
-        sortedDateNodes.forEach(dateNode => {
-            const cluster = dateNode.union(dateNode.successors());
-            const clusterBB = cluster.boundingBox();
-
-            const diffY = currentY - clusterBB.y1;
-
-            // Bế nguyên cụm dịch chuyển về đúng tọa độ Y
-            cluster.forEach(el => {
-                if (el.isNode()) {
-                    el.position('y', el.position('y') + diffY);
-                }
+        const dateNodes = branch.outgoers('node').filter(n => n.data('isDate'));
+        if (dateNodes.length > 1) {
+            const sortedDateNodes = dateNodes.toArray().sort((a, b) => {
+                return (b.data('sortValue') || 0) - (a.data('sortValue') || 0);
             });
 
-            // Tịnh tiến Y cho cụm tiếp theo (cộng thêm chiều cao cụm vừa xếp + 20px đệm)
-            currentY += clusterBB.h + 20; 
-        });
+            const allElements = dateNodes.union(dateNodes.successors());
+            let currentY = allElements.boundingBox().y1;
+
+            sortedDateNodes.forEach(dateNode => {
+                const cluster = dateNode.union(dateNode.successors());
+                const clusterBB = cluster.boundingBox();
+                const diffY = currentY - clusterBB.y1;
+
+                cluster.forEach(el => {
+                    if (el.isNode()) el.position('y', el.position('y') + diffY);
+                });
+                currentY += clusterBB.h + 20;
+            });
+        }
     });
 
-    // 2. Chỉnh lại khoảng cách giữa 3 nhánh mẹ để tránh đè nhau sau khi xếp lại
-    const branches = branchIds.map(id => cyInstance.getElementById(id)).filter(b => b.length > 0);
-    if (branches.length > 1) {
-        let mainY = branches[0].union(branches[0].successors()).boundingBox().y1;
+    // ==========================================================
+    // 2. CÂN ĐỐI CÁNH TRÁI: ROOT NẰM CHÍNH GIỮA ĐỀ XUẤT VÀ TKTC
+    // ==========================================================
+    if (branchProposal.length > 0 && branchGoc.length > 0) {
+        const propDates = branchProposal.outgoers('node').filter(n => n.data('isDate'));
+        const propCluster = propDates.length > 0 ? propDates.union(propDates.successors()) : branchProposal;
+        const propBB = propCluster.boundingBox();
 
-        branches.forEach(branch => {
-            const cluster = branch.union(branch.successors());
-            const clusterBB = cluster.boundingBox();
+        const gocDates = branchGoc.outgoers('node').filter(n => n.data('isDate'));
+        const gocCluster = gocDates.length > 0 ? gocDates.union(gocDates.successors()) : branchGoc;
+        const gocBB = gocCluster.boundingBox();
 
-            const diffY = mainY - clusterBB.y1;
+        const minCenterDist = Math.max(120, propBB.h / 2 + gocBB.h / 2 + 40);
+        const halfDist = minCenterDist / 2;
 
-            cluster.forEach(el => {
-                if (el.isNode()) {
-                    el.position('y', el.position('y') + diffY);
-                }
+        const targetPropY = Y_root - halfDist;
+        branchProposal.position('y', targetPropY);
+        if (propDates.length > 0) {
+            const diffY = targetPropY - (propBB.y1 + propBB.h / 2);
+            propCluster.forEach(el => { if (el.isNode()) el.position('y', el.position('y') + diffY); });
+        }
+
+        const targetGocY = Y_root + halfDist;
+        branchGoc.position('y', targetGocY);
+        if (gocDates.length > 0) {
+            const diffY = targetGocY - (gocBB.y1 + gocBB.h / 2);
+            gocCluster.forEach(el => { if (el.isNode()) el.position('y', el.position('y') + diffY); });
+        }
+    } else if (branchProposal.length > 0) {
+        branchProposal.position('y', Y_root);
+        const propDates = branchProposal.outgoers('node').filter(n => n.data('isDate'));
+        if (propDates.length > 0) {
+            const propCluster = propDates.union(propDates.successors());
+            const diffY = Y_root - (propCluster.boundingBox().y1 + propCluster.boundingBox().h / 2);
+            propCluster.forEach(el => { if (el.isNode()) el.position('y', el.position('y') + diffY); });
+        }
+    } else if (branchGoc.length > 0) {
+        branchGoc.position('y', Y_root);
+        const gocDates = branchGoc.outgoers('node').filter(n => n.data('isDate'));
+        if (gocDates.length > 0) {
+            const gocCluster = gocDates.union(gocDates.successors());
+            const diffY = Y_root - (gocCluster.boundingBox().y1 + gocCluster.boundingBox().h / 2);
+            gocCluster.forEach(el => { if (el.isNode()) el.position('y', el.position('y') + diffY); });
+        }
+    }
+
+    // ==========================================================
+    // 3. CỤM BÊN PHẢI: BẢN VẼ CẬP NHẬT CĂN TÂM TRỤC CHÍNH XÁC
+    // ==========================================================
+    if (branchUpdate.length > 0) {
+        // Đặt node mẹ BẢN VẼ CẬP NHẬT thẳng hàng ngang qua tâm Root
+        branchUpdate.position('y', Y_root);
+
+        const dateNodes = branchUpdate.outgoers('node').filter(n => n.data('isDate'));
+        if (dateNodes.length > 0) {
+            if (dateNodes.length > 1) {
+                const sortedDateNodes = dateNodes.toArray().sort((a, b) => {
+                    return (b.data('sortValue') || 0) - (a.data('sortValue') || 0);
+                });
+
+                const allElements = dateNodes.union(dateNodes.successors());
+                let currentY = allElements.boundingBox().y1;
+
+                sortedDateNodes.forEach(dateNode => {
+                    const cluster = dateNode.union(dateNode.successors());
+                    const clusterBB = cluster.boundingBox();
+                    const diffY = currentY - clusterBB.y1;
+
+                    cluster.forEach(el => {
+                        if (el.isNode()) el.position('y', el.position('y') + diffY);
+                    });
+                    currentY += clusterBB.h + 20;
+                });
+            }
+
+            // 🚀 CĂN GIỮA TUYỆT ĐỐI: Gióng trung điểm của toàn bộ 8 ngày/file khớp với trục Y của BẢN VẼ CẬP NHẬT
+            const allRightElements = dateNodes.union(dateNodes.successors());
+            const rightBB = allRightElements.boundingBox();
+            const rightCenterY = rightBB.y1 + rightBB.h / 2;
+            const diffCenterY = Y_root - rightCenterY;
+
+            allRightElements.forEach(el => {
+                if (el.isNode()) el.position('y', el.position('y') + diffCenterY);
             });
-
-            mainY += clusterBB.h + 40; // Khoảng cách giữa các nhánh mẹ (40px)
-        });
-
-        // Đặt lại vị trí node Root ở chính giữa trục Y
-        const rootNode = cyInstance.getElementById('root');
-        if (rootNode.length > 0) {
-            const allBranchesCluster = cyInstance.collection();
-            branches.forEach(b => allBranchesCluster.merge(b.union(b.successors())));
-            const branchesBB = allBranchesCluster.boundingBox();
-            rootNode.position('y', branchesBB.y1 + branchesBB.h / 2);
         }
     }
 }
@@ -371,12 +441,10 @@ function renderMindmap(projectCode) {
         if(localLoader) localLoader.style.display = "none";
         currentlyRenderedProject = projectCode; 
 
-        // 🚀 BỌC BẢO VỆ: Chặn lỗi sập luồng nếu dữ liệu truyền về bị rỗng
         if (!mindmapData) {
             throw new Error("Không nhận được dữ liệu cấu trúc bản vẽ từ máy chủ!");
         }
 
-        // Ghi nhận trực tiếp vào cache đa dự án mới
         if (mindmapData.files) {
             projectFilesCache_Drawing[projectCode.toUpperCase()] = mindmapData.files;
         } else {
@@ -416,20 +484,94 @@ function renderMindmap(projectCode) {
                 container: cyArea, elements: buildCytoscapeElements(mindmapData), pixelRatio: 2,
                 autoungrabify: true, userPanningEnabled: true, userZoomingEnabled: true,
                 style: [
-                    { selector: 'node', style: { 'background-color': '#021a31', 'label': 'data(label)', 'color': '#fff', 'font-family': 'Poppins, sans-serif', 'font-size': 18, 'text-valign': 'center', 'text-halign': 'center', 'width': 220, 'height': 68, 'shape': 'round-rectangle', 'border-width': 1.5, 'border-color': '#FFBA08', 'text-wrap': 'wrap', 'text-max-width': 180, 'line-height': 1.4, 'overlay-opacity': 0 } },
-                    { selector: 'node[id="root"]', style: { 'font-size': 26, 'font-weight': 'bold', 'color': '#FFBA08', 'background-color': '#FFBA08', 'background-opacity': 0.15, 'width': 140, 'height': 60, 'border-width': 1.5, 'border-color': '#FFBA08' } },
-                    { selector: 'node[?isDept]', style: { 'width': 60, 'height': 40, 'font-size': 18, 'background-color': '#021a31', 'border-color': 'data(color)', 'border-width': 1.5, 'color': 'data(color)', 'font-weight': 'bold' } },
+                    { 
+                        selector: 'node', 
+                        style: { 
+                            'background-color': '#021a31', 
+                            'label': 'data(label)', 
+                            'color': '#fff', 
+                            'font-family': 'Poppins, sans-serif', 
+                            'font-size': 18, 
+                            'font-weight': 'bold', // In đậm mặc định cho toàn bộ các node (mục mẹ, nhánh con...)
+                            'text-valign': 'center', 
+                            'text-halign': 'center', 
+                            'width': 220, 
+                            'height': 68, 
+                            'shape': 'round-rectangle', 
+                            'border-width': 1.5, 
+                            'border-color': '#FFBA08', 
+                            'text-wrap': 'wrap', 
+                            'text-max-width': 180, 
+                            'line-height': 1.4, 
+                            'overlay-opacity': 0 
+                        } 
+                    },
+                    { 
+                        selector: 'node[id="root"]', 
+                        style: { 
+                            'font-size': 24, 
+                            'font-weight': '800', 
+                            'color': '#FFBA08', 
+                            'background-color': '#021a31', 
+                            'background-opacity': 0.95, 
+                            'width': 125, 
+                            'height': 110, 
+                            'shape': 'hexagon', 
+                            'border-style': 'double', 
+                            'border-width': 4, 
+                            'border-color': '#FFBA08',
+                            'text-valign': 'center',
+                            'text-halign': 'center'
+                        } 
+                    },
+                    { 
+                        selector: 'node[?isDept]', 
+                        style: { 
+                            'width': 60, 
+                            'height': 40, 
+                            'font-size': 18, 
+                            'background-color': '#021a31', 
+                            'border-color': 'data(color)', 
+                            'border-width': 1.5, 
+                            'color': 'data(color)', 
+                            'font-weight': 'bold' 
+                        } 
+                    },
                     { 
                         selector: 'node[?fileId]', 
                         style: { 
-                            'background-color': '#293e5b', 'border-width': 1.5, 'border-color': 'data(color)', 
-                            'font-size': 18, 'font-weight': 'bold', 'text-wrap': 'wrap', 'text-max-width': 180, 
-                            'width': 220, 'height': 95, 'text-valign': 'center', 'line-height': 1.4,
+                            'background-color': '#293e5b', 
+                            'border-width': 1.5, 
+                            'border-color': 'data(color)', 
+                            'font-size': 18, 
+                            'font-weight': 'normal',
+                            'text-wrap': 'wrap', 
+                            'text-max-width': 200, 
+                            'width': 240, 
+                            'height': 100, 
+                            'text-valign': 'center', 
+                            'line-height': 1.4,
                             'color': (el) => el.data('color').toUpperCase() === '#FFBA08' ? '#FFFFFF' : el.data('color')
                         } 
                     },
-                    { selector: 'node[?isDate]', style: { 'width': 110, 'height': 40, 'background-opacity': 0, 'border-color': '#FFBA08', 'border-width': 1.5, 'font-size': 18, 'font-weight': 'bold', 'color': '#FFBA08', 'shape': 'round-rectangle', 'text-valign': 'center', 'text-halign': 'center' } },
-                    { selector: 'edge', 
+                    { 
+                        selector: 'node[?isDate]', 
+                        style: { 
+                            'width': 125, 
+                            'height': 44, 
+                            'background-opacity': 0, 
+                            'border-color': '#FFBA08', 
+                            'border-width': 1.5, 
+                            'font-size': 18, 
+                            'font-weight': 'bold', 
+                            'color': '#FFBA08', 
+                            'shape': 'round-rectangle', 
+                            'text-valign': 'center', 
+                            'text-halign': 'center' 
+                        } 
+                    },
+                    { 
+                        selector: 'edge', 
                         style: { 
                             'width': 1.5, 
                             'line-color': 'data(color)', 
@@ -456,65 +598,49 @@ function renderMindmap(projectCode) {
 
             cyInstance.resize();
             
-            // -------------------------------------------------------------
-            // LẦN RENDER KHỞI TẠO ĐẦU TIÊN
-            // -------------------------------------------------------------
             cyInstance.layout({ 
                 name: 'dagre', 
                 rankDir: 'LR', 
                 nodeSep: 45, 
-                rankSep: 90, 
+                rankSep: 80, 
                 animate: false, 
                 fit: true, 
                 padding: 20, 
                 sort: (a, b) => {
-                        const getPri = (n) => {
-                            if (n.id() === 'root') return 1;
-                            if (['branch_goc', 'branch_update', 'branch_proposal'].includes(n.id())) return 2;
-                            if (n.data('isDate')) return 3;
-                            if (n.id().includes('_Thân') || n.id().includes('_Hầm')) return 4;
-                            if (n.data('isDept')) return 5;
-                            return 6;
-                        };
-                        const pA = getPri(a);
-                        const pB = getPri(b);
-                        if (pA !== pB) return pA - pB;
-                        
-                        if (pA === 2) { 
-                            const BRANCH_PRIORITY = { 'branch_proposal': 1, 'branch_update': 2, 'branch_goc': 3 };
-                            return (BRANCH_PRIORITY[a.id()] || 0) - (BRANCH_PRIORITY[b.id()] || 0);
-                        }
-                        
-                        // 🚀 SỬA TẠI ĐÂY: Áp dụng ưu tiên sortValue cho TẤT CẢ các cấp Node (Ngày, Thân/Hầm, Bộ Môn, File)
-                        const svA = a.data('sortValue') || 0;
-                        const svB = b.data('sortValue') || 0;
-                        if (svA !== svB) {
-                            return svB - svA; // Trả về số dương nếu svB > svA -> Đẩy cái mới nhất lên trên
-                        }
-                        
-                        // Nếu cùng một ngày (sortValue bằng nhau), xếp theo thứ tự bảng chữ cái tự nhiên A-Z
-                        const nameA = a.data('fullName') || a.data('label') || "";
-                        const nameB = b.data('fullName') || b.data('label') || "";
-                        return nameA.localeCompare(nameB, 'vi', { numeric: true, sensitivity: 'base' });
-                    },
-                stop: () => { 
-                    // 🚀 BỎ COMMENT HÀM NÀY ĐỂ KÍCH HOẠT ÉP TỌA ĐỘ THỜI GIAN
-                    enforceChronologicalYPositions(); 
+                    const getPri = (n) => {
+                        if (n.id() === 'root') return 1;
+                        if (['branch_goc', 'branch_update', 'branch_proposal'].includes(n.id())) return 2;
+                        if (n.data('isDate')) return 3;
+                        if (n.id().includes('_Thân') || n.id().includes('_Hầm')) return 4;
+                        if (n.data('isDept')) return 5;
+                        return 6;
+                    };
+                    const pA = getPri(a);
+                    const pB = getPri(b);
+                    if (pA !== pB) return pA - pB;
                     
+                    const svA = a.data('sortValue') || 0;
+                    const svB = b.data('sortValue') || 0;
+                    if (svA !== svB) {
+                        return svB - svA;
+                    }
+                    
+                    const nameA = a.data('fullName') || a.data('label') || "";
+                    const nameB = b.data('fullName') || b.data('label') || "";
+                    return nameB.localeCompare(nameA, 'vi', { numeric: true, sensitivity: 'base' });
+                },
+                stop: () => { 
+                    enforceBidirectionalLayout(); // KÍCH HOẠT BỐ CỤC 2 NHÁNH ĐỐI XỨNG
                     cyArea.style.opacity = "1"; 
                     cyInstance.resize(); 
                     cyInstance.fit(null, 20);
                 } 
             }).run();
             
-            // -------------------------------------------------------------
-            // KHI CLICK BUNG NỞ/THU GỌN NODE BẢN VẼ TKTC
-            // -------------------------------------------------------------
             cyInstance.on('tap', 'node#branch_goc', function(evt) {
                 const node = evt.target;
                 const isCollapsed = node.data('collapsed');
 
-                // 🚀 1. LƯU TỌA ĐỘ NODE VÀ THÔNG SỐ CAMERA HIỆN TẠI (TRƯỚC KHI BAY)
                 cyInstance.nodes().forEach(n => {
                     n.scratch('startPos', { ...n.position() });
                 });
@@ -552,7 +678,7 @@ function renderMindmap(projectCode) {
                     name: 'dagre', 
                     rankDir: 'LR', 
                     nodeSep: 45, 
-                    rankSep: 90, 
+                    rankSep: 80, 
                     animate: false, 
                     fit: false, 
                     padding: 20,
@@ -569,11 +695,6 @@ function renderMindmap(projectCode) {
                         const pB = getPri(b);
                         if (pA !== pB) return pA - pB;
                         
-                        if (pA === 2) { 
-                            const BRANCH_PRIORITY = { 'branch_proposal': 1, 'branch_update': 2, 'branch_goc': 3 };
-                            return (BRANCH_PRIORITY[a.id()] || 0) - (BRANCH_PRIORITY[b.id()] || 0);
-                        }
-                        
                         const svA = a.data('sortValue') || 0;
                         const svB = b.data('sortValue') || 0;
                         if (svA !== svB) {
@@ -582,22 +703,18 @@ function renderMindmap(projectCode) {
                         
                         const nameA = a.data('fullName') || a.data('label') || "";
                         const nameB = b.data('fullName') || b.data('label') || "";
-                        return nameA.localeCompare(nameB, 'vi', { numeric: true, sensitivity: 'base' });
+                        return nameB.localeCompare(nameA, 'vi', { numeric: true, sensitivity: 'base' });
                     },
                     stop: () => {
-                        // 1. TÍNH TOÁN NGẦM VÀ ÉP TỌA ĐỘ ĐÍCH THẲNG HÀNG
-                        enforceChronologicalYPositions(); 
+                        enforceBidirectionalLayout(); 
                         
-                        // 2. LƯU TỌA ĐỘ ĐÍCH CỦA TẤT CẢ CÁC NODE
                         const endPositions = new Map();
                         cyInstance.nodes().forEach(n => endPositions.set(n.id(), { ...n.position() }));
 
-                        // 🚀 3. ĐO ĐẠC KHUNG HÌNH (Lấy thông số Zoom & Pan lý tưởng để bao quát toàn bộ sơ đồ)
-                        cyInstance.fit(null, 20); // Ép fit ẩn (người dùng không thấy vì nó xảy ra trong 0ms)
+                        cyInstance.fit(null, 20);
                         const targetZoom = cyInstance.zoom();
                         const targetPan = { ...cyInstance.pan() };
 
-                        // 🚀 4. TRẢ CAMERA VÀ NODE VỀ VỊ TRÍ XUẤT PHÁT
                         cyInstance.zoom(startZoom);
                         cyInstance.pan(startPan);
                         
@@ -606,7 +723,6 @@ function renderMindmap(projectCode) {
                             if (startPos) n.position(startPos);
                         });
 
-                        // 🚀 5. BẮT ĐẦU HOẠT ẢNH: Camera lùi/tiến chuẩn xác đồng thời với các Node tủa ra
                         cyInstance.nodes().forEach(n => {
                             n.animate({
                                 position: endPositions.get(n.id()),
@@ -615,7 +731,6 @@ function renderMindmap(projectCode) {
                             });
                         });
                         
-                        // Camera di chuyển đồng nhịp
                         cyInstance.animate({
                             zoom: targetZoom,
                             pan: targetPan,
@@ -646,7 +761,6 @@ function buildCytoscapeElements(data) {
     const GOLD = '#FFBA08', DEPT_COLORS = { 'STR': '#BCC6CC', 'ARC': '#50C878', 'MEP': '#CD7F32', 'KHÁC': GOLD };
     const DEPT_ORDER = { 'STR': 1, 'ARC': 2, 'MEP': 3, 'KHÁC': 4 };
 
-    // Nâng cấp addNode để lưu trữ thêm trường tên file gốc đầy đủ (fullName) và sortValue dùng định vị trực quan
     function addNode(id, label, parentId, nodeColor, fileId = null, url = null, isDept = false, isDate = false, type = null, fullName = null, sortValue = 0) {
         if (!addedNodes.has(id)) {
             elements.push({ 
@@ -674,29 +788,25 @@ function buildCytoscapeElements(data) {
     addNode('branch_proposal', 'PHIẾU ĐỀ XUẤT', 'root', GOLD, null, null, false, false, null, null, 0);
 
     if(data.files) {
-        // Bản đồ phân hạng ưu tiên cứng mục mẹ từ trên xuống (PROPOSAL -> UPDATE -> ORIGINAL)
         const TYPE_PRIORITY = { 'PROPOSAL': 1, 'UPDATE': 2, 'ORIGINAL': 3 };
         
         data.files.sort((a, b) => {
             const pA = TYPE_PRIORITY[a.type] || 4;
             const pB = TYPE_PRIORITY[b.type] || 4;
-            if (pA !== pB) return pA - pB; // Ưu tiên xếp nhánh mẹ trước
+            if (pA !== pB) return pA - pB;
             
-            // 🚀 SỬA TẠI ĐÂY: Sắp xếp theo sortValue giảm dần (Mới nhất đứng trước)
             const svA = a.sortValue || 0;
             const svB = b.sortValue || 0;
             if (svA !== svB) {
                 return svB - svA;
             }
             
-            // Nếu cùng một ngày, xếp theo tên A-Z
             return a.fileName.localeCompare(b.fileName, 'vi', { numeric: true, sensitivity: 'base' });
         });
 
         const seenFiles = new Set();
 
         data.files.forEach(f => {
-            const ext = f.fileName.toLowerCase().endsWith(".pdf") ? ".pdf" : f.fileName.toLowerCase().endsWith(".xlsx") ? ".xlsx" : ".xls";
             let namePart = f.fileName.replace(/\.(pdf|xlsx|xls)$/i, "");
             const projectCode = (data.projectCode || "").toString();
 
@@ -710,13 +820,15 @@ function buildCytoscapeElements(data) {
             });
 
             let cleanName = namePart.replace(/_+/g, "_").replace(/\s+/g, " ").replace(/^[_ \s]+|[_ \s]+$/g, "");
-            const smartName = cleanName ? (cleanName + ext) : f.fileName;
+            // Loại bỏ hoàn toàn đuôi mở rộng .pdf / .xlsx / .xls trên nhãn hiển thị
+            const smartName = cleanName ? cleanName : f.fileName.replace(/\.(pdf|xlsx|xls)$/i, "");
             
             const dateId = f.sortValue || 'nodate', deptKey = f.dept.toUpperCase(), deptColor = DEPT_COLORS[deptKey] || DEPT_COLORS['KHÁC'];
+            const formattedDateLabel = (f.dateLabel || "--/--/----").replace(/\//g, "-");
             
             if (f.type === 'ORIGINAL') {
                 const dNode = 'date_goc_' + dateId;
-                addNode(dNode, f.dateLabel || "--/--/----", 'branch_goc', GOLD, null, null, false, true, null, null, f.sortValue);
+                addNode(dNode, formattedDateLabel, 'branch_goc', GOLD, null, null, false, true, null, null, f.sortValue);
                 
                 if (f.branch === 'Chung') {
                     const sNodeThân = dNode + '_Thân', deptIdThân = sNodeThân + '_' + f.dept;
@@ -756,7 +868,7 @@ function buildCytoscapeElements(data) {
                 if (seenFiles.has(dupKey)) return;
                 seenFiles.add(dupKey);
 
-                addNode(dNode, f.dateLabel || "--/--/----", bParent, GOLD, null, null, false, true, null, null, f.sortValue);
+                addNode(dNode, formattedDateLabel, bParent, GOLD, null, null, false, true, null, null, f.sortValue);
                 
                 addNode(f.fileId, smartName, dNode, deptColor, f.fileId, f.url, false, false, f.type, f.fileName, f.sortValue);
             }
@@ -855,13 +967,18 @@ function updatePanelContent(nodeData) {
  * ==========================================================================
  */
 let fileIdToEdit_Drawing = "";
+let fileExtToEdit_Drawing = ".pdf";
 
 function triggerEditDrawing_Client(fileId, fileName) {
     fileIdToEdit_Drawing = fileId;
     const overlay = document.getElementById('drawing-edit-confirm-overlay');
     const input = document.getElementById('drawing-edit-input-val');
     if (overlay && input) {
-        input.value = fileName;
+        const extMatch = fileName.match(/\.(pdf|xlsx|xls)$/i);
+        fileExtToEdit_Drawing = extMatch ? extMatch[0] : ".pdf";
+        
+        // Gọt bỏ phần mở rộng .pdf / .xlsx / .xls khi đổ vào ô input chỉnh sửa
+        input.value = fileName.replace(/\.(pdf|xlsx|xls)$/i, "").trim();
         overlay.style.display = "flex";
         setTimeout(() => { 
             overlay.classList.add('show'); 
@@ -881,15 +998,28 @@ function cancelEditDrawing_Client() {
 
 function executeActualEditDrawing_Client() {
     if (!fileIdToEdit_Drawing) return;
-    const newVal = document.getElementById('drawing-edit-input-val').value.trim();
-    if (!newVal) return alert("Sếp phải nhập tên file bản vẽ hợp lệ!");
+    const rawVal = document.getElementById('drawing-edit-input-val').value.trim();
+    if (!rawVal) return alert("Sếp phải nhập tên file bản vẽ hợp lệ!");
 
+    // Nếu người dùng cố tình nhập đuôi mở rộng file thì chặn lại
+    if (/\.(pdf|xlsx|xls)$/i.test(rawVal)) {
+        showToast_PL("⚠️ Không nhập đuôi .pdf vào tên file!", "error");
+        return;
+    }
+
+    const { isValid } = validateDrawingFilename(rawVal);
+    if (!isValid) {
+        showToast_PL("⚠️ Tên file không đúng cú pháp quy định!", "error");
+        return;
+    }
+
+    // Tự động gắn đuôi mở rộng gốc khi lưu vật lý lên Google Drive
+    const newVal = rawVal + fileExtToEdit_Drawing;
     const targetFileId = fileIdToEdit_Drawing;
-    fileIdToEdit_Drawing = ""; // Giải phóng ngay biến toàn cục
+    fileIdToEdit_Drawing = "";
     
-    cancelEditDrawing_Client(); // Đóng modal nhập liệu sửa tên tệp
+    cancelEditDrawing_Client();
 
-    // 1. LẤY THÔNG TIN ĐỂ CHUẨN BỊ SAO LƯU PHÒNG HỜ HOÀN TÁC (ROLLBACK)
     let originalLabel = "";
     let originalFullName = "";
     let nodeToEdit = null;
@@ -900,9 +1030,7 @@ function executeActualEditDrawing_Client() {
             originalLabel = nodeToEdit.data('label');
             originalFullName = nodeToEdit.data('fullName');
 
-            // Tính toán nhãn rút gọn (smartName) mới giống như lúc khởi tạo trên sơ đồ
-            const ext = newVal.toLowerCase().endsWith(".pdf") ? ".pdf" : newVal.toLowerCase().endsWith(".xlsx") ? ".xlsx" : ".xls";
-            let namePart = newVal.replace(/\.(pdf|xlsx|xls)$/i, "");
+            let namePart = rawVal;
             const projectCode = selectedProjectDrawing.toString();
 
             const patterns = [
@@ -912,34 +1040,26 @@ function executeActualEditDrawing_Client() {
 
             patterns.forEach(p => { namePart = namePart.replace(p, ""); });
             let cleanName = namePart.replace(/_+/g, "_").replace(/\s+/g, " ").replace(/^[_ \s]+|[_ \s]+$/g, "");
-            const smartName = cleanName ? (cleanName + ext) : newVal;
+            const smartName = cleanName ? cleanName : rawVal;
 
-            // 2. CẬP NHẬT NHÃN MỚI LẬP TỨC TRÊN SƠ ĐỒ TRONG 0.01 GIÂY
             nodeToEdit.data('label', smartName);
             nodeToEdit.data('fullName', newVal);
             
-            closeFileDetail(); // Đóng panel chi tiết bên trái
+            closeFileDetail();
         }
     }
 
-    // 🚀 ĐÃ GOM: Chỉ hiển thị duy nhất 1 thông báo thành công tức thời ở đây
     showToast_PL("✏️ Đã đổi tên bản vẽ thành công!", "success");
 
-    // 3. GỌI BACKEND THAY ĐỔI VẬT LÝ TRÊN GOOGLE DRIVE TRONG NỀN (LẶNG LẼ)
     callBackend("renameAndRouteDrawingFile_Backend", { fileId: targetFileId, newFileName: newVal })
         .then(res => {
-            if (res) {
-                // Thành công chạy ngầm im lặng, không spam thông báo lần 2
-                if (selectedProjectDrawing) {
-                    renderMindmap(selectedProjectDrawing);
-                }
+            if (res && selectedProjectDrawing) {
+                renderMindmap(selectedProjectDrawing);
             }
         })
         .catch(err => {
             console.error("Lỗi đổi tên tệp ngầm:", err);
             showToast_PL("⚠️ Lỗi mạng! Không thể sửa tên trên Drive, đang khôi phục...", "error");
-            
-            // ROLLBACK: Khôi phục lại tên tệp gốc nếu đổi tên bị lỗi mạng
             if (nodeToEdit && nodeToEdit.length > 0) {
                 nodeToEdit.data('label', originalLabel);
                 nodeToEdit.data('fullName', originalFullName);
@@ -991,30 +1111,101 @@ function executeActualDeleteDrawing_Client() {
     
     cancelDeleteDrawing_Client();
     
-    // 🚀 BƯỚC 1: XÓA GIẢ ĐỊNH VÀ TỰ ĐỘNG DỌN DẸP SẠCH CÁC NHÁNH CHA TRỐNG (RECURSIVE CLEANUP)
     if (cyInstance) {
         const nodeToDelete = cyInstance.getElementById(targetFileId);
         if (nodeToDelete.length > 0) {
             closeFileDetail(); // Đóng panel chi tiết trước
+
+            // 🚀 1. LƯU TỌA ĐỘ VÀ CAMERA HIỆN TẠI TRƯỚC KHI XÓA
+            cyInstance.nodes().forEach(n => {
+                n.scratch('startPos', { ...n.position() });
+            });
+            const startZoom = cyInstance.zoom();
+            const startPan = { ...cyInstance.pan() };
             
-            // Gọi hàm đệ quy dọn dẹp ngược lên gốc
+            // Xóa đệ quy node và các nhánh cha rỗng
             removeEmptyParents_Drawing(nodeToDelete);
+
+            // 🚀 2. TÍNH TOÁN VỊ TRÍ MỚI NGẦM (animate: false để không bị giật lệch hướng)
+            cyInstance.layout({
+                name: 'dagre',
+                rankDir: 'LR',
+                nodeSep: 45,
+                rankSep: 80,
+                animate: false,
+                fit: false,
+                padding: 20,
+                sort: (a, b) => {
+                    const getPri = (n) => {
+                        if (n.id() === 'root') return 1;
+                        if (['branch_goc', 'branch_update', 'branch_proposal'].includes(n.id())) return 2;
+                        if (n.data('isDate')) return 3;
+                        if (n.id().includes('_Thân') || n.id().includes('_Hầm')) return 4;
+                        if (n.data('isDept')) return 5;
+                        return 6;
+                    };
+                    const pA = getPri(a);
+                    const pB = getPri(b);
+                    if (pA !== pB) return pA - pB;
+                    
+                    const svA = a.data('sortValue') || 0;
+                    const svB = b.data('sortValue') || 0;
+                    if (svA !== svB) {
+                        return svB - svA;
+                    }
+                    
+                    const nameA = a.data('fullName') || a.data('label') || "";
+                    const nameB = b.data('fullName') || b.data('label') || "";
+                    return nameB.localeCompare(nameA, 'vi', { numeric: true, sensitivity: 'base' });
+                },
+                stop: () => {
+                    // Áp dụng bố cục 2 nhánh đối xứng ngầm
+                    enforceBidirectionalLayout();
+                    
+                    // Lưu tọa độ đích của các node còn lại
+                    const endPositions = new Map();
+                    cyInstance.nodes().forEach(n => endPositions.set(n.id(), { ...n.position() }));
+
+                    // Đo đạc thông số Camera Fit lý tưởng ngầm (0ms)
+                    cyInstance.fit(null, 20);
+                    const targetZoom = cyInstance.zoom();
+                    const targetPan = { ...cyInstance.pan() };
+
+                    // Trả lại vị trí xuất phát để chuẩn bị bay
+                    cyInstance.zoom(startZoom);
+                    cyInstance.pan(startPan);
+                    cyInstance.nodes().forEach(n => {
+                        const startPos = n.scratch('startPos');
+                        if (startPos) n.position(startPos);
+                    });
+
+                    // 🚀 3. CHẠY HOẠT ẢNH ĐỒNG BỘ 1 NHỊP DUY NHẤT: Node trượt mượt mà & Camera co giãn êm ái
+                    cyInstance.nodes().forEach(n => {
+                        n.animate({
+                            position: endPositions.get(n.id()),
+                            duration: 350,
+                            easing: 'ease-out-cubic'
+                        });
+                    });
+
+                    cyInstance.animate({
+                        zoom: targetZoom,
+                        pan: targetPan,
+                        duration: 350,
+                        easing: 'ease-out-cubic'
+                    });
+                }
+            }).run();
         }
     }
     
-    // 🚀 ĐÃ ĐIỀU CHỈNH: Chỉ hiển thị duy nhất 1 thông báo xóa thành công ngay lập tức ở đây
     showToast_PL("🗑️ Đã xóa bản vẽ thành công!", "success");
     
-    // BƯỚC 2: GỌI BACKEND CHẠY NGẦM (Lặng lẽ xử lý trong nền, không spam thông báo lần 2)
+    // Xóa ngầm trên Drive và Sheet
     callBackend("deleteDrawingFileAndTasks_Backend", targetFileId)
-        .then(res => {
-            // Thành công chạy ngầm hoàn tất, không cần đưa ra thông báo trùng lặp
-        })
         .catch(err => {
             console.error("Lỗi xóa tệp ngầm:", err);
             showToast_PL("⚠️ Không thể xóa bản vẽ trên Drive! Đang đồng bộ lại sơ đồ...", "error");
-            
-            // ROLLBACK: Chỉ đồng bộ lại sơ đồ nếu xảy ra lỗi thực tế để khôi phục trạng thái đúng
             if (selectedProjectDrawing) {
                 renderMindmap(selectedProjectDrawing);
             }
@@ -1100,27 +1291,27 @@ function addFilesToDrawingQueue(files) {
         return;
     }
 
-    let hasDriveDuplicate = false; // Cờ kiểm tra trùng tệp trên Drive
-
     incomingFiles.forEach(newFile => {
-        const isDuplicateInQueue = drawingUploadQueue.some(oldFile => 
-            oldFile.name === newFile.name && oldFile.size === newFile.size
+        const isDuplicateInQueue = drawingUploadQueue.some(oldItem => 
+            oldItem.rawName === newFile.name && oldItem.size === newFile.size
         );
         if (!isDuplicateInQueue) {
-            drawingUploadQueue.push(newFile);
+            const extMatch = newFile.name.match(/\.(pdf|xlsx|xls)$/i);
+            const ext = extMatch ? extMatch[0] : ".pdf";
+            const cleanNameWithoutExt = newFile.name.replace(/\.(pdf|xlsx|xls)$/i, "").trim();
             
-            // Nếu phát hiện trùng tên tệp tin thực tế trên sơ đồ Mindmap
-            if (checkIsDuplicateOnDrive(newFile.name)) {
-                hasDriveDuplicate = true;
-            }
+            drawingUploadQueue.push({
+                file: newFile,
+                name: cleanNameWithoutExt, // Hiển thị không có đuôi .pdf
+                rawName: newFile.name,
+                ext: ext,
+                size: newFile.size
+            });
         }
     });
     renderDrawingQueueUI();
 }
 
-/**
- * RENDER GIAO DIỆN HÀNG CHỜ (TỰ CO GIÃN THEO SỐ LƯỢNG FILE)
- */
 function renderDrawingQueueUI() {
     const stateEmpty = document.getElementById("drawing-state-empty");
     const stateQueue = document.getElementById("drawing-state-queue");
@@ -1129,7 +1320,6 @@ function renderDrawingQueueUI() {
     
     if (!stateEmpty || !stateQueue || !stateUploading || !queueList) return;
     
-    // 🚀 SỬA TẠI ĐÂY: Nếu đang trong tiến trình tải lên, tuyệt đối KHÔNG can thiệp ẩn/hiện bảng trạng thái tổng
     if (!isUploading_Drawing) {
         if (drawingUploadQueue.length === 0) {
             stateEmpty.style.display = "flex";
@@ -1143,15 +1333,13 @@ function renderDrawingQueueUI() {
         stateUploading.style.display = "none";
     }
     
-    // Đoạn mã render danh sách HTML bên dưới giữ nguyên...
     let html = "";
-    drawingUploadQueue.forEach((file, index) => {
-        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    drawingUploadQueue.forEach((fileItem, index) => {
+        const fileSizeMB = (fileItem.size / (1024 * 1024)).toFixed(2);
         
-        const { isValid, fileType } = validateDrawingFilename(file.name);
-        
-        // Kiểm tra xem tệp hiện tại có bị trùng tên trên Drive dự án hay không
-        const isDuplicateOnDrive = checkIsDuplicateOnDrive(file.name);
+        // Kiểm tra tính hợp lệ: nếu có chứa đuôi .pdf hoặc sai cú pháp -> isValid = false (chuyển đỏ)
+        const { isValid, fileType } = validateDrawingFilename(fileItem.name);
+        const isDuplicateOnDrive = checkIsDuplicateOnDrive(fileItem.name + fileItem.ext);
         
         let iconClass = "bi-file-earmark-x-fill";
         let iconColor = "#ff4d4d"; 
@@ -1173,14 +1361,13 @@ function renderDrawingQueueUI() {
         <div class="task-item" style="margin-bottom: 5px; border-color: ${isValid ? 'transparent' : 'rgba(255,77,77,0.3)'}; background: ${isValid ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255,77,77,0.05)'};">
                 <i class="bi ${iconClass}" style="color: ${iconColor} !important; font-size: 14px; flex-shrink: 0; margin-right: 5px;"></i>
                 
-                <input type="text" value="${file.name}" 
+                <input type="text" value="${fileItem.name}" 
                        class="task-desc-edit" 
                        style="color: ${isValid ? 'rgba(255, 255, 255, 0.8)' : '#ff7777'} !important; font-weight: 500; height: 100%;"
                        onchange="renameFileInDrawingQueue(this.value, ${index})"
                        onclick="event.stopPropagation();"
                 >
                 
-                <!-- 🚀 THÊM MỚI: Huy hiệu cảnh báo trùng tệp thực tế trên Drive -->
                 ${isDuplicateOnDrive && isValid ? `
                     <span style="font-size: 9px; color: #FFBA08; font-weight: bold; background: rgba(255,186,8,0.08); border: 1.2px solid rgba(255,186,8,0.3); padding: 1.5px 6px; border-radius: 4px; margin-right: 8px; flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px;">
                         <i class="bi bi-exclamation-triangle-fill" style="font-size: 9px;"></i>TRÙNG FILE
@@ -1236,6 +1423,7 @@ async function startDrawingQueueUpload(event) {
     
     if (!stateQueue || !stateUploading || !statusText || !progressBar) return;
     
+    // 1. Kiểm tra tiến trình check trùng lặp ngầm
     let isCheckingDuplicates = false;
     for (let f of drawingUploadQueue) {
         const parts = f.name.split("_");
@@ -1253,6 +1441,7 @@ async function startDrawingQueueUpload(event) {
         return;
     }
 
+    // 2. Kiểm tra định dạng tên file hợp lệ
     let hasInvalidFile = false;
     for (let f of drawingUploadQueue) {
         const { isValid } = validateDrawingFilename(f.name);
@@ -1267,9 +1456,10 @@ async function startDrawingQueueUpload(event) {
         return;
     }
     
+    // 3. Kiểm tra trùng lặp trên Drive
     let hasDuplicateFile = false;
     for (let f of drawingUploadQueue) {
-        if (checkIsDuplicateOnDrive(f.name)) {
+        if (checkIsDuplicateOnDrive(f.name + f.ext)) {
             hasDuplicateFile = true;
             break;
         }
@@ -1289,28 +1479,29 @@ async function startDrawingQueueUpload(event) {
         const filesToUpload = [...drawingUploadQueue]; 
         
         for (let idx = 0; idx < filesToUpload.length; idx++) {
-            let file = filesToUpload[idx];
+            let fileItem = filesToUpload[idx];
+            const physicalFileName = fileItem.name + fileItem.ext;
             
             statusText.textContent = `[${idx + 1}/${filesToUpload.length}] INIT SESSION...`;
             
             const session = await callBackend("getDrawingUploadSession_Backend", {
-                fileName: file.name,
-                fileSize: file.size,
-                mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "application/octet-stream")
+                fileName: physicalFileName,
+                fileSize: fileItem.size,
+                mimeType: fileItem.file.type || (fileItem.ext === ".pdf" ? "application/pdf" : "application/octet-stream")
             });
             
             if (!session || !session.success) {
-                throw new Error(`Lỗi tải tệp [${file.name}]: ` + (session ? session.error : "Không thể khởi tạo phiên."));
+                throw new Error(`Lỗi tải tệp [${physicalFileName}]: ` + (session ? session.error : "Không thể khởi tạo phiên."));
             }
             
             const uploadUrl = session.uploadUrl;
             const chunkSize = 5 * 1024 * 1024; 
-            const totalChunks = Math.ceil(file.size / chunkSize);
+            const totalChunks = Math.ceil(fileItem.size / chunkSize);
             
             for (let i = 0; i < totalChunks; i++) {
                 const start = i * chunkSize;
-                const end = Math.min(start + chunkSize, file.size);
-                const chunkBlob = file.slice(start, end);
+                const end = Math.min(start + chunkSize, fileItem.size);
+                const chunkBlob = fileItem.file.slice(start, end);
                 
                 const currentOverallPercent = Math.round(((idx / filesToUpload.length) * 100) + (((i + 1) / totalChunks) * (100 / filesToUpload.length)));
                 statusText.textContent = `[${idx + 1}/${filesToUpload.length}] UPLOADING... ${currentOverallPercent}%`;
@@ -1319,7 +1510,7 @@ async function startDrawingQueueUpload(event) {
                 try {
                     const response = await fetch(uploadUrl, {
                         method: "PUT",
-                        headers: { "Content-Range": `bytes ${start}-${end - 1}/${file.size}` },
+                        headers: { "Content-Range": `bytes ${start}-${end - 1}/${fileItem.size}` },
                         body: chunkBlob
                     });
                     
@@ -1336,40 +1527,43 @@ async function startDrawingQueueUpload(event) {
                 }
             }
             
-            drawingUploadQueue = drawingUploadQueue.filter(f => f.name !== file.name || f.size !== file.size);
+            drawingUploadQueue = drawingUploadQueue.filter(item => item !== fileItem);
             renderDrawingQueueUI();
         }
         
         statusText.textContent = "SAVING TO DATABASE...";
         progressBar.style.width = "100%";
         
-        // 🚀 1. Bóc tách danh sách mã dự án duy nhất từ các file vừa tải lên
+        // 4. Đồng bộ cấu trúc vào Sheet Drawing_Log cho tất cả dự án có file vừa up
         const uploadedProjectCodes = [...new Set(filesToUpload.map(f => {
             const parts = f.name.split("_");
             return parts.length >= 2 ? parts[1].trim().toUpperCase() : "";
         }).filter(Boolean))];
 
-        // 🚀 2. Tự động đồng bộ cấu trúc vào Sheet Drawing_Log cho tất cả dự án có file vừa up
         for (const projCode of uploadedProjectCodes) {
             await callBackend("syncDrawingsToSheet_Backend", projCode);
         }
         
-        showToast_PL(`🚀 Đã tải lên thành công!`, "success");
+        showToast_PL(`🚀 Đã tải lên và lưu trữ thành công!`, "success");
         
+        // 5. Reset hàng chờ upload và khôi phục bảng SYSTEM GUIDELINES mặc định
         drawingUploadQueue = [];
         if (fileInput) fileInput.value = ""; 
         isUploading_Drawing = false;
         renderDrawingQueueUI();
         
-        // 🚀 3. Tự động chuyển vùng chọn và hiển thị ngay tức thì lên Mindmap
-        const targetProj = selectedProjectDrawing || uploadedProjectCodes[0];
+        // Khôi phục hiển thị SYSTEM GUIDELINES và đóng panel chi tiết
+        document.getElementById('dp-empty-state').style.display = 'flex';
+        document.getElementById('dp-content-state').style.display = 'none';
+        currentFileId = "";
+        
+        // 6. Tự động chuyển vùng và vẽ lại Mindmap của dự án vừa upload (hoặc 1 dự án đại diện nếu up nhiều dự án)
+        const targetProj = uploadedProjectCodes[0] || selectedProjectDrawing;
         if (targetProj) {
             selectedProjectDrawing = targetProj;
+            currentlyRenderedProject = ""; // Xóa cache để bắt buộc load lại Mindmap mới nhất
             const projInput = document.getElementById("drawing-project-search");
             if (projInput) projInput.value = targetProj;
-            
-            // Xóa rỗng cache trạng thái rỗng và hiển thị sơ đồ Mindmap
-            document.getElementById('dp-empty-state').style.display = 'none';
             renderMindmap(targetProj);
         }
         
@@ -1421,9 +1615,10 @@ function renderGroupItems(items) {
                 <i class="bi bi-grip-vertical"></i>
             </div>
             
-            <input type="text" class="task-desc-edit" value="${t.description}" onblur="updateTaskDescInline('${t.taskId}', this.value)" onkeydown="if(event.key==='Enter') this.blur()">
+            <input type="text" class="task-desc-edit" value="${t.description}" 
+                   onblur="updateTaskDescInline('${t.taskId}', this.value)" 
+                   onkeydown="if(event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); this.blur(); }">
             
-            <!-- SỬA TẠI ĐÂY: Thêm hiệu ứng transition, onmouseover rực lên 1.0 và onmouseout mờ về 0.5 -->
             <i class="bi bi-trash3-fill" style="color:#ff4d4d; cursor:pointer; font-size:14px; opacity:0.5; transition: opacity 0.2s;" 
                onmouseover="this.style.opacity='1'" 
                onmouseout="this.style.opacity='0.5'" 
@@ -1767,21 +1962,11 @@ function renameFileInDrawingQueue(newName, index) {
     const trimmedName = newName.trim();
     if (!trimmedName) {
         showToast_PL("⚠️ Tên tệp tin không được phép để trống!", "error");
-        renderDrawingQueueUI(); // Vẽ lại để khôi phục tên cũ
+        renderDrawingQueueUI();
         return;
     }
     
-    const file = drawingUploadQueue[index];
-    if (file.name === trimmedName) return; // Không có gì thay đổi
-    
-    // Khởi tạo một đối tượng File ảo mới với tên mới được chỉnh sửa
-    const blob = file.slice(0, file.size, file.type);
-    const renamedFile = new File([blob], trimmedName, { type: file.type });
-    
-    // Ghi đè vào đúng vị trí tệp cũ trong hàng chờ
-    drawingUploadQueue[index] = renamedFile;
-    
-    // Tự động render lại UI để cập nhật trạng thái hợp lệ (Màu đỏ -> Trắng/Vàng)
+    drawingUploadQueue[index].name = trimmedName;
     renderDrawingQueueUI();
 }
 
@@ -1803,50 +1988,75 @@ function isValidYYMMDD(yyStr, mmStr, ddStr) {
 }
 
 /**
- * HÀM CHUẨN HÓA KIỂM TRA ĐỊNH DẠNG TÊN BẢN VẼ (DÙNG CHUNG)
+ * HÀM CHUẨN HÓA KIỂM TRA ĐỊNH DẠNG TÊN BẢN VẼ (CHỐNG DƯ/THIẾU CÚ PHÁP CHẶT CHẼ)
  */
 function validateDrawingFilename(fileName) {
-    const parts = fileName.split("_");
+    if (!fileName) return { isValid: false, fileType: "INVALID" };
+    
+    const trimmedName = fileName.trim();
+    
+    // 🚀 BẮT BUỘC: Nếu người dùng cố tình nhập đuôi .pdf / .xlsx / .xls thì đánh dấu SAI TÊN (Báo màu đỏ)
+    if (/\.(pdf|xlsx|xls)$/i.test(trimmedName)) {
+        return { isValid: false, fileType: "INVALID" };
+    }
+    
+    const parts = trimmedName.split("_");
     if (parts.length < 3) {
         return { isValid: false, fileType: "INVALID" };
     }
     
-    // 1. Kiểm tra định dạng ngày tháng (6 chữ số đầu tệp)
-    const datePart = parts[0];
+    // 1. Kiểm tra Ngày (Part 0: đúng 6 số YYMMDD và ngày lịch thực tế hợp lệ)
+    const datePart = parts[0].trim();
     const dateMatch = datePart.match(/^(\d{2})(\d{2})(\d{2})$/);
     if (!dateMatch) {
         return { isValid: false, fileType: "INVALID" };
     }
-    
-    const yy = dateMatch[1];
-    const mm = dateMatch[2];
-    const dd = dateMatch[3];
+    const yy = dateMatch[1], mm = dateMatch[2], dd = dateMatch[3];
     if (!isValidYYMMDD(yy, mm, dd)) {
         return { isValid: false, fileType: "INVALID" };
     }
     
-    // 2. Kiểm tra phân loại danh mục
-    const cleanName = removeVietnameseDiacritics(fileName);
-    
-    // 🚀 SỬA TẠI ĐÂY: Khử dấu toàn bộ chuỗi so khớp để tương thích 100% với cleanName đã được sạch dấu
-    const isOriginal = cleanName.includes("tkbvtc") || cleanName.includes("bvtktc") || cleanName.includes("bo mon");
-    const isUpdate = cleanName.includes("cap nhat") || cleanName.includes("update");
-    const isProposal = cleanName.includes("pdx") || cleanName.includes("de xuat") || cleanName.includes("proposal");
-    
-    let fileType = "INVALID";
-    let isValid = true;
-    
-    if (isOriginal) {
-        fileType = "ORIGINAL";
-    } else if (isUpdate) {
-        fileType = "UPDATE";
-    } else if (isProposal) {
-        fileType = "PROPOSAL";
-    } else {
-        isValid = false;
+    // 2. Kiểm tra Mã Dự Án (Part 1: không được để trống)
+    const projectCode = parts[1].trim();
+    if (!projectCode || projectCode.length < 2) {
+        return { isValid: false, fileType: "INVALID" };
     }
     
-    return { isValid, fileType };
+    // 3. Phân loại danh mục chặt chẽ dựa trên Token chính xác (Part 2)
+    const cleanPart2 = removeVietnameseDiacritics(parts[2].trim());
+    
+    // A. PHIẾU ĐỀ XUẤT (PROPOSAL): Cú pháp YYMMDD_MãDA_PĐX_[Nội dung]
+    const isProposalToken = /^(pdx|de xuat|proposal)$/.test(cleanPart2);
+    if (isProposalToken) {
+        const hasContent = parts.slice(3).join("_").trim().length > 0;
+        if (hasContent) {
+            return { isValid: true, fileType: "PROPOSAL" };
+        }
+        return { isValid: false, fileType: "INVALID" };
+    }
+    
+    // B. BẢN VẼ CẬP NHẬT (UPDATE): Cú pháp YYMMDD_MãDA_Cập nhật [Nội dung] hoặc YYMMDD_MãDA_Cập nhật_[Nội dung]
+    const updateMatch = cleanPart2.match(/^(cap nhat|update)(\s+.*)?$/);
+    if (updateMatch) {
+        const hasContentInPart2 = updateMatch[2] && updateMatch[2].trim().length > 0;
+        const hasPart3 = parts.slice(3).join("_").trim().length > 0;
+        if (hasContentInPart2 || hasPart3) {
+            return { isValid: true, fileType: "UPDATE" };
+        }
+        return { isValid: false, fileType: "INVALID" };
+    }
+    
+    // C. BẢN VẼ TKTC (ORIGINAL): Cú pháp YYMMDD_MãDA_BVTKTC_BộMôn_Phần [thân/hầm]
+    const isOriginalToken = /^(bvtktc|tkbvtc|bo mon)$/.test(cleanPart2);
+    if (isOriginalToken) {
+        const hasDeptOrSection = parts.length >= 4 && parts[3].trim().length > 0;
+        if (hasDeptOrSection) {
+            return { isValid: true, fileType: "ORIGINAL" };
+        }
+        return { isValid: false, fileType: "INVALID" };
+    }
+    
+    return { isValid: false, fileType: "INVALID" };
 }
 
 /**

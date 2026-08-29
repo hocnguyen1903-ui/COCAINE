@@ -34,13 +34,13 @@
         .drawing-main-layout {
             flex-direction: row-reverse; 
             display: flex; 
-            width: 96%; 
+            width: 98%; 
             height: 82vh; 
             margin: 0 auto; 
             gap: 20px; 
             align-items: stretch;
         }
-        #drawing-inner-container { width: 96% !important; margin: 80px auto !important; padding: 0 20px !important; }
+        #drawing-inner-container { width: 98% !important; margin: 80px auto !important; padding: 0 20px !important; }
         #drawing-side-panel { flex: 0 0 28% !important; height: 100% !important; max-height: none !important; }
         #cy-container { flex: 1 !important; height: 100% !important; }
     }

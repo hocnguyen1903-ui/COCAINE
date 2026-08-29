@@ -404,6 +404,9 @@ document.addEventListener("DOMContentLoaded", function() {
     const inputField0PL = document.getElementById("field0-pl");
     if (inputField0PL) {
         inputField0PL.addEventListener("input", debounce(() => {
+            if (inputField0PL.value.trim().toUpperCase() !== selectedContractMaHD_PL.toUpperCase()) {
+                selectedContractMaHD_PL = ""; // Người dùng đang chủ động gõ tìm kiếm
+            }
             filterField0_PL(true); 
         }, 200));
     }

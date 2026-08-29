@@ -13,10 +13,13 @@ function initTabPL() {
 /**
  * Dọn dẹp Form Phụ lục và Reset Dashboard về trạng thái thác đổ ban đầu
  */
+let selectedContractMaHD_PL = "";
+
 function clearForm_PL() {
     const form = document.getElementById("dataForm-pl");
     if (form) form.reset();
     
+    selectedContractMaHD_PL = ""; // Reset cờ chọn hợp đồng
     selectedAdjustmentIds = [];
     selectedAdjustmentLabels = [];
     const field5 = document.getElementById("field5-pl");
@@ -189,8 +192,11 @@ function executeFilter_PL(allowAnim = true, isLoadMore = false) {
 function filterAndSortData_PL(query) {
     let filtered = PRECOMPUTED_PL_DATA;
 
-    // Lọc theo từ khóa
-    if (query) {
+    // Kiểm tra nếu ô input chỉ đang lưu mã HĐ do người dùng click chọn -> Không lọc thu nhỏ danh sách
+    const isSelectedContractOnly = (selectedContractMaHD_PL && query === selectedContractMaHD_PL.toLowerCase());
+
+    // Chỉ lọc theo từ khóa khi người dùng thực sự chủ động gõ tìm kiếm
+    if (query && !isSelectedContractOnly) {
         const keywords = query.split('+').map(k => k.trim()).filter(k => k !== "");
         filtered = filtered.filter(item => {
             return keywords.every(kw => {
@@ -207,12 +213,12 @@ function filterAndSortData_PL(query) {
     // Tính tổng tiền & Nhóm quan hệ Cha-Con
     let sumHDPL = 0, sumPL = 0;   
     const parentMap = new Map();
-    const orphans =[];
+    const orphans = [];
     
     filtered.forEach(item => {
         sumHDPL += item.numericValue;
         if (item.isPL) sumPL += item.numericValue;
-        if (!item.isPL) parentMap.set(item.parentCode, { parent: item, children:[] });
+        if (!item.isPL) parentMap.set(item.parentCode, { parent: item, children: [] });
     });
 
     filtered.forEach(item => {
@@ -223,7 +229,7 @@ function filterAndSortData_PL(query) {
     });
     
     // Ghép mảng cuối cùng (Cha đứng trước, các Phụ lục con xếp ngay dưới)
-    let finalData =[];
+    let finalData = [];
     const sortedParents = Array.from(parentMap.values()).sort((a, b) => b.parent.originalIndex - a.parent.originalIndex);
     sortedParents.forEach(group => {
         finalData.push(group.parent);
@@ -304,14 +310,19 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
 
 function selectField0_PL(val) {
     const maHD = val.split(" | ")[0].trim();
+    selectedContractMaHD_PL = maHD;
     document.getElementById("field0-pl").value = maHD;
     updateContractNo_PL(); 
     const drop = document.getElementById("dropdown-field0-pl");
     if (drop) {
-        const allRows = drop.querySelectorAll('.hoc-tooltip');
-        allRows.forEach(row => row.classList.remove('is-selected-row'));
-        const targetRow = drop.querySelector(`.hoc-tooltip[data-display="${escapeStr(val)}"]`);
-        if (targetRow) targetRow.classList.add('is-selected-row');
+        const allRows = Array.from(drop.querySelectorAll('.hoc-tooltip'));
+        allRows.forEach((row, idx) => {
+            row.classList.remove('is-selected-row', 'active');
+            if (row.getAttribute("data-display") === val) {
+                row.classList.add('is-selected-row', 'active');
+                currentFocusIndex = idx; // Đồng bộ vị trí con trỏ bàn phím với dòng vừa click chuột
+            }
+        });
     }
 }
 
@@ -387,3 +398,99 @@ function toggleAdjustment_PL(id, label, fieldToShow) {
     document.getElementById("field5-pl").value = selectedAdjustmentLabels.join(" | ");
     renderAdjustmentOptions_PL(); 
 }
+
+// ==========================================================================
+// BỘ LẮNG NGHE PHÍM DELETE & MAC BACKSPACE CHO TAB PHỤ LỤC (PLHD)
+// ==========================================================================
+document.addEventListener("keydown", function(e) {
+    if (activeTabId !== 'tab-plhd') return;
+
+    // Nếu đang mở các bảng Modal / Panel thì không can thiệp
+    const isModalOpen = (document.getElementById('data-delete-confirm-overlay')?.style.display === 'flex') ||
+                        (document.getElementById('edit-panel-pl')?.classList.contains('active')) ||
+                        (document.getElementById('scan-panel-pl')?.classList.contains('active')) ||
+                        (document.getElementById('transfer-panel-pl')?.classList.contains('active'));
+    if (isModalOpen) return;
+
+    const activeEl = document.activeElement;
+    const isOtherInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.id !== 'field0-pl';
+    if (isOtherInput) return; // Nếu đang gõ ở các ô input khác (giá trị, gia hạn...) thì giữ nguyên mặc định
+
+    const drop = document.getElementById("dropdown-field0-pl");
+    if (!drop) return;
+    const items = Array.from(drop.querySelectorAll('.hoc-tooltip'));
+    if (items.length === 0) return;
+
+    // 1. XỬ LÝ PHÍM MŨI TÊN LÊN / XUỐNG (ArrowUp / ArrowDown)
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+
+        // Nếu chưa có vị trí focus, lấy vị trí của dòng đang được click chọn trước đó
+        if (typeof currentFocusIndex === 'undefined' || currentFocusIndex < 0) {
+            const selectedIdx = items.findIndex(item => item.classList.contains('is-selected-row') || item.classList.contains('active'));
+            currentFocusIndex = selectedIdx >= 0 ? selectedIdx : -1;
+        }
+
+        if (e.key === "ArrowDown") {
+            currentFocusIndex++;
+            if (currentFocusIndex >= items.length) currentFocusIndex = 0;
+        } else {
+            currentFocusIndex--;
+            if (currentFocusIndex < 0) currentFocusIndex = items.length - 1;
+        }
+
+        items.forEach((item, idx) => {
+            if (idx === currentFocusIndex) {
+                item.classList.add("active");
+                item.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            } else {
+                item.classList.remove("active");
+            }
+        });
+        return;
+    }
+
+    // 2. XỬ LÝ PHÍM ENTER (Chọn dòng đang highlight bằng phím mũi tên)
+    if (e.key === "Enter") {
+        if (typeof currentFocusIndex !== 'undefined' && currentFocusIndex >= 0 && items[currentFocusIndex]) {
+            const targetItem = items[currentFocusIndex];
+            const displayVal = targetItem.getAttribute("data-display");
+            if (displayVal) {
+                e.preventDefault();
+                selectField0_PL(displayVal);
+                currentFocusIndex = -1;
+                document.getElementById('field5-pl')?.focus();
+            }
+        }
+        return;
+    }
+
+    // 3. XỬ LÝ PHÍM DELETE / BACKSPACE TRÊN MAC (Xóa hợp đồng đang chọn)
+    const isDeleteAction = (e.key === "Delete" || e.key === "Del" || e.key === "Backspace" || e.keyCode === 46 || e.keyCode === 8);
+    if (isDeleteAction) {
+        if (activeEl && activeEl.id === 'field0-pl') {
+            const isCustomTyping = selectedContractMaHD_PL && activeEl.value.trim().toUpperCase() !== selectedContractMaHD_PL.toUpperCase();
+            const isNavigating = typeof currentFocusIndex !== 'undefined' && currentFocusIndex >= 0;
+            if (isCustomTyping && !isNavigating) return;
+        }
+
+        let targetElement = (typeof currentFocusIndex !== 'undefined' && currentFocusIndex >= 0 && items[currentFocusIndex])
+            ? items[currentFocusIndex]
+            : (drop.querySelector('.hoc-tooltip.is-selected-row') || drop.querySelector('.hoc-tooltip.active'));
+
+        let maToDelete = "";
+        if (targetElement) {
+            const displayVal = targetElement.getAttribute("data-display");
+            if (displayVal) maToDelete = displayVal.split(" | ")[0].trim();
+        } else if (typeof selectedContractMaHD_PL !== "undefined" && selectedContractMaHD_PL) {
+            maToDelete = selectedContractMaHD_PL;
+        }
+
+        if (maToDelete && typeof deleteContractRow_PL === "function") {
+            e.preventDefault();
+            e.stopPropagation();
+            editingMaHD_PL = maToDelete;
+            deleteContractRow_PL();
+        }
+    }
+});

@@ -81,9 +81,13 @@ function formatInput_PL(input) {
  * 7. Điều hướng bàn phím Vạn năng (Mũi tên & Enter) cho Dropdown
  */
 function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback) {
+    // 🚀 TRIỆT TIÊU XUNG ĐỘT KÉP: Tab Phụ lục (dropdown-field0-pl) đã được xử lý tập trung tại JS_Tab_PL_Core.js
+    if (dropId === "dropdown-field0-pl") {
+        return;
+    }
+
     const drop = document.getElementById(dropId);
     
-    // 🚀 SỬA LỖI: Nhận diện hiển thị dựa vào class hoạt động hoặc thuộc tính visibility thực tế của trình duyệt
     const isVisible = drop && (
         drop.classList.contains("show") || 
         drop.classList.contains("open-smooth") || 
@@ -130,7 +134,6 @@ function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback)
     else if (e.key === "Enter") {
         e.preventDefault();
         
-        // Ngoại lệ cho dropdown bảo lãnh/tạm ứng nếu chưa chọn mục nào
         if (dropId === 'drop-field5-hd' && currentFocusIndex === -1) {
             drop.classList.remove("show");
             setTimeout(() => { document.getElementById(nextInputId)?.focus(); }, 100);

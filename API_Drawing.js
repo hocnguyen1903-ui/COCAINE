@@ -163,29 +163,36 @@ function renameAndRouteDrawingFile_Backend(payload) {
     
     const fileId = payload.fileId;
     const newFileName = (payload.newFileName || "").normalize("NFC");
-    const lowerName = newFileName.toLowerCase();
     
     const file = DriveApp.getFileById(fileId);
     file.setName(newFileName);
     
-    const parts = newFileName.split("_");
-    if (parts.length >= 3) {
-      const projectCode = parts[1].trim().toUpperCase();
+    const nameWithoutExt = newFileName.replace(/\.(pdf|xlsx|xls)$/i, "").trim();
+    const cleanName = removeVietnameseDiacritics(nameWithoutExt);
+    const nameParts = cleanName.split("_");
+    const rawParts = nameWithoutExt.split("_");
+    
+    if (nameParts.length >= 3) {
+      const projectCode = rawParts[1].trim().toUpperCase();
       let type = "";
       let branch = "";
       
-      const cleanName = removeVietnameseDiacritics(newFileName);
-      const hasHầm = cleanName.includes("ham") || cleanName.includes("hầm");
-      const hasThân = cleanName.includes("than") || cleanName.includes("thân");
+      const cleanPart2 = nameParts[2].trim();
+      const isOriginal = /^(bvtktc|tkbvtc|bo mon)$/.test(cleanPart2);
+      const isUpdate = /^(cap nhat|update)(\s+.*)?$/.test(cleanPart2);
+      const isProposal = /^(pdx|de xuat|proposal)$/.test(cleanPart2);
       
-      if (lowerName.includes("tkbvtc") || lowerName.includes("bvtktc") || lowerName.includes("bộ môn")) {
+      if (isOriginal) {
         type = "ORIGINAL";
+        const hasHầm = cleanName.includes("ham") || cleanName.includes("hầm");
+        const hasThân = cleanName.includes("than") || cleanName.includes("thân");
+        
         if ((hasHầm && hasThân) || (!hasHầm && !hasThân)) branch = "Chung";
         else if (hasHầm) branch = "Hầm";
         else branch = "Thân";
       } 
-      else if (lowerName.includes("cập nhật") || lowerName.includes("update")) type = "UPDATE";
-      else if (lowerName.includes("pđx") || lowerName.includes("pdx") || lowerName.includes("đề xuất") || lowerName.includes("proposal")) type = "PROPOSAL";
+      else if (isUpdate) type = "UPDATE";
+      else if (isProposal) type = "PROPOSAL";
       
       if (type) {
         const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
@@ -232,7 +239,6 @@ function renameAndRouteDrawingFile_Backend(payload) {
         }
       }
       
-      // Đồng bộ lại Sheet ngay lập tức
       syncDrawingsToSheet_Backend(projectCode);
     }
     return true;
@@ -305,7 +311,7 @@ function scanFilesForMindmap(folder, fileArray, type, branch) {
     let dateLabel = "", sortValue = 0; 
     const dateMatch = fName.match(/^(\d{2})(\d{2})(\d{2})/); 
     if (dateMatch) {
-      dateLabel = dateMatch[3] + "/" + dateMatch[2] + "/20" + dateMatch[1]; 
+      dateLabel = dateMatch[3] + "-" + dateMatch[2] + "-20" + dateMatch[1]; 
       sortValue = parseInt("20" + dateMatch[1] + dateMatch[2] + dateMatch[3]); 
     }
     
@@ -596,22 +602,27 @@ function getDrawingUploadSession_Backend(payload) {
     
     const fileName = (payload.fileName || "").normalize("NFC");
     const fileSize = payload.fileSize;
-    const lowerName = fileName.toLowerCase();
     
-    const parts = fileName.split("_");
-    if (parts.length < 3) {
+    const nameWithoutExt = fileName.replace(/\.(pdf|xlsx|xls)$/i, "").trim();
+    const cleanName = removeVietnameseDiacritics(nameWithoutExt);
+    const nameParts = cleanName.split("_");
+    const rawParts = nameWithoutExt.split("_");
+    
+    if (nameParts.length < 3) {
       throw new Error("Tên tệp không đúng định dạng chuẩn! Cú pháp chuẩn: [YYMMDD]_[MÃ_DỰ_ÁN]_[TẢI_LÊN]_[NỘI_DUNG].pdf");
     }
     
-    const projectCode = parts[1].trim().toUpperCase();
+    const projectCode = rawParts[1].trim().toUpperCase();
     let type = "";
     let branch = "";
     
-    if (lowerName.includes("tkbvtc") || lowerName.includes("bvtktc") || lowerName.includes("bộ môn")) {
+    const cleanPart2 = nameParts[2].trim();
+    const isOriginal = /^(bvtktc|tkbvtc|bo mon)$/.test(cleanPart2);
+    const isUpdate = /^(cap nhat|update)(\s+.*)?$/.test(cleanPart2);
+    const isProposal = /^(pdx|de xuat|proposal)$/.test(cleanPart2);
+    
+    if (isOriginal) {
       type = "ORIGINAL";
-      
-      // Khử dấu tiếng Việt tên tệp khi phân tích phiên tải lên
-      const cleanName = removeVietnameseDiacritics(fileName);
       const hasHầm = cleanName.includes("ham") || cleanName.includes("hầm");
       const hasThân = cleanName.includes("than") || cleanName.includes("thân");
       
@@ -623,14 +634,14 @@ function getDrawingUploadSession_Backend(payload) {
         branch = "Thân";
       }
     }
-    else if (lowerName.includes("cập nhật") || lowerName.includes("update")) type = "UPDATE";
-    else if (lowerName.includes("pđx") || lowerName.includes("pdx") || lowerName.includes("đề xuất") || lowerName.includes("proposal")) type = "PROPOSAL";
-    else throw new Error("Không thể nhận diện loại bản vẽ! Tên file phải chứa từ khóa: 'BVTKTC', 'Cập nhật', hoặc 'PĐX'.");
+    else if (isUpdate) type = "UPDATE";
+    else if (isProposal) type = "PROPOSAL";
+    else throw new Error("Không thể nhận diện loại bản vẽ! Từ khóa phân loại (phần thứ 3 sau dấu '_') không đúng: phải là 'BVTKTC', 'Cập nhật', hoặc 'PĐX'.");
     
     const masterFolder = DriveApp.getFolderById(MASTER_FOLDER_ID);
     const projectFolders = masterFolder.getFoldersByName(projectCode);
     let projFolder = null;
-    let isNewlyCreated = false; // Cờ nhận dạng thư mục mới tạo
+    let isNewlyCreated = false;
     
     if (projectFolders.hasNext()) {
       projFolder = projectFolders.next();
@@ -673,9 +684,6 @@ function getDrawingUploadSession_Backend(payload) {
       isNewlyCreated = true;
     }
 
-    // 🚀 BẢO VỆ CHỐNG TRỄ PHÂN TÁN CỦA GOOGLE DRIVE (Propagation Delay Defense)
-    // Nếu có bất kỳ thư mục nào vừa được tạo mới tinh, bắt buộc dừng ngủ ngầm 1.5 giây
-    // để máy chủ phân tán của Google kịp đồng bộ hóa ID trước khi trả URL về cho trình duyệt upload.
     if (isNewlyCreated) {
       SpreadsheetApp.flush();
       Utilities.sleep(1500);
