@@ -428,184 +428,276 @@ function enforceBidirectionalLayout() {
 /**
  * 4. HÀM VẼ MINDMAP (ĐÃ FIX LỖI CHỒNG NODE VÀ LỆCH TÂM)
  */
-function renderMindmap(projectCode) {
+function renderMindmap(projectCode, forceRefresh = false) {
     const localLoader = document.getElementById("drawing-local-loader");
     const cyArea = document.getElementById('cy');
-    if(localLoader) localLoader.style.display = "flex";
+    const projKey = (projectCode || "").toUpperCase().trim();
+
+    // 🚀 ƯU TIÊN 1: Nạp tức thì từ RAM (0.0 giây) nếu đã từng mở dự án này
+    if (!forceRefresh && projectFullDataCache_Drawing[projKey]) {
+        const cachedData = projectFullDataCache_Drawing[projKey];
+        currentlyRenderedProject = projectCode;
+        drawingTaskCache = {};
+        
+        cachedData.files.forEach(f => { drawingTaskCache[f.fileId] = []; });
+        cachedData.tasks.forEach(task => {
+            if (drawingTaskCache[task.fileId] !== undefined) {
+                drawingTaskCache[task.fileId].push(task);
+            }
+        });
+        
+        projectFilesCache_Drawing[projKey] = cachedData.files;
+        drawCytoscapeGraph(projectCode, cachedData.files, cyArea, localLoader);
+        return;
+    }
+
+    if (localLoader) localLoader.style.display = "flex";
     cyArea.style.opacity = "0";
 
-    Promise.all([
-        callBackend("getMindmapData", projectCode),
-        callBackend("getAllTasksByProject", projectCode)
-    ]).then(([mindmapData, projectTasks]) => {
-        if(localLoader) localLoader.style.display = "none";
-        currentlyRenderedProject = projectCode; 
-
-        if (!mindmapData) {
+    // 🚀 ƯU TIÊN 2: Chỉ gọi 1 request gộp duy nhất thay vì 2 request độc lập
+    callBackend("getProjectDrawingFullData", projectCode).then(fullData => {
+        if (!fullData || !fullData.files) {
             throw new Error("Không nhận được dữ liệu cấu trúc bản vẽ từ máy chủ!");
         }
 
-        if (mindmapData.files) {
-            projectFilesCache_Drawing[projectCode.toUpperCase()] = mindmapData.files;
-        } else {
-            projectFilesCache_Drawing[projectCode.toUpperCase()] = [];
-        }
+        // Lưu vào RAM cache để lần sau mở tức thì
+        projectFullDataCache_Drawing[projKey] = fullData;
+        currentlyRenderedProject = projectCode;
+        projectFilesCache_Drawing[projKey] = fullData.files;
 
         drawingTaskCache = {};
-        
-        if (mindmapData && mindmapData.files) {
-            mindmapData.files.forEach(f => {
-                drawingTaskCache[f.fileId] = [];
-            });
-        }
+        fullData.files.forEach(f => { drawingTaskCache[f.fileId] = []; });
+        fullData.tasks.forEach(task => {
+            if (drawingTaskCache[task.fileId] !== undefined) {
+                drawingTaskCache[task.fileId].push(task);
+            }
+        });
 
-        if (projectTasks && Array.isArray(projectTasks)) {
-            projectTasks.forEach(task => {
-                if (drawingTaskCache[task.fileId] !== undefined) {
-                    drawingTaskCache[task.fileId].push({
-                        taskId: task.taskId,
-                        description: task.description,
-                        team: task.team
-                    });
-                }
-            });
-        }
-
-        if (!mindmapData || !mindmapData.files || mindmapData.files.length === 0) {
+        if (fullData.files.length === 0) {
+            if (localLoader) localLoader.style.display = "none";
             cyArea.style.opacity = "1";
             cyArea.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#FFBA08;font-style:italic;">Dự án [${projectCode}] chưa có bản vẽ!</div>`;
             return;
         }
-        if (cyInstance) { cyInstance.destroy(); cyInstance = null; }
-        cyArea.innerHTML = "";
 
-        setTimeout(() => {
-            cyInstance = cytoscape({
-                container: cyArea, elements: buildCytoscapeElements(mindmapData), pixelRatio: 2,
-                autoungrabify: true, userPanningEnabled: true, userZoomingEnabled: true,
-                style: [
-                    { 
-                        selector: 'node', 
-                        style: { 
-                            'background-color': '#021a31', 
-                            'label': 'data(label)', 
-                            'color': '#fff', 
-                            'font-family': 'Poppins, sans-serif', 
-                            'font-size': 18, 
-                            'font-weight': 'bold', // In đậm mặc định cho toàn bộ các node (mục mẹ, nhánh con...)
-                            'text-valign': 'center', 
-                            'text-halign': 'center', 
-                            'width': 220, 
-                            'height': 68, 
-                            'shape': 'round-rectangle', 
-                            'border-width': 1.5, 
-                            'border-color': '#FFBA08', 
-                            'text-wrap': 'wrap', 
-                            'text-max-width': 180, 
-                            'line-height': 1.4, 
-                            'overlay-opacity': 0 
-                        } 
-                    },
-                    { 
-                        selector: 'node[id="root"]', 
-                        style: { 
-                            'font-size': 24, 
-                            'font-weight': '800', 
-                            'color': '#FFBA08', 
-                            'background-color': '#021a31', 
-                            'background-opacity': 0.95, 
-                            'width': 125, 
-                            'height': 110, 
-                            'shape': 'hexagon', 
-                            'border-style': 'double', 
-                            'border-width': 4, 
-                            'border-color': '#FFBA08',
-                            'text-valign': 'center',
-                            'text-halign': 'center'
-                        } 
-                    },
-                    { 
-                        selector: 'node[?isDept]', 
-                        style: { 
-                            'width': 60, 
-                            'height': 40, 
-                            'font-size': 18, 
-                            'background-color': '#021a31', 
-                            'border-color': 'data(color)', 
-                            'border-width': 1.5, 
-                            'color': 'data(color)', 
-                            'font-weight': 'bold' 
-                        } 
-                    },
-                    { 
-                        selector: 'node[?fileId]', 
-                        style: { 
-                            'background-color': '#293e5b', 
-                            'border-width': 1.5, 
-                            'border-color': 'data(color)', 
-                            'font-size': 18, 
-                            'font-weight': 'normal',
-                            'text-wrap': 'wrap', 
-                            'text-max-width': 200, 
-                            'width': 240, 
-                            'height': 100, 
-                            'text-valign': 'center', 
-                            'line-height': 1.4,
-                            'color': (el) => el.data('color').toUpperCase() === '#FFBA08' ? '#FFFFFF' : el.data('color')
-                        } 
-                    },
-                    { 
-                        selector: 'node[?isDate]', 
-                        style: { 
-                            'width': 125, 
-                            'height': 44, 
-                            'background-opacity': 0, 
-                            'border-color': '#FFBA08', 
-                            'border-width': 1.5, 
-                            'font-size': 18, 
-                            'font-weight': 'bold', 
-                            'color': '#FFBA08', 
-                            'shape': 'round-rectangle', 
-                            'text-valign': 'center', 
-                            'text-halign': 'center' 
-                        } 
-                    },
-                    { 
-                        selector: 'edge', 
-                        style: { 
-                            'width': 1.5, 
-                            'line-color': 'data(color)', 
-                            'curve-style': 'taxi', 
-                            'taxi-direction': 'horizontal', 
-                            'target-arrow-shape': 'data(arrowShape)', 
-                            'target-arrow-color': 'data(color)', 
-                            'line-opacity': 0.8 
-                        } 
-                    },                    
-                    { selector: 'node:selected', style: { 'background-color': '#FFBA08', 'background-opacity': 0.2, 'border-width': (el) => el.style('border-width') } }
-                ]
-            });
+        drawCytoscapeGraph(projectCode, fullData.files, cyArea, localLoader);
+    }).catch(err => {
+        if (localLoader) localLoader.style.display = "none";
+        alert("Lỗi tải bản đồ: " + (err.message || err));
+    });
+}
 
-            const branchGoc = cyInstance.getElementById('branch_goc');
-            if (branchGoc.length > 0 && branchGoc.successors().length > 0) {
-                branchGoc.data('collapsed', true);
-                branchGoc.data('originalLabel', branchGoc.data('label'));
-                branchGoc.data('label', branchGoc.data('originalLabel') + ' [ + ]');
+/**
+ * HÀM TÁCH BIỆT DỰNG GRAPH CYTOSCAPE (TĂNG HIỆU NĂNG TÁI SỬ DỤNG)
+ */
+function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
+    if (cyInstance) { cyInstance.destroy(); cyInstance = null; }
+    cyArea.innerHTML = "";
+
+    setTimeout(() => {
+        cyInstance = cytoscape({
+            container: cyArea, elements: buildCytoscapeElements({ projectCode: projectCode, files: filesList }), pixelRatio: 2,
+            autoungrabify: true, userPanningEnabled: true, userZoomingEnabled: true,
+            style: [
+                { 
+                    selector: 'node', 
+                    style: { 
+                        'background-color': '#021a31', 
+                        'label': 'data(label)', 
+                        'color': '#fff', 
+                        'font-family': 'Poppins, sans-serif', 
+                        'font-size': 18, 
+                        'font-weight': 'bold', 
+                        'text-valign': 'center', 
+                        'text-halign': 'center', 
+                        'width': 220, 
+                        'height': 68, 
+                        'shape': 'round-rectangle', 
+                        'border-width': 1.5, 
+                        'border-color': '#FFBA08', 
+                        'text-wrap': 'wrap', 
+                        'text-max-width': 180, 
+                        'line-height': 1.4, 
+                        'overlay-opacity': 0 
+                    } 
+                },
+                { 
+                    selector: 'node[id="root"]', 
+                    style: { 
+                        'font-size': 24, 
+                        'font-weight': '800', 
+                        'color': '#FFBA08', 
+                        'background-color': '#021a31', 
+                        'background-opacity': 0.95, 
+                        'width': 125, 
+                        'height': 110, 
+                        'shape': 'hexagon', 
+                        'border-style': 'double', 
+                        'border-width': 4, 
+                        'border-color': '#FFBA08',
+                        'text-valign': 'center',
+                        'text-halign': 'center'
+                    } 
+                },
+                { 
+                    selector: 'node[?isDept]', 
+                    style: { 
+                        'width': 60, 
+                        'height': 40, 
+                        'font-size': 18, 
+                        'background-color': '#021a31', 
+                        'border-color': 'data(color)', 
+                        'border-width': 1.5, 
+                        'color': 'data(color)', 
+                        'font-weight': 'bold' 
+                    } 
+                },
+                { 
+                    selector: 'node[?fileId]', 
+                    style: { 
+                        'background-color': '#293e5b', 
+                        'border-width': 1.5, 
+                        'border-color': 'data(color)', 
+                        'font-size': 18, 
+                        'font-weight': 'normal',
+                        'text-wrap': 'wrap', 
+                        'text-max-width': 200, 
+                        'width': 240, 
+                        'height': 100, 
+                        'text-valign': 'center', 
+                        'line-height': 1.4,
+                        'color': (el) => el.data('color').toUpperCase() === '#FFBA08' ? '#FFFFFF' : el.data('color')
+                    } 
+                },
+                { 
+                    selector: 'node[?isDate]', 
+                    style: { 
+                        'width': 125, 
+                        'height': 44, 
+                        'background-opacity': 0, 
+                        'border-color': '#FFBA08', 
+                        'border-width': 1.5, 
+                        'font-size': 18, 
+                        'font-weight': 'bold', 
+                        'color': '#FFBA08', 
+                        'shape': 'round-rectangle', 
+                        'text-valign': 'center', 
+                        'text-halign': 'center' 
+                    } 
+                },
+                { 
+                    selector: 'edge', 
+                    style: { 
+                        'width': 1.5, 
+                        'line-color': 'data(color)', 
+                        'curve-style': 'taxi', 
+                        'taxi-direction': 'horizontal', 
+                        'target-arrow-shape': 'data(arrowShape)', 
+                        'target-arrow-color': 'data(color)', 
+                        'line-opacity': 0.8 
+                    } 
+                },                    
+                { selector: 'node:selected', style: { 'background-color': '#FFBA08', 'background-opacity': 0.2, 'border-width': (el) => el.style('border-width') } }
+            ]
+        });
+
+        const branchGoc = cyInstance.getElementById('branch_goc');
+        if (branchGoc.length > 0 && branchGoc.successors().length > 0) {
+            branchGoc.data('collapsed', true);
+            branchGoc.data('originalLabel', branchGoc.data('label'));
+            branchGoc.data('label', branchGoc.data('originalLabel') + ' [ + ]');
+            
+            branchGoc.scratch('hiddenElements', branchGoc.successors());
+            cyInstance.remove(branchGoc.successors());
+        }
+
+        cyInstance.resize();
+        
+        cyInstance.layout({ 
+            name: 'dagre', 
+            rankDir: 'LR', 
+            nodeSep: 45, 
+            rankSep: 80, 
+            animate: false, 
+            fit: true, 
+            padding: 20, 
+            sort: (a, b) => {
+                const getPri = (n) => {
+                    if (n.id() === 'root') return 1;
+                    if (['branch_goc', 'branch_update', 'branch_proposal'].includes(n.id())) return 2;
+                    if (n.data('isDate')) return 3;
+                    if (n.id().includes('_Thân') || n.id().includes('_Hầm')) return 4;
+                    if (n.data('isDept')) return 5;
+                    return 6;
+                };
+                const pA = getPri(a);
+                const pB = getPri(b);
+                if (pA !== pB) return pA - pB;
                 
-                branchGoc.scratch('hiddenElements', branchGoc.successors());
-                cyInstance.remove(branchGoc.successors());
+                const svA = a.data('sortValue') || 0;
+                const svB = b.data('sortValue') || 0;
+                if (svA !== svB) {
+                    return svB - svA;
+                }
+                
+                const nameA = a.data('fullName') || a.data('label') || "";
+                const nameB = b.data('fullName') || b.data('label') || "";
+                return nameB.localeCompare(nameA, 'vi', { numeric: true, sensitivity: 'base' });
+            },
+            stop: () => { 
+                enforceBidirectionalLayout();
+                if (localLoader) localLoader.style.display = "none";
+                cyArea.style.opacity = "1"; 
+                cyInstance.resize(); 
+                cyInstance.fit(null, 20);
+            } 
+        }).run();
+        
+        cyInstance.on('tap', 'node#branch_goc', function(evt) {
+            const node = evt.target;
+            const isCollapsed = node.data('collapsed');
+
+            cyInstance.nodes().forEach(n => {
+                n.scratch('startPos', { ...n.position() });
+            });
+            const startZoom = cyInstance.zoom();
+            const startPan = { ...cyInstance.pan() };
+
+            if (isCollapsed) {
+                const hiddenElements = node.scratch('hiddenElements');
+                if (hiddenElements) {
+                    cyInstance.add(hiddenElements);
+
+                    const parentPos = node.position();
+                    hiddenElements.forEach(el => {
+                        if (el.isNode()) {
+                            el.position({ x: parentPos.x, y: parentPos.y });
+                            el.scratch('startPos', { x: parentPos.x, y: parentPos.y });
+                        }
+                    });
+                }
+                node.data('collapsed', false);
+                node.data('label', node.data('originalLabel') + ' [ - ]');
+            } else {
+                if (node.successors().length === 0) return;
+
+                node.data('collapsed', true);
+                node.data('label', node.data('originalLabel') + ' [ + ]');
+
+                node.scratch('hiddenElements', node.successors());
+                cyInstance.remove(node.successors());
+
+                closeFileDetail();
             }
 
-            cyInstance.resize();
-            
             cyInstance.layout({ 
                 name: 'dagre', 
                 rankDir: 'LR', 
                 nodeSep: 45, 
                 rankSep: 80, 
                 animate: false, 
-                fit: true, 
-                padding: 20, 
+                fit: false, 
+                padding: 20,
                 sort: (a, b) => {
                     const getPri = (n) => {
                         if (n.id() === 'root') return 1;
@@ -622,138 +714,58 @@ function renderMindmap(projectCode) {
                     const svA = a.data('sortValue') || 0;
                     const svB = b.data('sortValue') || 0;
                     if (svA !== svB) {
-                        return svB - svA;
+                        return svB - svA; 
                     }
                     
                     const nameA = a.data('fullName') || a.data('label') || "";
                     const nameB = b.data('fullName') || b.data('label') || "";
                     return nameB.localeCompare(nameA, 'vi', { numeric: true, sensitivity: 'base' });
                 },
-                stop: () => { 
-                    enforceBidirectionalLayout(); // KÍCH HOẠT BỐ CỤC 2 NHÁNH ĐỐI XỨNG
-                    cyArea.style.opacity = "1"; 
-                    cyInstance.resize(); 
+                stop: () => {
+                    enforceBidirectionalLayout(); 
+                    
+                    const endPositions = new Map();
+                    cyInstance.nodes().forEach(n => endPositions.set(n.id(), { ...n.position() }));
+
                     cyInstance.fit(null, 20);
-                } 
-            }).run();
-            
-            cyInstance.on('tap', 'node#branch_goc', function(evt) {
-                const node = evt.target;
-                const isCollapsed = node.data('collapsed');
+                    const targetZoom = cyInstance.zoom();
+                    const targetPan = { ...cyInstance.pan() };
 
-                cyInstance.nodes().forEach(n => {
-                    n.scratch('startPos', { ...n.position() });
-                });
-                const startZoom = cyInstance.zoom();
-                const startPan = { ...cyInstance.pan() };
+                    cyInstance.zoom(startZoom);
+                    cyInstance.pan(startPan);
+                    
+                    cyInstance.nodes().forEach(n => {
+                        const startPos = n.scratch('startPos');
+                        if (startPos) n.position(startPos);
+                    });
 
-                if (isCollapsed) {
-                    const hiddenElements = node.scratch('hiddenElements');
-                    if (hiddenElements) {
-                        cyInstance.add(hiddenElements);
-
-                        const parentPos = node.position();
-                        hiddenElements.forEach(el => {
-                            if (el.isNode()) {
-                                el.position({ x: parentPos.x, y: parentPos.y });
-                                el.scratch('startPos', { x: parentPos.x, y: parentPos.y });
-                            }
-                        });
-                    }
-                    node.data('collapsed', false);
-                    node.data('label', node.data('originalLabel') + ' [ - ]');
-                } else {
-                    if (node.successors().length === 0) return;
-
-                    node.data('collapsed', true);
-                    node.data('label', node.data('originalLabel') + ' [ + ]');
-
-                    node.scratch('hiddenElements', node.successors());
-                    cyInstance.remove(node.successors());
-
-                    closeFileDetail();
-                }
-
-                cyInstance.layout({ 
-                    name: 'dagre', 
-                    rankDir: 'LR', 
-                    nodeSep: 45, 
-                    rankSep: 80, 
-                    animate: false, 
-                    fit: false, 
-                    padding: 20,
-                    sort: (a, b) => {
-                        const getPri = (n) => {
-                            if (n.id() === 'root') return 1;
-                            if (['branch_goc', 'branch_update', 'branch_proposal'].includes(n.id())) return 2;
-                            if (n.data('isDate')) return 3;
-                            if (n.id().includes('_Thân') || n.id().includes('_Hầm')) return 4;
-                            if (n.data('isDept')) return 5;
-                            return 6;
-                        };
-                        const pA = getPri(a);
-                        const pB = getPri(b);
-                        if (pA !== pB) return pA - pB;
-                        
-                        const svA = a.data('sortValue') || 0;
-                        const svB = b.data('sortValue') || 0;
-                        if (svA !== svB) {
-                            return svB - svA; 
-                        }
-                        
-                        const nameA = a.data('fullName') || a.data('label') || "";
-                        const nameB = b.data('fullName') || b.data('label') || "";
-                        return nameB.localeCompare(nameA, 'vi', { numeric: true, sensitivity: 'base' });
-                    },
-                    stop: () => {
-                        enforceBidirectionalLayout(); 
-                        
-                        const endPositions = new Map();
-                        cyInstance.nodes().forEach(n => endPositions.set(n.id(), { ...n.position() }));
-
-                        cyInstance.fit(null, 20);
-                        const targetZoom = cyInstance.zoom();
-                        const targetPan = { ...cyInstance.pan() };
-
-                        cyInstance.zoom(startZoom);
-                        cyInstance.pan(startPan);
-                        
-                        cyInstance.nodes().forEach(n => {
-                            const startPos = n.scratch('startPos');
-                            if (startPos) n.position(startPos);
-                        });
-
-                        cyInstance.nodes().forEach(n => {
-                            n.animate({
-                                position: endPositions.get(n.id()),
-                                duration: 350,
-                                easing: 'ease-out-cubic'
-                            });
-                        });
-                        
-                        cyInstance.animate({
-                            zoom: targetZoom,
-                            pan: targetPan,
+                    cyInstance.nodes().forEach(n => {
+                        n.animate({
+                            position: endPositions.get(n.id()),
                             duration: 350,
                             easing: 'ease-out-cubic'
                         });
-                    }
-                }).run();
-            });
+                    });
+                    
+                    cyInstance.animate({
+                        zoom: targetZoom,
+                        pan: targetPan,
+                        duration: 350,
+                        easing: 'ease-out-cubic'
+                    });
+                }
+            }).run();
+        });
 
-            cyInstance.on('tap', 'node', (evt) => { if (evt.target.data('fileId')) updatePanelContent(evt.target.data()); });
-            cyInstance.on('dbltap', 'node', (evt) => { if (evt.target.data('fileId') && evt.target.data('url') !== "#") window.open(evt.target.data('url'), '_blank'); });
-            cyInstance.on('mouseover', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'pointer');
-            cyInstance.on('mouseout', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'default');
-            
-            cyInstance.on('mouseover', 'node#branch_goc', () => document.getElementById('cy').style.cursor = 'pointer');
-            cyInstance.on('mouseout', 'node#branch_goc', () => document.getElementById('cy').style.cursor = 'default');
-            
-        }, 100);
-    }).catch(err => {
-        if(localLoader) localLoader.style.display = "none";
-        alert("Lỗi tải bản đồ: " + (err.message || err));
-    });
+        cyInstance.on('tap', 'node', (evt) => { if (evt.target.data('fileId')) updatePanelContent(evt.target.data()); });
+        cyInstance.on('dbltap', 'node', (evt) => { if (evt.target.data('fileId') && evt.target.data('url') !== "#") window.open(evt.target.data('url'), '_blank'); });
+        cyInstance.on('mouseover', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'pointer');
+        cyInstance.on('mouseout', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'default');
+        
+        cyInstance.on('mouseover', 'node#branch_goc', () => document.getElementById('cy').style.cursor = 'pointer');
+        cyInstance.on('mouseout', 'node#branch_goc', () => document.getElementById('cy').style.cursor = 'default');
+        
+    }, 100);
 }
 
 function buildCytoscapeElements(data) {
@@ -1720,17 +1732,20 @@ function resetAIZoneUI() {
  * 8. CORE UTILS
  */
 
+let projectFullDataCache_Drawing = {};
+
 function syncManual() {
-    // 1. Buộc quét lại danh sách dự án mới nhất từ Drive (Force Refresh)
+    // 1. Quét lại danh sách dự án mới nhất từ Drive
     fetchActiveProjectsForDrawing(true);
     
-    // 2. Đồng bộ và vẽ lại Mindmap của dự án hiện tại đang chọn
+    // 2. Xóa cache RAM và đồng bộ lại Mindmap dự án hiện tại
     if (selectedProjectDrawing) {
+        delete projectFullDataCache_Drawing[selectedProjectDrawing.toUpperCase()];
         const localLoader = document.getElementById("drawing-local-loader");
         if (localLoader) localLoader.style.display = "flex";
         drawingTaskCache = {};
         currentlyRenderedProject = "";
-        renderMindmap(selectedProjectDrawing);
+        renderMindmap(selectedProjectDrawing, true);
     }
 }
 

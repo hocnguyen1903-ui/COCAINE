@@ -728,3 +728,69 @@ function removeVietnameseDiacritics(str) {
             .trim();
 }
 
+/**
+ * TRUY VẤN SIÊU TỐC: Đọc đồng thời Drawing_Log và Task_Log bằng Google Sheets REST API v4
+ */
+function getProjectDrawingFullData(projectCode) {
+  try {
+    const cleanCode = (projectCode || "").toString().toUpperCase().trim();
+    
+    // Đọc đồng thời 2 bảng Drawing_Log và Task_Log trong 1 lệnh duy nhất
+    const response = Sheets.Spreadsheets.Values.batchGet(SHEET_ID, {
+      ranges: ["Drawing_Log!A2:I", "Task_Log!A2:E"],
+      valueRenderOption: "FORMATTED_VALUE"
+    });
+    
+    const valueRanges = response.valueRanges || [];
+    const drawingRows = valueRanges[0]?.values || [];
+    const taskRows = valueRanges[1]?.values || [];
+    
+    const projectFiles = [];
+    for (let i = 0; i < drawingRows.length; i++) {
+      const r = drawingRows[i];
+      if ((r[0] || "").toString().toUpperCase().trim() === cleanCode) {
+        projectFiles.push({
+          fileId: r[1] || "",
+          fileName: r[2] || "",
+          dateLabel: r[3] || "",
+          sortValue: parseInt(r[4]) || 0,
+          type: r[5] || "",
+          branch: r[6] || "",
+          dept: r[7] || "",
+          url: r[8] || ""
+        });
+      }
+    }
+    
+    // Nếu chưa có file nào trong Sheet cho dự án này -> Tự động quét Drive lần đầu
+    if (projectFiles.length === 0) {
+      const syncResult = syncDrawingsToSheet_Backend(cleanCode);
+      return {
+        files: syncResult.files,
+        tasks: getAllTasksByProject(cleanCode)
+      };
+    }
+    
+    projectFiles.sort((a, b) => (a.fileName || "").localeCompare(b.fileName || "", 'vi', { numeric: true, sensitivity: 'base' }));
+    
+    const projectTasks = [];
+    for (let j = 0; j < taskRows.length; j++) {
+      const tr = taskRows[j];
+      if ((tr[0] || "").toString().toUpperCase().trim() === cleanCode) {
+        projectTasks.push({
+          taskId: tr[1] || "",
+          fileId: tr[2] || "",
+          description: tr[3] || "",
+          team: tr[4] || "XD"
+        });
+      }
+    }
+    
+    return {
+      files: projectFiles,
+      tasks: projectTasks
+    };
+  } catch (e) {
+    throw new Error("Lỗi tải dữ liệu Bản vẽ & Task: " + e.message);
+  }
+}

@@ -413,6 +413,7 @@ function doPost(e) {
     "renameAndRouteDrawingFile_Backend": () => renameAndRouteDrawingFile_Backend(payload),
     "deleteDrawingFileAndTasks_Backend": () => deleteDrawingFileAndTasks_Backend(payload),
     "syncDrawingsToSheet_Backend": () => syncDrawingsToSheet_Backend(payload),
+    "getProjectDrawingFullData": () => getProjectDrawingFullData(payload),
     "rejectUser_InApp": () => rejectUser_InApp(payload)    
   };
 
