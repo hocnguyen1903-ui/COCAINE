@@ -400,12 +400,12 @@ function toggleAdjustment_PL(id, label, fieldToShow) {
 }
 
 // ==========================================================================
-// BỘ LẮNG NGHE PHÍM DELETE & MAC BACKSPACE CHO TAB PHỤ LỤC (PLHD)
+// BỘ ĐIỀU HƯỚNG BÀN PHÍM TOÀN CỤC TAB PHỤ LỤC (WINDOWS & MACOS COMPATIBLE)
 // ==========================================================================
 document.addEventListener("keydown", function(e) {
     if (activeTabId !== 'tab-plhd') return;
 
-    // Nếu đang mở các bảng Modal / Panel thì không can thiệp
+    // 1. Không can thiệp nếu đang mở các bảng Modal / Panel
     const isModalOpen = (document.getElementById('data-delete-confirm-overlay')?.style.display === 'flex') ||
                         (document.getElementById('edit-panel-pl')?.classList.contains('active')) ||
                         (document.getElementById('scan-panel-pl')?.classList.contains('active')) ||
@@ -413,19 +413,18 @@ document.addEventListener("keydown", function(e) {
     if (isModalOpen) return;
 
     const activeEl = document.activeElement;
-    const isOtherInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.id !== 'field0-pl';
-    if (isOtherInput) return; // Nếu đang gõ ở các ô input khác (giá trị, gia hạn...) thì giữ nguyên mặc định
-
     const drop = document.getElementById("dropdown-field0-pl");
     if (!drop) return;
     const items = Array.from(drop.querySelectorAll('.hoc-tooltip'));
     if (items.length === 0) return;
 
-    // 1. XỬ LÝ PHÍM MŨI TÊN LÊN / XUỐNG (ArrowUp / ArrowDown)
+    // 2. XỬ LÝ PHÍM MŨI TÊN LÊN / XUỐNG (ArrowUp / ArrowDown)
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const isOtherInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.id !== 'field0-pl';
+        if (isOtherInput) return;
+
         e.preventDefault();
 
-        // Nếu chưa có vị trí focus, lấy vị trí của dòng đang được click chọn trước đó
         if (typeof currentFocusIndex === 'undefined' || currentFocusIndex < 0) {
             const selectedIdx = items.findIndex(item => item.classList.contains('is-selected-row') || item.classList.contains('active'));
             currentFocusIndex = selectedIdx >= 0 ? selectedIdx : -1;
@@ -450,7 +449,7 @@ document.addEventListener("keydown", function(e) {
         return;
     }
 
-    // 2. XỬ LÝ PHÍM ENTER (Chọn dòng đang highlight bằng phím mũi tên)
+    // 3. XỬ LÝ PHÍM ENTER (Chọn dòng đang highlight)
     if (e.key === "Enter") {
         if (typeof currentFocusIndex !== 'undefined' && currentFocusIndex >= 0 && items[currentFocusIndex]) {
             const targetItem = items[currentFocusIndex];
@@ -465,13 +464,13 @@ document.addEventListener("keydown", function(e) {
         return;
     }
 
-    // 3. XỬ LÝ PHÍM DELETE / BACKSPACE TRÊN MAC (Xóa hợp đồng đang chọn)
+    // 4. XỬ LÝ PHÍM XÓA: DELETE (WINDOWS/FN+DELETE) & BACKSPACE (MAC DELETE / CMD+DELETE)
     const isDeleteAction = (e.key === "Delete" || e.key === "Del" || e.key === "Backspace" || e.keyCode === 46 || e.keyCode === 8);
     if (isDeleteAction) {
-        if (activeEl && activeEl.id === 'field0-pl') {
-            const isCustomTyping = selectedContractMaHD_PL && activeEl.value.trim().toUpperCase() !== selectedContractMaHD_PL.toUpperCase();
-            const isNavigating = typeof currentFocusIndex !== 'undefined' && currentFocusIndex >= 0;
-            if (isCustomTyping && !isNavigating) return;
+        // 🚀 VÔ HIỆU HÓA HOÀN TOÀN KHI CON TRỎ ĐANG Ở TRONG BẤT KỲ Ô INPUT NÀO (KỂ CẢ Ô TÌM KIẾM)
+        const isInsideInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+        if (isInsideInput) {
+            return; // Chỉ thực hiện thao tác xóa chữ bình thường trong ô text, không mở modal xóa hợp đồng
         }
 
         let targetElement = (typeof currentFocusIndex !== 'undefined' && currentFocusIndex >= 0 && items[currentFocusIndex])
