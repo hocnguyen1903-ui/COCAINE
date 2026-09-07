@@ -989,14 +989,36 @@ function triggerEditDrawing_Client(fileId, fileName) {
         const extMatch = fileName.match(/\.(pdf|xlsx|xls)$/i);
         fileExtToEdit_Drawing = extMatch ? extMatch[0] : ".pdf";
         
-        // Gọt bỏ phần mở rộng .pdf / .xlsx / .xls khi đổ vào ô input chỉnh sửa
         input.value = fileName.replace(/\.(pdf|xlsx|xls)$/i, "").trim();
+        input.setAttribute('maxlength', '58');
+        
+        // Chặn cứng không cho gõ hoặc dán vượt quá 58 ký tự
+        input.oninput = function() {
+            if (this.value.length > 58) {
+                this.value = this.value.slice(0, 58);
+            }
+        };
+        
         overlay.style.display = "flex";
         setTimeout(() => { 
             overlay.classList.add('show'); 
             input.focus();
             input.select();
         }, 10);
+    }
+}
+
+function handleQueueItemInput(inputEl, index) {
+    if (inputEl.value.length > 58) {
+        inputEl.value = inputEl.value.slice(0, 58);
+    }
+    drawingUploadQueue[index].name = inputEl.value;
+    
+    // Cập nhật số đếm ký tự trực tiếp không giật DOM
+    const counter = document.getElementById(`char-counter-${index}`);
+    if (counter) {
+        counter.textContent = `(${inputEl.value.length}/58)`;
+        counter.style.color = inputEl.value.length >= 58 ? '#FFBA08' : '#505966';
     }
 }
 
@@ -1013,27 +1035,33 @@ function executeActualEditDrawing_Client() {
     const rawVal = document.getElementById('drawing-edit-input-val').value.trim();
     if (!rawVal) return alert("Sếp phải nhập tên file bản vẽ hợp lệ!");
 
-    // Nếu người dùng cố tình nhập đuôi mở rộng file thì chặn lại
+    if (rawVal.length > 58) {
+        showToast_PL(`⚠️ Tên file tối đa 58 ký tự (Hiện tại: ${rawVal.length} ký tự)!`, "error");
+        return;
+    }
+
     if (/\.(pdf|xlsx|xls)$/i.test(rawVal)) {
         showToast_PL("⚠️ Không nhập đuôi .pdf vào tên file!", "error");
         return;
     }
 
-    const { isValid } = validateDrawingFilename(rawVal);
+    const { isValid, fileType: newFileType } = validateDrawingFilename(rawVal);
     if (!isValid) {
         showToast_PL("⚠️ Tên file không đúng cú pháp quy định!", "error");
         return;
     }
 
-    // Tự động gắn đuôi mở rộng gốc khi lưu vật lý lên Google Drive
     const newVal = rawVal + fileExtToEdit_Drawing;
     const targetFileId = fileIdToEdit_Drawing;
+    const projKey = (selectedProjectDrawing || "").toUpperCase().trim();
     fileIdToEdit_Drawing = "";
     
     cancelEditDrawing_Client();
 
     let originalLabel = "";
     let originalFullName = "";
+    let originalType = "";
+    let originalDatePart = "";
     let nodeToEdit = null;
 
     if (cyInstance) {
@@ -1041,6 +1069,8 @@ function executeActualEditDrawing_Client() {
         if (nodeToEdit.length > 0) {
             originalLabel = nodeToEdit.data('label');
             originalFullName = nodeToEdit.data('fullName');
+            originalType = nodeToEdit.data('type');
+            originalDatePart = (originalFullName || "").split("_")[0];
 
             let namePart = rawVal;
             const projectCode = selectedProjectDrawing.toString();
@@ -1054,8 +1084,26 @@ function executeActualEditDrawing_Client() {
             let cleanName = namePart.replace(/_+/g, "_").replace(/\s+/g, " ").replace(/^[_ \s]+|[_ \s]+$/g, "");
             const smartName = cleanName ? cleanName : rawVal;
 
+            // 1. Cập nhật trực tiếp tên hiển thị và dữ liệu trên Node (0ms)
             nodeToEdit.data('label', smartName);
             nodeToEdit.data('fullName', newVal);
+            nodeToEdit.data('type', newFileType);
+            
+            // 2. Cập nhật trực tiếp vào RAM Cache
+            if (projectFullDataCache_Drawing[projKey] && projectFullDataCache_Drawing[projKey].files) {
+                const targetFileCache = projectFullDataCache_Drawing[projKey].files.find(f => f.fileId === targetFileId);
+                if (targetFileCache) {
+                    targetFileCache.fileName = newVal;
+                    targetFileCache.type = newFileType;
+                }
+            }
+            if (projectFilesCache_Drawing[projKey]) {
+                const targetFileCache2 = projectFilesCache_Drawing[projKey].find(f => f.fileId === targetFileId);
+                if (targetFileCache2) {
+                    targetFileCache2.fileName = newVal;
+                    targetFileCache2.type = newFileType;
+                }
+            }
             
             closeFileDetail();
         }
@@ -1063,10 +1111,18 @@ function executeActualEditDrawing_Client() {
 
     showToast_PL("✏️ Đã đổi tên bản vẽ thành công!", "success");
 
+    // 3. KIỂM TRA XEM CÓ THAY ĐỔI CẤU TRÚC (ĐỔI LOẠI NHÁNH HOẶC ĐỔI NGÀY THÁNG) HAY KHÔNG
+    const newDatePart = rawVal.split("_")[0];
+    const isStructureChanged = (originalType && newFileType && originalType !== newFileType) || 
+                               (originalDatePart && newDatePart && originalDatePart !== newDatePart);
+
+    // 4. GỌI BACKEND XỬ LÝ NGẦM TRÊN DRIVE VÀ DATABASE SHEET
     callBackend("renameAndRouteDrawingFile_Backend", { fileId: targetFileId, newFileName: newVal })
         .then(res => {
-            if (res && selectedProjectDrawing) {
-                renderMindmap(selectedProjectDrawing);
+            // Chỉ vẽ lại sơ đồ khi việc đổi tên làm file phải chuyển sang nhánh khác hoặc cụm ngày khác
+            if (res && isStructureChanged && selectedProjectDrawing) {
+                delete projectFullDataCache_Drawing[projKey];
+                renderMindmap(selectedProjectDrawing, true);
             }
         })
         .catch(err => {
@@ -1075,9 +1131,11 @@ function executeActualEditDrawing_Client() {
             if (nodeToEdit && nodeToEdit.length > 0) {
                 nodeToEdit.data('label', originalLabel);
                 nodeToEdit.data('fullName', originalFullName);
+                nodeToEdit.data('type', originalType);
             }
+            delete projectFullDataCache_Drawing[projKey];
             if (selectedProjectDrawing) {
-                renderMindmap(selectedProjectDrawing);
+                renderMindmap(selectedProjectDrawing, true);
             }
         });
 }
@@ -1348,8 +1406,6 @@ function renderDrawingQueueUI() {
     let html = "";
     drawingUploadQueue.forEach((fileItem, index) => {
         const fileSizeMB = (fileItem.size / (1024 * 1024)).toFixed(2);
-        
-        // Kiểm tra tính hợp lệ: nếu có chứa đuôi .pdf hoặc sai cú pháp -> isValid = false (chuyển đỏ)
         const { isValid, fileType } = validateDrawingFilename(fileItem.name);
         const isDuplicateOnDrive = checkIsDuplicateOnDrive(fileItem.name + fileItem.ext);
         
@@ -1374,8 +1430,10 @@ function renderDrawingQueueUI() {
                 <i class="bi ${iconClass}" style="color: ${iconColor} !important; font-size: 14px; flex-shrink: 0; margin-right: 5px;"></i>
                 
                 <input type="text" value="${fileItem.name}" 
+                       maxlength="58"
                        class="task-desc-edit" 
                        style="color: ${isValid ? 'rgba(255, 255, 255, 0.8)' : '#ff7777'} !important; font-weight: 500; height: 100%;"
+                       oninput="handleQueueItemInput(this, ${index})"
                        onchange="renameFileInDrawingQueue(this.value, ${index})"
                        onclick="event.stopPropagation();"
                 >
@@ -1386,7 +1444,9 @@ function renderDrawingQueueUI() {
                     </span>` : ''
                 }
                 
-                <span style="font-size: 9.5px; color: #505966; font-style: italic; flex-shrink: 0; margin-right: 10px;">(${fileSizeMB}MB)</span>
+                <span id="char-counter-${index}" style="font-size: 9.5px; color: ${fileItem.name.length >= 58 ? '#FFBA08' : '#505966'}; font-style: italic; flex-shrink: 0; margin-right: 10px;">
+                    (${fileItem.name.length}/58)
+                </span>
                 
                 <i class="bi bi-trash3-fill" style="color:#ff4d4d; cursor:pointer; font-size:14px; opacity:0.5; transition: opacity 0.2s;" 
                    onmouseover="this.style.opacity='1'" 
@@ -1421,7 +1481,7 @@ function clearDrawingUploadQueue(event) {
 }
 
 /**
- * TRUYỀN TẢI LÔ TUẦN TỰ (KẾT HỢP BỘ CHẶN BẮT BUỘC SỬA TÊN)
+ * TRUYỀN TẢI LÔ TUẦN TỰ (XÓA RAM CACHE & HIỂN THỊ FILE MỚI NGAY TỨC THÌ LÊN MINDMAP)
  */
 async function startDrawingQueueUpload(event) {
     if (event) { event.preventDefault(); event.stopPropagation(); }
@@ -1546,13 +1606,15 @@ async function startDrawingQueueUpload(event) {
         statusText.textContent = "SAVING TO DATABASE...";
         progressBar.style.width = "100%";
         
-        // 4. Đồng bộ cấu trúc vào Sheet Drawing_Log cho tất cả dự án có file vừa up
+        // 4. Đồng bộ cấu trúc vào Sheet Drawing_Log và XÓA RAM CACHE cũ
         const uploadedProjectCodes = [...new Set(filesToUpload.map(f => {
             const parts = f.name.split("_");
             return parts.length >= 2 ? parts[1].trim().toUpperCase() : "";
         }).filter(Boolean))];
 
         for (const projCode of uploadedProjectCodes) {
+            // 🚀 XÓA RAM CACHE để bắt buộc nạp dữ liệu mới
+            delete projectFullDataCache_Drawing[projCode];
             await callBackend("syncDrawingsToSheet_Backend", projCode);
         }
         
@@ -1564,19 +1626,18 @@ async function startDrawingQueueUpload(event) {
         isUploading_Drawing = false;
         renderDrawingQueueUI();
         
-        // Khôi phục hiển thị SYSTEM GUIDELINES và đóng panel chi tiết
         document.getElementById('dp-empty-state').style.display = 'flex';
         document.getElementById('dp-content-state').style.display = 'none';
         currentFileId = "";
         
-        // 6. Tự động chuyển vùng và vẽ lại Mindmap của dự án vừa upload (hoặc 1 dự án đại diện nếu up nhiều dự án)
+        // 6. Ép vẽ lại Mindmap với cờ forceRefresh = true để nạp ngay file mới
         const targetProj = uploadedProjectCodes[0] || selectedProjectDrawing;
         if (targetProj) {
             selectedProjectDrawing = targetProj;
-            currentlyRenderedProject = ""; // Xóa cache để bắt buộc load lại Mindmap mới nhất
+            currentlyRenderedProject = ""; 
             const projInput = document.getElementById("drawing-project-search");
             if (projInput) projInput.value = targetProj;
-            renderMindmap(targetProj);
+            renderMindmap(targetProj, true); // 🚀 BẬT CỜ ÉP LÀM MỚI TỨC THÌ
         }
         
     } catch (e) {
@@ -1980,8 +2041,7 @@ function renameFileInDrawingQueue(newName, index) {
         renderDrawingQueueUI();
         return;
     }
-    
-    drawingUploadQueue[index].name = trimmedName;
+    drawingUploadQueue[index].name = trimmedName.slice(0, 58);
     renderDrawingQueueUI();
 }
 
@@ -2010,7 +2070,12 @@ function validateDrawingFilename(fileName) {
     
     const trimmedName = fileName.trim();
     
-    // 🚀 BẮT BUỘC: Nếu người dùng cố tình nhập đuôi .pdf / .xlsx / .xls thì đánh dấu SAI TÊN (Báo màu đỏ)
+    // 🚀 GIỚI HẠN ĐỘ DÀI: Tối đa 58 ký tự (bao gồm cả khoảng trắng)
+    if (trimmedName.length > 58) {
+        return { isValid: false, fileType: "INVALID" };
+    }
+    
+    // Bắt buộc: Nếu người dùng cố tình nhập đuôi .pdf / .xlsx / .xls thì đánh dấu SAI TÊN (Báo màu đỏ)
     if (/\.(pdf|xlsx|xls)$/i.test(trimmedName)) {
         return { isValid: false, fileType: "INVALID" };
     }

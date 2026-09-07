@@ -164,10 +164,14 @@ function renameAndRouteDrawingFile_Backend(payload) {
     const fileId = payload.fileId;
     const newFileName = (payload.newFileName || "").normalize("NFC");
     
+    const nameWithoutExt = newFileName.replace(/\.(pdf|xlsx|xls)$/i, "").trim();
+    if (nameWithoutExt.length > 58) {
+      throw new Error("Tên tệp tin vượt quá độ dài quy định (tối đa 58 ký tự)!");
+    }
+
     const file = DriveApp.getFileById(fileId);
     file.setName(newFileName);
     
-    const nameWithoutExt = newFileName.replace(/\.(pdf|xlsx|xls)$/i, "").trim();
     const cleanName = removeVietnameseDiacritics(nameWithoutExt);
     const nameParts = cleanName.split("_");
     const rawParts = nameWithoutExt.split("_");
@@ -604,6 +608,10 @@ function getDrawingUploadSession_Backend(payload) {
     const fileSize = payload.fileSize;
     
     const nameWithoutExt = fileName.replace(/\.(pdf|xlsx|xls)$/i, "").trim();
+    if (nameWithoutExt.length > 58) {
+      throw new Error("Tên tệp tin vượt quá độ dài quy định (tối đa 58 ký tự)!");
+    }
+
     const cleanName = removeVietnameseDiacritics(nameWithoutExt);
     const nameParts = cleanName.split("_");
     const rawParts = nameWithoutExt.split("_");
