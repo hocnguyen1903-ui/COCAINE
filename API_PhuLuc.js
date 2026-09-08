@@ -15,7 +15,7 @@ function writeToSheetAndExportDoc_PL(data) {
     sheet.getRange("B3:E3").setValues([[dateVal, data.field8 || "Không có số HĐ", data.field2 || "", data.field9 || ""]]);
     sheet.getRange("BF3:BG3").setValues([[data.selectedBF3 || "", data.field10 || ""]]);
     const blCell = sheet.getRange("BL3");
-    blCell.setNumberFormat("@"); // Thiết lập định dạng là Plain Text (Văn bản thuần)
+    blCell.setNumberFormat("@"); 
     blCell.setValue(data.adjustmentIds || "");
 
     SpreadsheetApp.flush(); 
@@ -29,22 +29,38 @@ function writeToSheetAndExportDoc_PL(data) {
     const jValue = getCurrentStaffName();
     const hasValue = (parseFloat(data.field2.toString().replace(/\./g, '')) || 0) !== 0;
 
-    // Ghi 18 cột từ cột B (NGÀY KÝ) đến cột S (Checklist S) trên Sổ Gốc
     const valuesToWrite = [[
       row3Data[1], row3Data[51], "", data.field8, "", row3Data[6], row3Data[21], 
       row3Data[31], jValue, row3Data[3], "", row3Data[57], row3Data[59],
-      "", "", hasValue ? "x" : "", "", "" // Cột O (Bàn giao), P (Scan File), Q, R, S
+      "", "", hasValue ? "x" : "", "", "" 
     ]];
     targetSheet.getRange(targetRow, 2, 1, 18).setValues(valuesToWrite);
 
-    // 3. TẠO VÀ XỬ LÝ DOCS
+    // 3. TẠO VÀ XỬ LÝ DOCS (CÓ BỘ BẢO VỆ QUYỀN TRUY CẬP DRIVEAPP)
     const docTemplateId = "1S02EAglGKBo55f4TT_oMKawDyZcNF-Wl2GZRjO-e5G4";
     const selectedNDs = data.selectedNDs || [];
     const fileName = generateFileName_PL(data.field8);
 
-    const destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
-    const copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(fileName, destinationFolder);
-    copiedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); 
+    let destinationFolder;
+    try {
+        destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
+    } catch(e) {
+        throw new Error("Tài khoản không có quyền truy cập Thư mục đích (EXPORT_FOLDER_ID).");
+    }
+
+    let copiedFile;
+    try {
+        copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(fileName, destinationFolder);
+    } catch(e) {
+        throw new Error("Không thể nhân bản File Mẫu Phụ lục. Vui lòng kiểm tra quyền truy cập Template ID.");
+    }
+
+    // 🚀 BỌC AN TOÀN 1: Bỏ qua lỗi nếu Google Workspace chặn quyền bật Link Sharing Public
+    try {
+        copiedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); 
+    } catch(shareErr) {
+        console.warn("Bỏ qua lỗi setSharing do chính sách bảo mật Workspace chặn: " + shareErr.message);
+    }
 
     const copiedDoc = DocumentApp.openById(copiedFile.getId());
     const body = copiedDoc.getBody();
@@ -103,8 +119,13 @@ function writeToSheetAndExportDoc_PL(data) {
 
     copiedDoc.saveAndClose();
 
+    // 🚀 BỌC AN TOÀN 2: Bỏ qua lỗi nếu Google Shared Drive không cho phép xóa file rỗng
     if (DocumentApp.openById(copiedFile.getId()).getBody().getText().trim() === "") {
-      DriveApp.getFileById(copiedFile.getId()).setTrashed(true);
+      try {
+          DriveApp.getFileById(copiedFile.getId()).setTrashed(true);
+      } catch(trashErr) {
+          console.warn("Bỏ qua lỗi setTrashed do giới hạn quyền Shared Drive: " + trashErr.message);
+      }
       return { link: "" };
     }
     

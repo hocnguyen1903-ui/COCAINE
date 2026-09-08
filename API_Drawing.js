@@ -590,11 +590,25 @@ function fetchWithRobustFallback(payloadBody, options, modelChain) {
 
 function getActiveProjectFolders_Backend() {
   try {
-    const folders = DriveApp.getFolderById(MASTER_FOLDER_ID).getFolders();
-    let names = [];
-    while (folders.hasNext()) names.push(folders.next().getName().toUpperCase());
-    return names;
-  } catch (e) { return []; } }
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sheetDraw = ss.getSheetByName("Drawing_Log");
+    if (!sheetDraw || sheetDraw.getLastRow() < 2) return [];
+    
+    // Đọc toàn bộ Cột A từ dòng 2 của Sheet Drawing_Log
+    const drawData = sheetDraw.getRange(2, 1, sheetDraw.getLastRow() - 1, 1).getValues();
+    const projectSet = new Set();
+    
+    for (let j = 0; j < drawData.length; j++) {
+      const code = drawData[j][0] ? drawData[j][0].toString().toUpperCase().trim() : "";
+      if (code) projectSet.add(code);
+    }
+    
+    return Array.from(projectSet).sort();
+  } catch (e) { 
+    console.error("Lỗi lấy danh sách dự án từ Drawing_Log: " + e.message);
+    return []; 
+  } 
+}
 
 /**
  * 4. KHỞI TẠO PHIÊN TẢI FILE PHÂN MẢNH VỚI GOOGLE DRIVE (CHỐNG TRỄ PHÂN TÁN 1.5s)

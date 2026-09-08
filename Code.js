@@ -153,13 +153,7 @@ function getSystemData(token) {
     authenticateAndGetName(token); 
   }
 
-  // 1. GHI ĐÈ LỆNH ĐỌC BẢNG X QUA SPREADSHEETAPP ĐỂ ÉP GOOGLE SHTEETS ĐỒNG BỘ CÔNG THỨC LẬP TỨC
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sheetX = ss.getSheetByName("X");
-  const lastRowX = sheetX.getLastRow();
-  const dataX = lastRowX >= 4 ? sheetX.getRange(4, 1, lastRowX - 3, 22).getValues() : [];
-
-  // 2. GỌI BATCH GET TRUY VẤN ĐỒNG THỜI 6 BẢNG STATIC CÒN LẠI ĐỂ TỐI ƯU HÓA TỐC ĐỘ TẢI
+  // Gộp 8 dải ô vào 1 lượt gọi REST API v4 duy nhất
   const response = Sheets.Spreadsheets.Values.batchGet(SHEET_ID, {
     ranges: [
       "User_Registry!A2:E",
@@ -167,8 +161,11 @@ function getSystemData(token) {
       "DATAGOITHAU!B12:T",
       "DATAGOITHAU!N3:N",
       "DATANTP!C3:D",
-      "SO HDTCXD BCONS - NTP!B3:V"
-    ]
+      "SO HDTCXD BCONS - NTP!B3:V",
+      "X!A4:V",
+      "Drawing_Log!A2:A" // Thêm dải ô Cột A của Drawing_Log
+    ],
+    valueRenderOption: "FORMATTED_VALUE"
   });
 
   const valueRanges = response.valueRanges || [];
@@ -178,8 +175,10 @@ function getSystemData(token) {
   const dataWarranty = valueRanges[3]?.values || [];
   const dataNTP = valueRanges[4]?.values || [];
   const logData = valueRanges[5]?.values || [];
+  const dataX = valueRanges[6]?.values || [];
+  const drawingLogRows = valueRanges[7]?.values || [];
 
-  // 3. LẤY DANH SÁCH USER CHỜ PHÊ DUYỆT (PENDING)
+  // 1. LẤY DANH SÁCH USER CHỜ PHÊ DUYỆT (PENDING)
   const pendingUsers = [];
   userRegistryData.forEach(row => {
     const uMail = (row[0] || "").toString().toLowerCase().trim();
@@ -190,7 +189,7 @@ function getSystemData(token) {
     }
   });
 
-  // 4. LẤY DATA DỰ ÁN
+  // 2. LẤY DATA DỰ ÁN CHO HỢP ĐỒNG (TỪ DATABCONS)
   const reversedBcons = [...dataBcons].reverse();
   const projectHD = reversedBcons.map(r => {
     if (!r[0]) return null;
@@ -200,14 +199,14 @@ function getSystemData(token) {
     };
   }).filter(i => i && i.display);
 
-  // 5. LẤY DATA GÓI THẦU & BẢO HÀNH
+  // 3. LẤY DATA GÓI THẦU & BẢO HÀNH
   const packHD = dataGoiThau.filter(r => r[18] && r[18].toString().trim() !== "").map(r => ({
     searchString: r[18].toString().trim(),
     category: r[0] ? r[0].toString().trim() : ""
   }));
   const warrantyHD = dataWarranty.map(r => r[0]).filter(Boolean).map(v => v.toString().trim());
 
-  // 6. LẤY DATA NHÀ THẦU
+  // 4. LẤY DATA NHÀ THẦU
   const contractorHD = dataNTP.map(r => {
     if (!r[0]) return null;
     return {
@@ -216,13 +215,12 @@ function getSystemData(token) {
     };
   }).filter(i => i && i.display);
 
-  // 7. LẤY DATA PHỤ LỤC (BẢNG X)
+  // 5. LẤY DATA PHỤ LỤC (BẢNG X)
   const field0PL = dataX.map(r => {
     const valA = (r[0] || "").toString().trim();
     if (!valA) return null;
     const scanRaw = (r[15] || "").toString().trim();
-    let rawDate = r[7];
-    let strDate = (rawDate instanceof Date) ? Utilities.formatDate(rawDate, "GMT+7", "dd/MM/yyyy") : (rawDate ? rawDate.toString().trim() : "");
+    let strDate = (r[7] || "").toString().trim();
 
     return {
       maHD: valA,
@@ -243,7 +241,7 @@ function getSystemData(token) {
     };
   }).filter(Boolean);
 
-  // 8. LẤY DỮ LIỆU SỔ THEO DÕI
+  // 6. LẤY DỮ LIỆU SỔ THEO DÕI
   const transferMap = {};
   logData.forEach(r => {
     const contractNo = (r[2] || "").toString().trim();
@@ -257,16 +255,10 @@ function getSystemData(token) {
     }
   });
 
-  // 🚀 BỔ SUNG: Quét ngầm luôn danh sách thư mục dự án trên Drive của phân hệ Drawing
-  let drawingProjects = [];
-  try {
-    const folders = DriveApp.getFolderById(MASTER_FOLDER_ID).getFolders();
-    while (folders.hasNext()) {
-      drawingProjects.push(folders.next().getName().toUpperCase());
-    }
-  } catch (driveErr) {
-    console.error("Lỗi quét Drive ngầm trong getSystemData: " + driveErr.toString());
-  }
+  // 7. 🚀 MÃ DỰ ÁN CHO DRAWING: CHỈ LẤY TỪ SHEET DRAWING_LOG
+  const drawingProjects = Array.from(new Set(
+    drawingLogRows.map(r => r[0] ? r[0].toString().toUpperCase().trim() : "").filter(Boolean)
+  )).sort();
 
   return {
     hd: { project: projectHD, pack: packHD, warranty: warrantyHD, contractor: contractorHD },
@@ -274,7 +266,7 @@ function getSystemData(token) {
     transferMap: transferMap,
     pendingUsers: pendingUsers, 
     currentUserRole: GLOBAL_STAFF_ROLE ? GLOBAL_STAFF_ROLE.toUpperCase().trim() : "USER",
-    drawingProjects: drawingProjects // 🚀 GỘP CHUNG VÀ TRẢ VỀ DỰ ÁN Ở ĐÂY
+    drawingProjects: drawingProjects
   };
 }
 

@@ -131,17 +131,18 @@ async function loadSystemData(isSilent = false) {
         return;
     }
 
-    // 🚀 CHỐNG XUNG ĐỘT REAL-TIME: Nếu người dùng đang mở một trong các bảng điều khiển (Edit/Transfer/Scan),
-    // hoãn việc nạp lại dữ liệu im lặng (isSilent) để tránh ghi đè dữ liệu đang nhập hoặc mất tham chiếu con trỏ.
+    // Xóa triệt để tàn dư của bộ đệm cũ trong trình duyệt
+    localStorage.removeItem('bcons_cached_system_data');
+
+    // Chặn xung đột khi người dùng đang mở các panel chỉnh sửa/upload
     const isPanelActive = document.getElementById('edit-panel-pl')?.classList.contains('active') ||
                           document.getElementById('transfer-panel-pl')?.classList.contains('active') ||
                           document.getElementById('scan-panel-pl')?.classList.contains('active');
     if (isPanelActive && isSilent) {
-        console.log("[Real-time] User is interacting with a panel. Postponing background sync.");
         return;
     }
 
-    // Gán tên lên Header khi F5 tải lại trang
+    // Hiển thị tên nhân sự trên Header
     const name = localStorage.getItem('bcons_staff_identity');
     const displayEl = document.getElementById('staffNameDisplay');
     if (displayEl && name) {
@@ -149,18 +150,18 @@ async function loadSystemData(isSilent = false) {
     }
 
     const loading = document.getElementById("loadingSystem");
-    if (loading && !isSilent) loading.style.display = "flex";
+    if (loading && !isSilent) {
+        loading.style.display = "flex";
+        loading.style.opacity = "1";
+    }
 
     try {
         const sysData = await callBackend('getSystemData');
         if (sysData) {
             SYSTEM_DATA = sysData;
             PRECOMPUTED_PL_DATA = null;
-
-            // Nạp dữ liệu chờ duyệt về Client
             pendingUsersList_PL = sysData.pendingUsers || [];
 
-            // 🚀 BẢO VỆ CHỐNG RESET INPUT: Chỉ render cập nhật danh sách Dashboard khi data đã về, không khởi tạo lại giao diện cứng
             if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
                 executeFilter_PL(false);
             }
@@ -169,26 +170,24 @@ async function loadSystemData(isSilent = false) {
                 updateContractNo_PL();
             }
 
-            // 🚀 BỔ SUNG TẠI ĐÂY: Nếu sếp đang mở tab Drawing, tiến hành tái khởi tạo sạch sau khi nạp dữ liệu xác thực
             if (activeTabId === 'tab-drawing' && typeof loadDrawingModule === 'function') {
-                isDrawingListLoaded = false; // Reset cờ để tải lại danh sách dự án sạch từ Drive
+                isDrawingListLoaded = false;
                 loadDrawingModule();
             }
 
-            // 🚀 MỞ QUẢ CHUÔNG THÔNG BÁO CHO TẤT CẢ MỌI NGƯỜI ĐÃ ĐĂNG NHẬP THÀNH CÔNG
             if (name) {
                 const bellContainer = document.getElementById('bellNotificationContainer');
                 if (bellContainer) {
                     const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
-                    // Chỉ hiển thị quả chuông nếu vai trò là quản trị viên ADMIN
                     if (currentRole.toUpperCase() === "ADMIN") {
                         bellContainer.style.setProperty('display', 'flex', 'important');
                     }
                 }
                 updateBellBadge();
-                initAblyRealtimeConnection(); // Mở cổng Socket lắng nghe
+                initAblyRealtimeConnection();
             }
         }
+
         if (loading) {
             loading.style.opacity = "0";
             setTimeout(() => { loading.style.display = "none"; }, 500);
