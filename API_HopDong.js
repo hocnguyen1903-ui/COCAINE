@@ -264,11 +264,29 @@ function writeToSheetAndExportDoc_TB(data) {
       sender
     ]]);
 
-    // TẠO VÀ XỬ LÝ DOCS
+    // TẠO VÀ XỬ LÝ DOCS (BỌC BẢO VỆ QUYỀN TRUY CẬP)
     const docTemplateId = "1oyp4fMSu-AJuLY6Dvb7zZX6R1FjYLDreLBaoOsEDhEc";
-    const destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
-    const copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(data.fileName, destinationFolder);
-    copiedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+    
+    let destinationFolder;
+    try {
+        destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
+    } catch(e) {
+        throw new Error("Tài khoản không có quyền chỉnh sửa Thư mục đích (EXPORT_FOLDER).");
+    }
+
+    let copiedFile;
+    try {
+        copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(data.fileName, destinationFolder);
+    } catch(e) {
+        throw new Error("Không thể nhân bản File Mẫu Thông báo. Kiểm tra lại quyền truy cập.");
+    }
+    
+    // Bỏ qua lỗi nếu Google Workspace chặn quyền bật Link Sharing Public
+    try {
+        copiedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+    } catch(shareErr) {
+        console.warn("Bỏ qua lỗi setSharing do chính sách bảo mật nội bộ Workspace chặn: " + shareErr.message);
+    }
     
     const doc = DocumentApp.openById(copiedFile.getId());
     const body = doc.getBody();

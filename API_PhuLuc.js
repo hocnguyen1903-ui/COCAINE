@@ -391,7 +391,14 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
     const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, fileName);
 
     const file = targetFolder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+    
+    // Bỏ qua lỗi nếu Google Workspace chặn quyền bật Link Sharing Public đối với file mềm
+    try {
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+    } catch(shareErr) {
+        console.warn("Bỏ qua cảnh báo setSharing trên file Scan: " + shareErr.message);
+    }
+    
     const fileId = file.getId();
 
     const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -401,7 +408,7 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
     const targetIndex = dataE.findIndex(val => val.toString().trim().toUpperCase() === maHD.trim().toUpperCase());
 
     if (targetIndex !== -1) {
-      // SỬA TẠI ĐÂY: Ghi trực tiếp thông tin Scan vào Cột P (Cột 16) trên Sổ Gốc
+      // Ghi trực tiếp thông tin Scan vào Cột P (Cột 16) trên Sổ Gốc
       const cell = sheetLog.getRange(targetIndex + 1, 16);
       SpreadsheetApp.flush(); 
       const currentVal = cell.getValue().toString();

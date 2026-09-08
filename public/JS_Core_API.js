@@ -301,9 +301,35 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0
 async function callBackend(action, data = {}, retries = 2) {
     const token = localStorage.getItem('bcons_session_token');
     
+    // Cho phép hành động login/register đi qua mà không cần token
     if (!token && action !== "loginUser" && action !== "registerUser") {
         showLoginUI();
         throw new Error("UNAUTHORIZED: Yêu cầu đăng nhập!");
+    }
+
+    // 🚀 BỘ LỌC AN TOÀN: Tắt chế độ tự động thử lại đối với các thao tác GHI/XUẤT FILE để chống sinh file trùng lặp
+    const writeActions = [
+        "handleFullExportProcess_HD", 
+        "handleFullExportProcess_TB",
+        "writeToSheetAndExportDoc_PL", 
+        "exportToNewSpreadsheet_PL",
+        "uploadScanToDrive", 
+        "updateContractData_PL", 
+        "updateTransferStatus_PL",
+        "deleteContractRow_Backend", 
+        "deleteScanFilePermanently",
+        "batchAddTasksBackend", 
+        "updateTasksOrderBackend", 
+        "renameAndRouteDrawingFile_Backend",
+        "deleteDrawingFileAndTasks_Backend", 
+        "approveUser_InApp", 
+        "rejectUser_InApp",
+        "getDrawingUploadSession_Backend", 
+        "extractDataOnly"
+    ];
+
+    if (writeActions.includes(action)) {
+        retries = 0; // Ép số lần thử lại về 0, gửi 1 lần duy nhất và chờ đợi kết quả
     }
 
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -311,7 +337,7 @@ async function callBackend(action, data = {}, retries = 2) {
             const resp = await fetch(GAS_API_URL, { 
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                redirect: 'follow',
+                redirect: 'follow', // Bắt buộc cho phép theo dõi mã chuyển hướng 302 của Google
                 body: JSON.stringify({ action, data, token }) 
             });
             
@@ -320,11 +346,11 @@ async function callBackend(action, data = {}, retries = 2) {
             try {
                 res = JSON.parse(rawText);
             } catch (jsonErr) {
-                throw new Error("Máy chủ Google đang khởi động lại hoặc phản hồi không hợp lệ.");
+                throw new Error("Máy chủ Google đang khởi động lại hoặc trả về phản hồi không hợp lệ.");
             }
             
-            // Nếu Backend đã xử lý xong và phản hồi lỗi nghiệp vụ -> KHÔNG THỬ LẠI (chống ghi trùng dữ liệu)
             if (res.status === "error") {
+                // Nếu Backend đã xử lý xong và phản hồi lỗi nghiệp vụ -> KHÔNG THỬ LẠI
                 if (res.message && res.message.includes("UNAUTHORIZED")) {
                     localStorage.removeItem('bcons_session_token');
                     localStorage.removeItem('bcons_staff_identity');
