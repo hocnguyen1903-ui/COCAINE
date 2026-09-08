@@ -301,7 +301,6 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0
 async function callBackend(action, data = {}, retries = 2) {
     const token = localStorage.getItem('bcons_session_token');
     
-    // Cho phép hành động login/register đi qua mà không cần token
     if (!token && action !== "loginUser" && action !== "registerUser") {
         showLoginUI();
         throw new Error("UNAUTHORIZED: Yêu cầu đăng nhập!");
@@ -312,7 +311,7 @@ async function callBackend(action, data = {}, retries = 2) {
             const resp = await fetch(GAS_API_URL, { 
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                redirect: 'follow', // Bắt buộc cho phép theo dõi mã chuyển hướng 302 của Google
+                redirect: 'follow',
                 body: JSON.stringify({ action, data, token }) 
             });
             
@@ -321,9 +320,10 @@ async function callBackend(action, data = {}, retries = 2) {
             try {
                 res = JSON.parse(rawText);
             } catch (jsonErr) {
-                throw new Error("Máy chủ Google đang khởi động lại hoặc trả về phản hồi không hợp lệ.");
+                throw new Error("Máy chủ Google đang khởi động lại hoặc phản hồi không hợp lệ.");
             }
             
+            // Nếu Backend đã xử lý xong và phản hồi lỗi nghiệp vụ -> KHÔNG THỬ LẠI (chống ghi trùng dữ liệu)
             if (res.status === "error") {
                 if (res.message && res.message.includes("UNAUTHORIZED")) {
                     localStorage.removeItem('bcons_session_token');
@@ -336,11 +336,15 @@ async function callBackend(action, data = {}, retries = 2) {
             
         } catch (err) {
             const isUnauthorized = err.message && err.message.includes("UNAUTHORIZED");
-            // Nếu là lỗi hết hạn phiên thực sự hoặc đã hết 2 lần thử lại -> ném lỗi
-            if (isUnauthorized || attempt === retries) {
+            // Nhận diện lỗi logic từ backend trả về để không retry
+            const isServerLogicError = !err.message.includes("Máy chủ Google") && 
+                                       !err.message.includes("Failed to fetch") && 
+                                       !err.message.includes("NetworkError");
+            
+            if (isUnauthorized || isServerLogicError || attempt === retries) {
                 throw err;
             }
-            // Nếu là lỗi nghẽn mạng/cold-start tạm thời -> dừng chờ 800ms rồi tự động thử lại
+            // Chỉ thử lại khi thực sự bị nghẽn mạng / cold-start 502/503
             await new Promise(r => setTimeout(r, 800 * Math.pow(1.5, attempt)));
         }
     }
