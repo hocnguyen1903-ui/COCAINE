@@ -42,11 +42,14 @@ async function openTab(tabId, triggerIntro = true) {
 
     // Kích hoạt mô-đun Drawing khi chuyển qua tab-drawing
     if (tabId === 'tab-drawing') {
-    if (!isInitialLoad) {
-        setTimeout(loadDrawingModule, 350);
+        setTimeout(() => {
+            // Chỉ gọi load danh sách mã dự án và giao diện tĩnh (cực nhẹ)
+            if (!isInitialLoad) {
+                loadDrawingModule(); 
+            }
+            initDrawingUploadZone();
+        }, 150);
     }
-    setTimeout(initDrawingUploadZone, 150);
-}
 
     const allTabs = document.querySelectorAll('.tab-content');
     const currentTab = document.getElementById(activeTabId);
@@ -131,23 +134,16 @@ async function loadSystemData(isSilent = false) {
         return;
     }
 
-    // Xóa triệt để tàn dư của bộ đệm cũ trong trình duyệt
     localStorage.removeItem('bcons_cached_system_data');
 
-    // Chặn xung đột khi người dùng đang mở các panel chỉnh sửa/upload
     const isPanelActive = document.getElementById('edit-panel-pl')?.classList.contains('active') ||
                           document.getElementById('transfer-panel-pl')?.classList.contains('active') ||
                           document.getElementById('scan-panel-pl')?.classList.contains('active');
-    if (isPanelActive && isSilent) {
-        return;
-    }
+    if (isPanelActive && isSilent) return;
 
-    // Hiển thị tên nhân sự trên Header
     const name = localStorage.getItem('bcons_staff_identity');
     const displayEl = document.getElementById('staffNameDisplay');
-    if (displayEl && name) {
-        displayEl.textContent = name;
-    }
+    if (displayEl && name) displayEl.textContent = name;
 
     const loading = document.getElementById("loadingSystem");
     if (loading && !isSilent) {
@@ -162,6 +158,11 @@ async function loadSystemData(isSilent = false) {
             PRECOMPUTED_PL_DATA = null;
             pendingUsersList_PL = sysData.pendingUsers || [];
 
+            // ĐỒNG BỘ QUYỀN MỚI NHẤT TỪ SERVER VÀO LOCALSTORAGE
+            if (sysData.currentUserRole) {
+                localStorage.setItem('bcons_staff_role', sysData.currentUserRole);
+            }
+
             if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
                 executeFilter_PL(false);
             }
@@ -172,7 +173,12 @@ async function loadSystemData(isSilent = false) {
 
             if (activeTabId === 'tab-drawing' && typeof loadDrawingModule === 'function') {
                 isDrawingListLoaded = false;
-                loadDrawingModule();
+                // Đợi load thư viện xong mới được kích hoạt module vẽ
+                if (typeof lazyLoadDrawingLibs === 'function') {
+                    lazyLoadDrawingLibs().then(() => loadDrawingModule());
+                } else {
+                    loadDrawingModule();
+                }
             }
 
             if (name) {
@@ -181,6 +187,8 @@ async function loadSystemData(isSilent = false) {
                     const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
                     if (currentRole.toUpperCase() === "ADMIN") {
                         bellContainer.style.setProperty('display', 'flex', 'important');
+                    } else {
+                        bellContainer.style.setProperty('display', 'none', 'important');
                     }
                 }
                 updateBellBadge();
@@ -195,7 +203,13 @@ async function loadSystemData(isSilent = false) {
     } catch (error) {
         if (loading) loading.style.display = "none";
         console.error("Lỗi khởi tạo hệ thống:", error);
-        showToast_PL("⚠️ Lỗi phiên làm việc hoặc kết nối!", "error");
+        
+        // Nếu lỗi phiên, điều hướng về màn hình đăng nhập
+        if (error.message && error.message.includes("UNAUTHORIZED")) {
+            showLoginUI();
+        } else {
+            showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng tải lại trang!", "error");
+        }
     }
 }
 
@@ -379,15 +393,17 @@ async function callBackend(action, data = {}, retries = 2) {
  * Xử lý sự kiện nhấn nút SIGN IN (Đồng bộ tên và quyền lên Client)
  */
 async function performLogin() {
-    const mail = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value.trim();
+    const mailEl = document.getElementById('loginEmail');
+    const passEl = document.getElementById('loginPassword');
+    const mail = mailEl ? mailEl.value.trim() : "";
+    const password = passEl ? passEl.value.trim() : "";
     
     if (!mail || !password) {
         alert("Sếp vui lòng điền đầy đủ thông tin đăng nhập!");
         return;
     }
 
-    const loginBtn = document.getElementById('loginSubmitBtn') || document.querySelector('#loginOverlay .submit-button');
+    const loginBtn = document.getElementById('loginSubmitBtn');
     if (loginBtn) {
         loginBtn.disabled = true;
         loginBtn.textContent = "VERIFYING...";
@@ -398,18 +414,14 @@ async function performLogin() {
         if (res && res.token) {
             localStorage.setItem('bcons_session_token', res.token);
             localStorage.setItem('bcons_staff_identity', res.name);
-            localStorage.setItem('bcons_staff_role', res.role || "USER"); // Lưu quyền vĩnh viễn trên máy
+            localStorage.setItem('bcons_staff_role', res.role || "USER");
             
-            // Gán tên lên Header ngay lần đầu đăng nhập thành công
             const displayEl = document.getElementById('staffNameDisplay');
-            if (displayEl) {
-                displayEl.textContent = res.name;
-            }
+            if (displayEl) displayEl.textContent = res.name;
             
             document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
             showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
             
-            // Nạp dữ liệu hệ thống ngay sau khi đăng nhập thành công
             loadSystemData();
         }
     } catch (err) {
@@ -421,6 +433,7 @@ async function performLogin() {
         }
     }
 }
+
 
 /**
  * Hiển thị khung đăng nhập chặn tương tác
@@ -536,26 +549,23 @@ async function performRegister() {
     registerBtn.disabled = true;
     registerBtn.textContent = "REGISTERING...";
 
-    let isSuccess = false; 
-
     try {
         const res = await callBackend("registerUser", { mail, name, password });
         if (res) {
             showToast_PL("🚀 Gửi yêu cầu đăng ký thành công! Hãy liên hệ với Admin để được duyệt!", "success");
             document.getElementById('registerName').value = "";
             document.getElementById('loginPassword').value = "";
-            isSuccess = true; 
             toggleLoginMode();
         }
     } catch (err) {
-        if (err.message.includes("đã tồn tại")) {
+        if (err.message && err.message.includes("đã tồn tại")) {
             showNameWarning(name);
         } else {
             alert(err.message || "Đăng ký thất bại!");
         }
     } finally {
         registerBtn.disabled = false;
-        if (!isSuccess) {
+        if (isRegisterMode) {
             registerBtn.textContent = "REGISTER";
         }
     }

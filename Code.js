@@ -18,18 +18,10 @@ const ABLY_API_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8RU"
 function authenticateAndGetName(token) {
   if (!token) throw new Error("UNAUTHORIZED: Phiên làm việc không tồn tại, vui lòng đăng nhập!");
   
-  // TẦNG 1: CacheService (Siêu nhanh 5ms)
   const cache = CacheService.getScriptCache();
   let cachedVal = cache.get(token);
   
-  // TẦNG 2: PropertiesService (Bền vững 50ms)
-  if (!cachedVal) {
-    const props = PropertiesService.getScriptProperties();
-    cachedVal = props.getProperty(token);
-    if (cachedVal) cache.put(token, cachedVal, 21600);
-  }
-  
-  // TẦNG 3: Phục hồi phiên vĩnh viễn từ Cột F Sheet User_Registry
+  // Phục hồi phiên và kiểm tra trạng thái tức thời từ Sheet User_Registry
   if (!cachedVal) {
     try {
       const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -37,22 +29,22 @@ function authenticateAndGetName(token) {
       if (sheet) {
         const data = sheet.getDataRange().getValues();
         for (let i = 1; i < data.length; i++) {
-          const uToken = data[i][5]?.toString().trim(); // Cột F (Cột 6) lưu Token
+          const uToken = data[i][5]?.toString().trim(); // Cột F: Token
           const uStatus = data[i][3]?.toString().toUpperCase().trim();
-          if (uToken === token && uStatus === "ACTIVE") {
+          if (uToken === token) {
+            if (uStatus !== "ACTIVE") {
+              throw new Error("UNAUTHORIZED: Tài khoản đã bị khóa hoặc đang chờ phê duyệt!");
+            }
             const uName = data[i][1]?.toString().toUpperCase().trim();
             const uRole = data[i][4]?.toString().toUpperCase().trim() || "USER";
             cachedVal = uName + "|" + uRole;
-            
-            // Nạp ngược lại vào Cache và Properties để các request sau phản hồi tức thì
-            PropertiesService.getScriptProperties().setProperty(token, cachedVal);
-            cache.put(token, cachedVal, 21600);
+            cache.put(token, cachedVal, 21600); // 6 tiếng
             break;
           }
         }
       }
     } catch (e) {
-      console.warn("Lỗi phục hồi phiên từ Sheet: " + e.message);
+      throw new Error(e.message || "Lỗi xác thực người dùng");
     }
   }
   
@@ -74,8 +66,10 @@ function loginUser(mail, password) {
   const sheet = ss.getSheetByName("User_Registry");
   if (!sheet) throw new Error("Không tìm thấy Sheet danh sách User 'User_Registry'!");
   
-  const data = sheet.getDataRange().getValues();
-  const targetMail = mail.toLowerCase().trim();
+  const data = sheet.getDataRange().getDisplayValues(); // Dùng getDisplayValues để giữ nguyên chuỗi password
+  const targetMail = (mail || "").toLowerCase().trim();
+  const inputPass = (password || "").toString().trim();
+  
   let matchedName = "";
   let storedPassword = "";
   let status = "PENDING";
@@ -85,9 +79,9 @@ function loginUser(mail, password) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
       matchedName = data[i][1]?.toString().toUpperCase().trim();
-      storedPassword = data[i][2]?.toString().trim(); // Cột C (Password)
-      status = data[i][3] ? data[i][3].toString().toUpperCase().trim() : "PENDING"; // Cột D (Status)
-      role = data[i][4] ? data[i][4].toString().toUpperCase().trim() : "USER"; // Cột E (Role)
+      storedPassword = data[i][2]?.toString().trim(); 
+      status = data[i][3] ? data[i][3].toString().toUpperCase().trim() : "PENDING"; 
+      role = data[i][4] ? data[i][4].toString().toUpperCase().trim() : "USER"; 
       matchedRow = i + 1;
       break;
     }
@@ -97,29 +91,29 @@ function loginUser(mail, password) {
     throw new Error("Email của sếp chưa được đăng ký trong hệ thống!");
   }
 
-  // Xác thực mật khẩu cá nhân của từng user
-  if (password !== storedPassword) {
+  if (inputPass !== storedPassword) {
     throw new Error("Sai mật khẩu đăng nhập hệ thống!");
   }
   
   if (status !== "ACTIVE") {
-    throw new Error("Tài khoản đang chờ sếp phê duyệt hoặc đã bị khóa!");
+    throw new Error("Tài khoản đang chờ phê duyệt hoặc đã bị khóa!");
   }
   
   const token = "TOKEN-" + Utilities.getUuid();
   const tokenValue = matchedName + "|" + role; 
   
-  PropertiesService.getScriptProperties().setProperty(token, tokenValue);
+  // Chỉ ghi vào CacheService tốc độ cao, không ghi vào PropertiesService chống tràn bộ nhớ
   CacheService.getScriptCache().put(token, tokenValue, 21600);
   
-  // Lưu token vào Cột F (Cột 6) trên Sheet User_Registry
   if (matchedRow > 0) {
-    sheet.getRange(matchedRow, 6).setValue(token);
-    SpreadsheetApp.flush(); // Bắt buộc flush để hoàn tất ghi Sheet và phản hồi HTTP 200 ngay tức khắc
+    const tokenCell = sheet.getRange(matchedRow, 6);
+    tokenCell.setNumberFormat("@");
+    tokenCell.setValue(token);
   }
   
   return { success: true, token: token, name: matchedName, role: role }; 
 }
+
 
 /**
  * Hàm phê duyệt nhanh tài khoản ACTIVE ngay trong Web App
@@ -266,7 +260,7 @@ function getSystemData(token) {
     transferMap: transferMap,
     pendingUsers: pendingUsers, 
     currentUserRole: GLOBAL_STAFF_ROLE ? GLOBAL_STAFF_ROLE.toUpperCase().trim() : "USER",
-    drawingProjects: drawingProjects
+    drawingProjects: [] // Trả về mảng rỗng để Tab Drawing tự kích hoạt API riêng
   };
 }
 
@@ -281,55 +275,51 @@ function registerUser(mail, name, password) {
     let sheet = ss.getSheetByName("User_Registry");
     if (!sheet) {
       sheet = ss.insertSheet("User_Registry");
-      sheet.appendRow(["Mail", "Name", "Password", "Status", "Role"]);
+      sheet.appendRow(["Mail", "Name", "Password", "Status", "Role", "Token"]);
     }
     
-    const targetMail = mail.toLowerCase().trim();
-    const targetName = name.toUpperCase().trim();
+    const targetMail = (mail || "").toLowerCase().trim();
+    const targetName = (name || "").toUpperCase().trim();
     const cleanPassword = password ? password.toString().trim() : "";
 
     if (cleanPassword.length < 4) {
       throw new Error("Mật khẩu đăng ký phải chứa tối thiểu 4 ký tự!");
     }
 
-    const data = sheet.getDataRange().getValues();
+    const data = sheet.getDataRange().getDisplayValues();
     
-    // 1. Kiểm tra trùng lặp Email đăng ký
     for (let i = 1; i < data.length; i++) {
       if (data[i][0]?.toString().toLowerCase().trim() === targetMail) {
         throw new Error("Email này đã được sử dụng!");
       }
-    }
-    
-    // 2. Kiểm tra trùng lặp Tên viết tắt (Name) đăng ký
-    for (let i = 1; i < data.length; i++) {
       if (data[i][1]?.toString().toUpperCase().trim() === targetName) {
         throw new Error(`Tên viết tắt "${targetName}" này đã tồn tại! Vui lòng chọn tên viết tắt khác.`);
       }
     }
     
-    // Thêm dòng mới trạng thái PENDING, mật khẩu lưu vào Cột C, Status cột D, Role cột E
-    sheet.appendRow([targetMail, targetName, cleanPassword, "PENDING", "USER"]);
+    const nextRow = sheet.getLastRow() + 1;
+    // Ghi từng ô với định dạng text thuần (@) để bảo toàn ký tự số
+    sheet.getRange(nextRow, 1, 1, 5).setNumberFormat("@").setValues([[
+      targetMail, targetName, cleanPassword, "PENDING", "USER"
+    ]]);
     
-    // 🚀 BẮN TÍN HIỆU THỜI GIAN THỰC SANG ABLY
     try {
       const ablyUrl = "https://rest.ably.io/channels/bcons_notification/messages";
       const ablyPayload = {
         "name": "new_registration",
         "data": { "mail": targetMail, "name": targetName }
       };
-      const ablyOptions = {
-        "method": "POST",
-        "headers": {
+      UrlFetchApp.fetch(ablyUrl, {
+        method: "POST",
+        headers: {
           "Authorization": "Basic " + Utilities.base64Encode(ABLY_API_KEY),
           "Content-Type": "application/json"
         },
-        "payload": JSON.stringify(ablyPayload),
-        "muteHttpExceptions": true
-      };
-      UrlFetchApp.fetch(ablyUrl, ablyOptions);
+        payload: JSON.stringify(ablyPayload),
+        muteHttpExceptions: true
+      });
     } catch (err) {
-      console.error("Lỗi bắn tín hiệu Ably Realtime: " + err.message);
+      console.warn("Lỗi Ably Realtime: " + err.message);
     }
     
     return { success: true };

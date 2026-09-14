@@ -7,6 +7,9 @@ let SYSTEM_DATA = {
     pl: { field0: [] } 
 };
 
+let isDrawingLibsLoaded = false;
+let isDrawingLibsLoading = false;
+
 let INITIALIZED_TABS = {
     'tab-hdtcxd': false,
     'tab-plhd': false,
@@ -90,7 +93,6 @@ let tooltipTimeout;
 // 3. SỰ KIỆN KHỞI TẠO HỆ THỐNG (INITIALIZATION)
 // ==========================================================================
 document.addEventListener("DOMContentLoaded", () => {
-    // Khởi tạo giao diện tĩnh một lần duy nhất vì các phần tử HTML đã có sẵn trong DOM
     if (typeof initTabHD === 'function') {
         initTabHD();
         INITIALIZED_TABS['tab-hdtcxd'] = true;
@@ -104,7 +106,36 @@ document.addEventListener("DOMContentLoaded", () => {
         INITIALIZED_TABS['tab-tbkq'] = true;
     }
 
-    // Đọc Tab đã lưu từ máy, mặc định là 'tab-about'
+    // Bắt phím Enter cho Form Đăng nhập & Đăng ký
+    const bindEnterKey = (elementId, callback) => {
+        const el = document.getElementById(elementId);
+        if (el) {
+            el.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    callback();
+                }
+            });
+        }
+    };
+
+    bindEnterKey("loginEmail", () => {
+        const pass = document.getElementById("loginPassword");
+        if (pass && pass.offsetParent !== null) pass.focus();
+        else {
+            const name = document.getElementById("registerName");
+            if (name && name.offsetParent !== null) name.focus();
+        }
+    });
+    bindEnterKey("loginPassword", () => {
+        if (isRegisterMode) performRegister();
+        else performLogin();
+    });
+    bindEnterKey("registerName", () => {
+        const pass = document.getElementById("loginPassword");
+        if (pass) pass.focus();
+    });
+
     const lastTab = localStorage.getItem('bcons_hub_last_tab') || 'tab-about';
     openTab(lastTab, false); 
     

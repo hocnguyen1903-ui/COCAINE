@@ -385,3 +385,52 @@ function handleKeyDown_PL(e, nextInputId) {
         if (next) next.focus();
     }
 }
+
+async function lazyLoadDrawingLibs() {
+    if (isDrawingLibsLoaded) return Promise.resolve();
+    if (isDrawingLibsLoading) return new Promise(resolve => {
+        const check = setInterval(() => {
+            if (isDrawingLibsLoaded) {
+                clearInterval(check);
+                resolve();
+            }
+        }, 100);
+    });
+
+    isDrawingLibsLoading = true;
+    
+    // Hàm nạp Script dưới dạng Promise
+    const loadScript = (src) => {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+    };
+
+    try {
+        // 1. Tải PDF.js và worker trước
+        await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js");
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        
+        // 2. Tải các thư viện còn lại, đảm bảo Cytoscape -> Dagre -> Cytoscape-dagre theo đúng thứ tự
+        await Promise.all([
+            loadScript("https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"),
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"),
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js").then(() => {
+                return loadScript("https://unpkg.com/dagre@0.8.5/dist/dagre.min.js").then(() => {
+                    return loadScript("https://cytoscape.org/cytoscape.js-dagre/cytoscape-dagre.js");
+                });
+            })
+        ]);
+
+        isDrawingLibsLoaded = true;
+        isDrawingLibsLoading = false;
+    } catch (e) {
+        console.error("Lỗi nạp thư viện Drawing:", e);
+        isDrawingLibsLoading = false;
+        throw e;
+    }
+}

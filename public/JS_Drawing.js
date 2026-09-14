@@ -155,7 +155,7 @@ function selectFirstProject_Drawing() {
     }
 }
 
-function selectProject_Drawing(projectName) {
+async function selectProject_Drawing(projectName) {
     currentlyRenderedProject = ""; 
     selectedProjectDrawing = projectName;
     const input = document.getElementById("drawing-project-search");
@@ -166,9 +166,31 @@ function selectProject_Drawing(projectName) {
     document.getElementById('dp-empty-state').style.display = 'flex';
     document.getElementById('dp-content-state').style.display = 'none';
     
-    // Kích hoạt bộ lắng nghe ngay khi chọn dự án
+    // Kích hoạt bộ lắng nghe vùng thả file
     setTimeout(initDrawingUploadZone, 200);
-    renderMindmap(projectName);
+
+    // 1. Bật màn hình Loader nội bộ
+    const localLoader = document.getElementById("drawing-local-loader");
+    if (localLoader) localLoader.style.display = "flex";
+
+    try {
+        // 2. 🚀 CHỈ KHI CHỌN DỰ ÁN MỚI TẢI THƯ VIỆN NẶNG (Nếu chưa tải)
+        if (typeof isDrawingLibsLoaded !== 'undefined' && !isDrawingLibsLoaded) {
+            const textEl = localLoader.querySelector('.loader-text');
+            if (textEl) textEl.textContent = "DOWNLOADING LIBRARIES...";
+            
+            await lazyLoadDrawingLibs();
+            
+            if (textEl) textEl.textContent = "MINDMAP GENERATING"; // Trả lại nhãn cũ
+        }
+
+        // 3. Đã có thư viện, bắt đầu kéo dữ liệu Drive và vẽ Mindmap
+        renderMindmap(projectName);
+
+    } catch (e) {
+        showToast_PL("⚠️ Lỗi tải thư viện sơ đồ. Vui lòng kiểm tra mạng!", "error");
+        if (localLoader) localLoader.style.display = "none";
+    }
 }
 
 function closeFileDetail() {
