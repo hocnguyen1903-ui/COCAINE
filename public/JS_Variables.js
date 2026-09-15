@@ -93,18 +93,27 @@ let tooltipTimeout;
 // 3. SỰ KIỆN KHỞI TẠO HỆ THỐNG (INITIALIZATION)
 // ==========================================================================
 document.addEventListener("DOMContentLoaded", () => {
-    if (typeof initTabHD === 'function') {
-        initTabHD();
-        INITIALIZED_TABS['tab-hdtcxd'] = true;
-    }
-    if (typeof initTabPL === 'function') {
-        initTabPL();
-        INITIALIZED_TABS['tab-plhd'] = true;
-    }
-    if (typeof initTabTB === 'function') {
-        initTabTB();
-        INITIALIZED_TABS['tab-tbkq'] = true;
-    }
+    // Bọc cách ly try-catch cho từng module tab để lỗi cục bộ không chặn đứng luồng nạp hệ thống
+    try {
+        if (typeof initTabHD === 'function') {
+            initTabHD();
+            INITIALIZED_TABS['tab-hdtcxd'] = true;
+        }
+    } catch (e) { console.error("Lỗi khởi tạo Tab HD:", e); }
+
+    try {
+        if (typeof initTabPL === 'function') {
+            initTabPL();
+            INITIALIZED_TABS['tab-plhd'] = true;
+        }
+    } catch (e) { console.error("Lỗi khởi tạo Tab PL:", e); }
+
+    try {
+        if (typeof initTabTB === 'function') {
+            initTabTB();
+            INITIALIZED_TABS['tab-tbkq'] = true;
+        }
+    } catch (e) { console.error("Lỗi khởi tạo Tab TB:", e); }
 
     // Bắt phím Enter cho Form Đăng nhập & Đăng ký
     const bindEnterKey = (elementId, callback) => {
@@ -136,9 +145,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (pass) pass.focus();
     });
 
-    const lastTab = localStorage.getItem('bcons_hub_last_tab') || 'tab-about';
-    openTab(lastTab, false); 
+    try {
+        const lastTab = localStorage.getItem('bcons_hub_last_tab') || 'tab-about';
+        openTab(lastTab, false); 
+    } catch (e) { console.error("Lỗi kích hoạt Tab mặc định:", e); }
     
+    // Đảm bảo lệnh tải dữ liệu luôn luôn được gọi
     loadSystemData();
 
     document.addEventListener("click", (e) => {

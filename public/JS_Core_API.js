@@ -30,7 +30,6 @@ function getSafeId_PL(mail) {
 async function openTab(tabId, triggerIntro = true) {
     if (tabId === activeTabId && !isInitialLoad) return;
 
-    // 🚀 1. GIẢI PHÓNG HÀNG CHỜ ĐANG CHẠY (Triệt tiêu hoàn toàn lỗi biến mất Form khi click nhanh)
     if (tabTimeout) {
         clearTimeout(tabTimeout);
         tabTimeout = null;
@@ -40,11 +39,17 @@ async function openTab(tabId, triggerIntro = true) {
     const targetTab = document.getElementById(tabId);
     if (!targetTab) return;
 
-    // Kích hoạt mô-đun Drawing khi chuyển qua tab-drawing
+    // 🚀 CHỈ KHI NGƯỜI DÙNG CLICK SANG TAB DRAWING MỚI NẠP THƯ VIỆN & DỮ LIỆU DỰ ÁN
     if (tabId === 'tab-drawing') {
-        setTimeout(() => {
-            // Chỉ gọi load danh sách mã dự án và giao diện tĩnh (cực nhẹ)
-            if (!isInitialLoad) {
+        setTimeout(async () => {
+            if (typeof lazyLoadDrawingLibs === 'function' && !isDrawingLibsLoaded) {
+                try {
+                    await lazyLoadDrawingLibs();
+                } catch (e) {
+                    console.error("Lỗi nạp thư viện khi mở Tab Drawing:", e);
+                }
+            }
+            if (typeof loadDrawingModule === 'function') {
                 loadDrawingModule(); 
             }
             initDrawingUploadZone();
@@ -54,16 +59,12 @@ async function openTab(tabId, triggerIntro = true) {
     const allTabs = document.querySelectorAll('.tab-content');
     const currentTab = document.getElementById(activeTabId);
 
-    // 2. Xử lý Hoạt ảnh Chuyển Tab (Transitions) dựa vào vị trí trong TAB_MAP
     if (currentTab && !isInitialLoad) {
         const currentIndex = TAB_MAP[activeTabId] || 0;
         const targetIndex = TAB_MAP[tabId] || 0;
 
-        // Xóa triệt để các class hoạt ảnh cũ trên TẤT CẢ các tab để tránh xung đột
         allTabs.forEach(t => {
             t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
-            
-            // Nâng cao bảo vệ: Nếu click quá nhanh, lập tức ẩn các tab trung gian để tránh đè giao diện
             if (t.id !== activeTabId && t.id !== tabId) {
                 t.style.display = 'none';
             }
@@ -79,7 +80,6 @@ async function openTab(tabId, triggerIntro = true) {
 
         targetTab.style.display = 'flex';
 
-        // 🚀 2. GÁN TIMEOUT MỚI VÀO BIẾN TOÀN CỤC ĐỂ QUẢN LÝ
         tabTimeout = setTimeout(() => {
             allTabs.forEach(t => {
                 if (t.id !== tabId) {
@@ -87,7 +87,7 @@ async function openTab(tabId, triggerIntro = true) {
                     t.classList.remove('slide-out-left', 'slide-out-right');
                 }
             });
-            tabTimeout = null; // Giải phóng bộ nhớ hàng chờ sau khi hoàn tất hoạt ảnh
+            tabTimeout = null;
         }, 400);
 
     } else {
@@ -101,7 +101,6 @@ async function openTab(tabId, triggerIntro = true) {
 
     activeTabId = tabId;
     
-    // 3. Đồng bộ trạng thái Menu Navigation
     document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
     const btnId = tabId === 'tab-hdtcxd' ? 'btn-hd' : tabId === 'tab-plhd' ? 'btn-pl' : tabId === 'tab-tbkq' ? 'btn-tbkq' : tabId === 'tab-drawing' ? 'btn-drawing' : 'btn-about';
     const menuBtn = document.getElementById(btnId);
@@ -109,7 +108,6 @@ async function openTab(tabId, triggerIntro = true) {
 
     if (isInitialLoad) isInitialLoad = false;
 
-    // 4. LOGIC BUNG NGÀY THÁNG TỰ ĐỘNG
     allTabs.forEach(t => {
         if (t.id !== tabId) {
             const otherContainer = t.querySelector('.location-date-container');
@@ -121,7 +119,6 @@ async function openTab(tabId, triggerIntro = true) {
         setTimeout(() => { currentLocDateContainer.classList.add('active-intro'); }, 150);
     }
 
-    // 6. Cập nhật thanh cuộn của trình duyệt
     if (typeof updateAppScrollState === 'function') {
         updateAppScrollState();
     }
@@ -158,7 +155,6 @@ async function loadSystemData(isSilent = false) {
             PRECOMPUTED_PL_DATA = null;
             pendingUsersList_PL = sysData.pendingUsers || [];
 
-            // ĐỒNG BỘ QUYỀN MỚI NHẤT TỪ SERVER VÀO LOCALSTORAGE
             if (sysData.currentUserRole) {
                 localStorage.setItem('bcons_staff_role', sysData.currentUserRole);
             }
@@ -169,16 +165,6 @@ async function loadSystemData(isSilent = false) {
             
             if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
                 updateContractNo_PL();
-            }
-
-            if (activeTabId === 'tab-drawing' && typeof loadDrawingModule === 'function') {
-                isDrawingListLoaded = false;
-                // Đợi load thư viện xong mới được kích hoạt module vẽ
-                if (typeof lazyLoadDrawingLibs === 'function') {
-                    lazyLoadDrawingLibs().then(() => loadDrawingModule());
-                } else {
-                    loadDrawingModule();
-                }
             }
 
             if (name) {
@@ -195,20 +181,18 @@ async function loadSystemData(isSilent = false) {
                 initAblyRealtimeConnection();
             }
         }
-
-        if (loading) {
-            loading.style.opacity = "0";
-            setTimeout(() => { loading.style.display = "none"; }, 500);
-        }
     } catch (error) {
-        if (loading) loading.style.display = "none";
         console.error("Lỗi khởi tạo hệ thống:", error);
-        
-        // Nếu lỗi phiên, điều hướng về màn hình đăng nhập
         if (error.message && error.message.includes("UNAUTHORIZED")) {
             showLoginUI();
         } else {
             showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng tải lại trang!", "error");
+        }
+    } finally {
+        // Luôn đảm bảo loader bị ẩn, triệt tiêu hoàn toàn lỗi treo vô tận
+        if (loading) {
+            loading.style.opacity = "0";
+            setTimeout(() => { loading.style.display = "none"; }, 400);
         }
     }
 }
@@ -311,16 +295,14 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0
 /**
  * Thực thi gọi API đính kèm bảo mật Token
  */
-async function callBackend(action, data = {}, retries = 2) {
+async function callBackend(action, data = {}, retries = 1) {
     const token = localStorage.getItem('bcons_session_token');
-    
-    // Cho phép hành động login/register đi qua mà không cần token
+
     if (!token && action !== "loginUser" && action !== "registerUser") {
         showLoginUI();
         throw new Error("UNAUTHORIZED: Yêu cầu đăng nhập!");
     }
 
-    // 🚀 BỘ LỌC AN TOÀN: Tắt chế độ tự động thử lại đối với các thao tác GHI/XUẤT FILE để chống sinh file trùng lặp
     const writeActions = [
         "handleFullExportProcess_HD", 
         "handleFullExportProcess_TB",
@@ -342,18 +324,27 @@ async function callBackend(action, data = {}, retries = 2) {
     ];
 
     if (writeActions.includes(action)) {
-        retries = 0; // Ép số lần thử lại về 0, gửi 1 lần duy nhất và chờ đợi kết quả
+        retries = 0; 
     }
 
+    // Giảm timeout tải đọc dữ liệu xuống 16s để tránh người dùng phải chờ quá lâu khi lỗi mạng
+    const timeoutDuration = writeActions.includes(action) ? 60000 : 16000;
+
     for (let attempt = 0; attempt <= retries; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
+
         try {
             const resp = await fetch(GAS_API_URL, { 
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                redirect: 'follow', // Bắt buộc cho phép theo dõi mã chuyển hướng 302 của Google
-                body: JSON.stringify({ action, data, token }) 
+                redirect: 'follow',
+                body: JSON.stringify({ action, data, token }),
+                signal: controller.signal
             });
             
+            clearTimeout(timeoutId);
+
             const rawText = await resp.text();
             let res;
             try {
@@ -363,7 +354,6 @@ async function callBackend(action, data = {}, retries = 2) {
             }
             
             if (res.status === "error") {
-                // Nếu Backend đã xử lý xong và phản hồi lỗi nghiệp vụ -> KHÔNG THỬ LẠI
                 if (res.message && res.message.includes("UNAUTHORIZED")) {
                     localStorage.removeItem('bcons_session_token');
                     localStorage.removeItem('bcons_staff_identity');
@@ -374,16 +364,22 @@ async function callBackend(action, data = {}, retries = 2) {
             return res.data;
             
         } catch (err) {
+            clearTimeout(timeoutId);
+
+            const isAbort = err.name === 'AbortError';
             const isUnauthorized = err.message && err.message.includes("UNAUTHORIZED");
-            // Nhận diện lỗi logic từ backend trả về để không retry
             const isServerLogicError = !err.message.includes("Máy chủ Google") && 
                                        !err.message.includes("Failed to fetch") && 
-                                       !err.message.includes("NetworkError");
+                                       !err.message.includes("NetworkError") && 
+                                       !isAbort;
             
             if (isUnauthorized || isServerLogicError || attempt === retries) {
+                if (isAbort) {
+                    throw new Error(`Quá thời gian kết nối máy chủ (${timeoutDuration / 1000}s). Vui lòng thử lại!`);
+                }
                 throw err;
             }
-            // Chỉ thử lại khi thực sự bị nghẽn mạng / cold-start 502/503
+
             await new Promise(r => setTimeout(r, 800 * Math.pow(1.5, attempt)));
         }
     }

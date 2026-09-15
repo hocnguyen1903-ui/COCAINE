@@ -20,6 +20,7 @@ placeholder.className = 'task-placeholder';
 let drawingUploadQueue = []; 
 let isUploading_Drawing = false;
 let projectFilesCache_Drawing = {};
+let projectFullDataCache_Drawing = {}; // Đã đưa lên nhóm State đầu file chống lỗi TDZ
 let pendingFetches_Drawing = new Set();
 
 /**
@@ -54,14 +55,6 @@ function loadDrawingModule() {
 /* --- public/JS_Drawing.js --- */
 
 function fetchActiveProjectsForDrawing(forceRefresh = false) {
-    // 🚀 ƯU TIÊN 1: Nếu danh sách đã được nạp chung trong SYSTEM_DATA từ lúc sếp mở trang, lấy ra dùng ngay lập tức (0 giây)
-    if (!forceRefresh && SYSTEM_DATA && SYSTEM_DATA.drawingProjects && SYSTEM_DATA.drawingProjects.length > 0) {
-        activeDrawingProjects = SYSTEM_DATA.drawingProjects;
-        isDrawingListLoaded = true;
-        return;
-    }
-
-    // ƯU TIÊN 2: Tránh gọi trùng lặp nếu danh sách đã tải
     if (!forceRefresh && isDrawingListLoaded && activeDrawingProjects.length > 0) return;
 
     const input = document.getElementById("drawing-project-search");
@@ -71,18 +64,14 @@ function fetchActiveProjectsForDrawing(forceRefresh = false) {
 
     if (input) {
         input.disabled = true;
-        input.placeholder = "Loading projects from Drive...";
+        input.placeholder = "Loading projects...";
     }
     if (syncBtnIcon) syncBtnIcon.classList.add('spinning');
 
-    // 🚀 DỰ PHÒNG: Chỉ gọi mạng nếu chưa nạp hoặc sếp chủ động bấm nút làm mới (forceRefresh = true)
+    // Gọi API quét Cột A Drawing_Log độc lập
     callBackend("getActiveProjectFolders_Backend").then(folderNames => {
         activeDrawingProjects = folderNames || [];
         isDrawingListLoaded = true;
-        
-        // Đồng bộ ngược lại vào SYSTEM_DATA để bộ nhớ đệm luôn sạch
-        if (!SYSTEM_DATA) SYSTEM_DATA = {};
-        SYSTEM_DATA.drawingProjects = activeDrawingProjects;
         
         if (input) {
             input.disabled = false;
@@ -90,7 +79,7 @@ function fetchActiveProjectsForDrawing(forceRefresh = false) {
         }
         if (syncBtnIcon) syncBtnIcon.classList.remove('spinning');
     }).catch(err => {
-        console.error("Lỗi tải danh sách thư mục từ Drive:", err);
+        console.error("Lỗi tải danh sách dự án Drawing:", err);
         isDrawingListLoaded = false; 
         if (input) {
             input.disabled = false;
@@ -1814,8 +1803,6 @@ function resetAIZoneUI() {
 /**
  * 8. CORE UTILS
  */
-
-let projectFullDataCache_Drawing = {};
 
 function syncManual() {
     // 1. Quét lại danh sách dự án mới nhất từ Drive

@@ -590,16 +590,12 @@ function fetchWithRobustFallback(payloadBody, options, modelChain) {
 
 function getActiveProjectFolders_Backend() {
   try {
-    const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sheetDraw = ss.getSheetByName("Drawing_Log");
-    if (!sheetDraw || sheetDraw.getLastRow() < 2) return [];
-    
-    // Đọc toàn bộ Cột A từ dòng 2 của Sheet Drawing_Log
-    const drawData = sheetDraw.getRange(2, 1, sheetDraw.getLastRow() - 1, 1).getValues();
+    const response = Sheets.Spreadsheets.Values.get(SHEET_ID, "Drawing_Log!A2:A");
+    const rows = response.values || [];
     const projectSet = new Set();
     
-    for (let j = 0; j < drawData.length; j++) {
-      const code = drawData[j][0] ? drawData[j][0].toString().toUpperCase().trim() : "";
+    for (let j = 0; j < rows.length; j++) {
+      const code = rows[j][0] ? rows[j][0].toString().toUpperCase().trim() : "";
       if (code) projectSet.add(code);
     }
     

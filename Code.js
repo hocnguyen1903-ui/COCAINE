@@ -147,7 +147,7 @@ function getSystemData(token) {
     authenticateAndGetName(token); 
   }
 
-  // Gộp 8 dải ô vào 1 lượt gọi REST API v4 duy nhất
+  // Chỉ nạp 7 dải ô thiết yếu cho Hợp đồng và Phụ lục
   const response = Sheets.Spreadsheets.Values.batchGet(SHEET_ID, {
     ranges: [
       "User_Registry!A2:E",
@@ -156,8 +156,7 @@ function getSystemData(token) {
       "DATAGOITHAU!N3:N",
       "DATANTP!C3:D",
       "SO HDTCXD BCONS - NTP!B3:V",
-      "X!A4:V",
-      "Drawing_Log!A2:A" // Thêm dải ô Cột A của Drawing_Log
+      "X!A4:V"
     ],
     valueRenderOption: "FORMATTED_VALUE"
   });
@@ -170,7 +169,6 @@ function getSystemData(token) {
   const dataNTP = valueRanges[4]?.values || [];
   const logData = valueRanges[5]?.values || [];
   const dataX = valueRanges[6]?.values || [];
-  const drawingLogRows = valueRanges[7]?.values || [];
 
   // 1. LẤY DANH SÁCH USER CHỜ PHÊ DUYỆT (PENDING)
   const pendingUsers = [];
@@ -249,18 +247,12 @@ function getSystemData(token) {
     }
   });
 
-  // 7. 🚀 MÃ DỰ ÁN CHO DRAWING: CHỈ LẤY TỪ SHEET DRAWING_LOG
-  const drawingProjects = Array.from(new Set(
-    drawingLogRows.map(r => r[0] ? r[0].toString().toUpperCase().trim() : "").filter(Boolean)
-  )).sort();
-
   return {
     hd: { project: projectHD, pack: packHD, warranty: warrantyHD, contractor: contractorHD },
     pl: { field0: field0PL },
     transferMap: transferMap,
     pendingUsers: pendingUsers, 
-    currentUserRole: GLOBAL_STAFF_ROLE ? GLOBAL_STAFF_ROLE.toUpperCase().trim() : "USER",
-    drawingProjects: [] // Trả về mảng rỗng để Tab Drawing tự kích hoạt API riêng
+    currentUserRole: GLOBAL_STAFF_ROLE ? GLOBAL_STAFF_ROLE.toUpperCase().trim() : "USER"
   };
 }
 

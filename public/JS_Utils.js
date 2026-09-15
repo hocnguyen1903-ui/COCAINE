@@ -237,7 +237,6 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
     if (!isInput) displayEl.textContent = formatDateToVietnamese(today);
     else displayEl.value = "";
 
-    // Bảo vệ ngôn ngữ: Đảm bảo sử dụng tệp bản địa hóa Tiếng Việt của Flatpickr CDN
     const activeLocale = (typeof flatpickr !== 'undefined' && flatpickr.l10ns && flatpickr.l10ns.vi) 
         ? flatpickr.l10ns.vi 
         : "vi";
@@ -247,15 +246,29 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
         dateFormat: "d/m/Y",
         locale: activeLocale,
         
-        // 🚀 BỔ SUNG: Bộ dịch ngược ngày tiếng Việt tự động để Flatpickr luôn mở đúng ngày được chọn
+        // Khắc phục triệt để: Kiểm tra kiểu dữ liệu an toàn trước khi gọi regex
         parseDate: (datestr, format) => {
             if (!datestr) return today;
-            // Bóc tách số ngày, tháng, năm từ chuỗi "ngày DD tháng MM năm YYYY"
-            const match = datestr.match(/ngày\s+(\d{2})\s+tháng\s+(\d{2})\s+năm\s+(\d{4})/);
-            if (match) {
-                return new Date(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10));
+            if (datestr instanceof Date) return datestr;
+            if (typeof datestr === 'number') return new Date(datestr);
+            
+            if (typeof datestr === 'string') {
+                const cleanStr = datestr.trim();
+                // 1. Khớp định dạng tiếng Việt: ngày DD tháng MM năm YYYY
+                const vnMatch = cleanStr.match(/ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/i);
+                if (vnMatch) {
+                    return new Date(parseInt(vnMatch[3], 10), parseInt(vnMatch[2], 10) - 1, parseInt(vnMatch[1], 10));
+                }
+                // 2. Khớp định dạng ngày chéo: DD/MM/YYYY
+                const slashMatch = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                if (slashMatch) {
+                    return new Date(parseInt(slashMatch[3], 10), parseInt(slashMatch[2], 10) - 1, parseInt(slashMatch[1], 10));
+                }
+                // 3. Dự phòng đối tượng Date chuẩn ISO
+                const nativeParsed = new Date(cleanStr);
+                if (!isNaN(nativeParsed.getTime())) return nativeParsed;
             }
-            return flatpickr.parseDate(datestr, format);
+            return today;
         },
 
         onReady: function(selectedDates, dateStr, instance) {
