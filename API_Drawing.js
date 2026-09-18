@@ -460,18 +460,24 @@ function addTaskBackend(projectCode, fileId, desc, team) {
 function getFileBase64ForAI(fileId) {
   try {
     const file = DriveApp.getFileById(fileId);
+    const fileSize = file.getSize();
+    
+    // Nếu file > 20MB, lập tức báo lỗi để Client chuyển sang luồng tải trực tiếp Stream
+    if (fileSize > 20 * 1024 * 1024) {
+      return { error: "FILE_TOO_LARGE", size: fileSize };
+    }
+    
     return Utilities.base64Encode(file.getBlob().getBytes());
-  } catch (e) { return { error: e.toString() }; }
+  } catch (e) { 
+    return { error: e.toString() }; 
+  }
 }
 
 /**
- * 3. AI EXTRACTION ENGINE (PDF OPTIMIZED & HIGH AVAILABILITY)
+ * Lõi AI: Áp dụng chuỗi model tối ưu theo danh sách API thực tế của tài khoản
  */
 function extractDataOnly(base64, mimeType = "application/pdf", fileType = "UPDATE") {
   try {
-    // Nếu file > 20MB (tương đương ~27MB base64), chặn từ đầu để tránh sập RAM
-    if (base64.length > 28000000) throw new Error("File quá lớn, vượt giới hạn xử lý an toàn của hệ thống.");
-
     const promptProposal = `Role: Senior Construction Consultant.
 Task: Extract distinct work items AND their exact locations, condensed into concise strings.
 
@@ -513,17 +519,20 @@ Output format: Strict JSON only.
     const finalPrompt = (fileType === "PROPOSAL") ? promptProposal : promptOriginalUpdate;
     const payload = {
       "contents": [{ "parts": [{ "text": finalPrompt }, { "inline_data": { "mime_type": mimeType, "data": base64 } }] }],
-      "generationConfig": { "response_mime_type": "application/json", "temperature": 0.1 }
+      "generationConfig": { 
+        "response_mime_type": "application/json", 
+        "temperature": 0.1 
+      }
     };
     
     const options = { "method": "post", "contentType": "application/json", "payload": JSON.stringify(payload), "muteHttpExceptions": true };
     
-    // GỌI HÀM BACKOFF VỚI CHUỖI FALLBACK MODEL (Ưu tiên ổn định, trượt tuần tự)
+    // Chuỗi model tư duy cao (20s - 40s) bảo đảm tuân thủ 100% rules trên
     const modelChain = [
-      "gemini-3.5-flash", // Ưu tiên 1: Tốc độ cao, chi phí thấp thế hệ mới
-      "gemini-2.5-flash", // Dự phòng 1: Ổn định
-      "gemini-2.0-flash", // Dự phòng 2: Rất nhẹ và ổn định
-      "gemini-2.5-pro"    // Chốt chặn cuối: Xử lý sâu nhưng quota thấp
+      "gemini-3.7-flash",       // Ưu tiên 1: Tối ưu đọc bản vẽ & bóc tách cấu trúc phức tạp
+      "gemini-3.5-flash",       // Dự phòng 1: Bóc tách thực thể xây dựng chuẩn xác
+      "gemini-2.5-pro",         // Dự phòng 2: Phân tích bảng biểu mờ, phức tạp
+      "gemini-pro-latest"       // Chốt chặn cuối
     ];
     const responseText = fetchWithRobustFallback(payload, options, modelChain);
     
@@ -536,12 +545,10 @@ Output format: Strict JSON only.
 }
 
 /**
- * Lõi gọi API: Đa Fallback Model + Exponential Backoff + Jitter
- * Tối ưu: Tự động trượt qua mảng model nếu gặp lỗi 404 hoặc kẹt server.
+ * Điều phối gọi API: Tự động trượt model khi gặp bất kỳ mã lỗi nào
  */
 function fetchWithRobustFallback(payloadBody, options, modelChain) {
-    const maxRetries = 5; // Tăng limit để cover chuỗi model dài
-    const baseDelay = 1500; 
+    const maxRetries = 3; 
     let currentModelIndex = 0;
 
     for (let i = 0; i <= maxRetries; i++) {
@@ -558,32 +565,23 @@ function fetchWithRobustFallback(payloadBody, options, modelChain) {
                 return result.candidates[0].content.parts[0].text;
             }
             
-            if (responseCode === 429 || responseCode >= 500 || responseCode === 404) {
-                if (i === maxRetries) throw new Error("Kiệt sức toàn bộ chuỗi Model sau " + maxRetries + " lần thử: " + responseText);
-                
-                // Trượt Model: Lỗi 404 (chuyển ngay), Lỗi kẹt server (chuyển sau lần thử 1)
-                if (responseCode === 404 || i >= 1) {
-                    if (currentModelIndex < modelChain.length - 1) {
-                        currentModelIndex++;
-                        console.warn(`[AI System] Cảnh báo model ${currentModel} (Mã lỗi ${responseCode}). Chuyển sang: ${modelChain[currentModelIndex]}`);
-                        if (responseCode === 404) continue; // 404 không cần chờ, gọi ngay model tiếp theo
-                    }
-                }
-
-                const exponentialWait = baseDelay * Math.pow(2, i); 
-                const jitterWait = Math.floor(Math.random() * (exponentialWait * 0.3));
-                const waitTime = exponentialWait + jitterWait;
-                
-                console.warn(`[AI System] Lỗi Server ${responseCode}. Đang chờ ${waitTime}ms để thử lại...`);
-                Utilities.sleep(waitTime);
-            } else {
-                throw new Error(`Lỗi Logic API ${responseCode}: ` + responseText);
+            // Trượt model ngay lập tức nếu gặp bất kỳ lỗi gì (kể cả 400, 404, 429, 500)
+            if (currentModelIndex < modelChain.length - 1) {
+                currentModelIndex++;
+                console.warn(`[AI System] Lỗi ${responseCode}. Chuyển sang model: ${modelChain[currentModelIndex]}`);
+                continue;
             }
             
+            if (i === maxRetries) throw new Error(`Lỗi API ${responseCode}: ` + responseText);
+            Utilities.sleep(1500);
+            
         } catch (e) {
-            if (i === maxRetries) throw new Error("Đứt kết nối API hoàn toàn: " + e.message);
-            const waitTime = baseDelay * Math.pow(2, i) + Math.floor(Math.random() * 1000);
-            Utilities.sleep(waitTime);
+            if (currentModelIndex < modelChain.length - 1) {
+                currentModelIndex++;
+                continue;
+            }
+            if (i === maxRetries) throw new Error("Đứt kết nối AI hoàn toàn: " + e.message);
+            Utilities.sleep(1500);
         }
     }
 }
@@ -812,3 +810,5 @@ function getProjectDrawingFullData(projectCode) {
     throw new Error("Lỗi tải dữ liệu Bản vẽ & Task: " + e.message);
   }
 }
+
+

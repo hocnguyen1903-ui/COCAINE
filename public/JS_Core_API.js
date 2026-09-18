@@ -332,7 +332,8 @@ async function callBackend(action, data = {}, retries = 1) {
         "getMindmapData", 
         "getTasksByFileId", 
         "getAllTasksByProject", 
-        "getProjectDrawingFullData"
+        "getProjectDrawingFullData",
+        "getDriveFileStreamInfo_Backend"
     ];
 
     // Chỉ chặn ở Client nếu là hành động GHI mà chưa đăng nhập

@@ -324,7 +324,6 @@ function doPost(e) {
 
   const { action, data: payload, token } = request;
 
-  // Danh mục thao tác ĐỌC & ĐĂNG NHẬP: Không chặn cửa, không bắt buộc Token
   const publicActions = [
     "getSystemData",
     "loginUser",
@@ -333,18 +332,19 @@ function doPost(e) {
     "getMindmapData",
     "getTasksByFileId",
     "getAllTasksByProject",
-    "getProjectDrawingFullData"
+    "getProjectDrawingFullData",
+    "getDriveFileStreamInfo_Backend",
+    "getFileBase64ForAI",
+    "extractDataOnly"
   ];
 
   if (!publicActions.includes(action)) {
-    // Thao tác GHI: Bắt buộc xác thực danh tính để ghi log sổ theo dõi
     try {
       authenticateAndGetName(token); 
     } catch (authError) {
       return ContentService.createTextOutput(JSON.stringify({ status: "error", message: authError.message })).setMimeType(ContentService.MimeType.JSON);
     }
   } else {
-    // Thao tác ĐỌC: Gán mềm danh tính nếu có token hợp lệ
     if (token) {
       try { authenticateAndGetName(token); } catch (ignored) {}
     }
@@ -370,6 +370,7 @@ function doPost(e) {
     "getAllTasksByProject": () => getAllTasksByProject(payload),
     "updateTasksOrderBackend": () => updateTasksOrderBackend(payload?.[0], payload?.[1], payload?.[2]),
     "getFileBase64ForAI": () => getFileBase64ForAI(payload),
+    "getDriveFileStreamInfo_Backend": () => getDriveFileStreamInfo_Backend(payload),
     "extractDataOnly": () => extractDataOnly(payload?.[0], payload?.[1], payload?.[2]),
     "batchAddTasksBackend": () => batchAddTasksBackend(payload?.[0], payload?.[1], payload?.[2], payload?.[3]),
     "approveUser_InApp": () => approveUser_InApp(payload), 
@@ -447,4 +448,14 @@ function keepSystemWarm_Trigger() {
   } catch (e) {
     console.warn("[Keep-Warm Failed]: " + e.message);
   }
+}
+
+/**
+ * Cung cấp thông tin luồng tải trực tiếp từ Google Drive API cho Client (Bypass RAM Apps Script)
+ */
+function getDriveFileStreamInfo_Backend(fileId) {
+  return {
+    downloadUrl: "https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media",
+    token: ScriptApp.getOAuthToken()
+  };
 }

@@ -20,8 +20,9 @@ placeholder.className = 'task-placeholder';
 let drawingUploadQueue = []; 
 let isUploading_Drawing = false;
 let projectFilesCache_Drawing = {};
-let projectFullDataCache_Drawing = {}; // Đã đưa lên nhóm State đầu file chống lỗi TDZ
+let projectFullDataCache_Drawing = {}; 
 let pendingFetches_Drawing = new Set();
+let activeAiFiles = new Set(); // Đồng bộ tên biến toàn cục theo dõi file đang chạy AI ngầm
 
 /**
  * 2. KHỞI CHẠY & NẠP DỰ ÁN (ĐỒNG BỘ BỘ NẠP ĐÁY BẢNG HƯỚNG DẪN TĨNH)
@@ -905,27 +906,31 @@ function updatePanelContent(nodeData) {
     document.getElementById('dp-empty-state').style.display = 'none';
     document.getElementById('dp-content-state').style.display = 'flex';
     
-    const fileNameWithExt = nodeData.label.split('\n').pop();
-    // Tách lọc bỏ phần đuôi mở rộng .pdf / .xlsx / .xls theo yêu cầu của sếp
+    const fileNameWithExt = (nodeData.fullName || nodeData.label || "").split('\n').pop();
     const fileNameClean = fileNameWithExt.replace(/\.(pdf|xlsx|xls)$/i, "");
 
     let aiZoneHTML = "";
     const isProcessable = (nodeData.type === 'UPDATE' || nodeData.type === 'PROPOSAL');
+    const isCurrentlyExtracting = activeAiFiles.has(nodeData.fileId);
 
     if (isProcessable) {
-        // Giao diện AI tương lai (Sleek Horizontal)
+        // Tự động khôi phục giao diện AI đang chạy nếu file này nằm trong danh sách trích xuất nền
+        const activeClass = isCurrentlyExtracting ? "ai-extracting-active" : "";
+        const titleText = isCurrentlyExtracting ? "AI DATA ANALYSIS IN PROGRESS" : "AI DATA EXTRACTION";
+        const titleColor = isCurrentlyExtracting ? "#00BCD4" : "#FFFFFF";
+        const subText = isCurrentlyExtracting ? "Vui lòng chờ trong giây lát ..." : "Chọn để trích xuất nội dung tự động";
+
         aiZoneHTML = `
-            <div id="ai-paste-zone" class="ai-command-button" onclick="extractFromCurrentSelected()">
+            <div id="ai-paste-zone" class="ai-command-button ${activeClass}" onclick="extractFromCurrentSelected()">
                 <div class="ai-icon-frame">
                     <i class="bi bi-robot" id="ai-robot-icon" style="font-size: 24px; color: #00BCD4; transition: all 0.3s;"></i>
                 </div>
                 <div class="ai-command-text-wrapper">
-                    <div id="ai-main-msg" style="font-size: 11.5px; color: #FFFFFF; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;">AI DATA EXTRACTION</div>
-                    <div id="ai-sub-msg" style="font-size: 10px; color: #95A1AF; margin-top: 4px; font-style: italic; letter-spacing: 0.2px;">Chọn để trích xuất nội dung tự động</div>
+                    <div id="ai-main-msg" style="font-size: 11.5px; color: ${titleColor}; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;">${titleText}</div>
+                    <div id="ai-sub-msg" style="font-size: 10px; color: #95A1AF; margin-top: 4px; font-style: italic; letter-spacing: 0.2px;">${subText}</div>
                 </div>
             </div>`;
     } else {
-        // Giao diện khóa ngầm của bản vẽ gốc
         aiZoneHTML = `
             <div class="ai-command-button ai-command-disabled">
                 <div class="ai-icon-frame" style="background: rgba(149, 161, 175, 0.05); border-color: rgba(149, 161, 175, 0.2);">
@@ -938,7 +943,6 @@ function updatePanelContent(nodeData) {
             </div>`;
     }
 
-    // 🚀 CẬP NHẬT GIAO DIỆN: Đổ dữ liệu nodeData.fullName (tên đầy đủ nguyên bản) vào nút Sửa Pencil
     document.getElementById('dp-file-list').innerHTML = `
         <div class="existing-file-wrapper" style="padding-right: 5px !important;">
             <div class="existing-file-info" onclick="window.open('${nodeData.url}', '_blank')" style="flex:1; overflow:hidden; display:flex; align-items:center;">
@@ -967,7 +971,6 @@ function updatePanelContent(nodeData) {
         </div>
         ${aiZoneHTML}`;
     
-    // Gán nút bấm thực thi xác nhận
     const confirmDeleteBtn = document.getElementById("confirmDeleteDrawingBtn");
     if (confirmDeleteBtn) confirmDeleteBtn.onclick = executeActualDeleteDrawing_Client;
 
@@ -977,10 +980,12 @@ function updatePanelContent(nodeData) {
     const taskListContainer = document.getElementById('dp-task-list');
     if (isProcessable) {
         renderTaskList_Drawing(currentFileId);
-        document.querySelector('button[onclick="addNewTaskItem()"]').style.display = 'block';
+        const addBtn = document.querySelector('button[onclick="addNewTaskItem()"]');
+        if (addBtn) addBtn.style.display = 'block';
     } else {
         taskListContainer.innerHTML = `<div class="empty-msg" style="color:#505966; font-size:11px; font-style:italic; padding:15px; text-align:center;">Không có dữ liệu trích xuất từ bản vẽ thiết kế thi công.</div>`;
-        document.querySelector('button[onclick="addNewTaskItem()"]').style.display = 'none';
+        const addBtn = document.querySelector('button[onclick="addNewTaskItem()"]');
+        if (addBtn) addBtn.style.display = 'none';
     }
 }
 
@@ -1739,65 +1744,165 @@ function handleDragEnd(e) { if (!draggedElement) return; if (placeholder.parentE
  */
 async function slicePDFEngine(buffer) {
     const pdfDoc = await PDFLib.PDFDocument.load(buffer), newDoc = await PDFLib.PDFDocument.create();
-    const pages = Array.from({length: Math.min(3, pdfDoc.getPageCount())}, (_, i) => i);
-    const copied = await newDoc.copyPages(pdfDoc, pages); copied.forEach(p => newDoc.addPage(p));
+    const pages = Array.from({ length: Math.min(4, pdfDoc.getPageCount()) }, (_, i) => i);
+    const copied = await newDoc.copyPages(pdfDoc, pages); 
+    copied.forEach(p => newDoc.addPage(p));
     return btoa(new Uint8Array(await newDoc.save()).reduce((d, b) => d + String.fromCharCode(b), ''));
 }
 
-async function extractFromCurrentSelected(isConfirmed = false) {
+
+/**
+ * Bộ điều phối trạng thái nút AI theo thời gian thực (Cập nhật trực tiếp trên DOM hiện hành)
+ */
+function updateAiButtonUI(fileId) {
+    if (currentFileId !== fileId) return; // Không can thiệp nếu người dùng đang ở node khác
+
     const zone = document.getElementById('ai-paste-zone');
     const mainMsg = document.getElementById('ai-main-msg');
     const subMsg = document.getElementById('ai-sub-msg');
-    const taskList = document.getElementById('dp-task-list');
-    const selectedNode = cyInstance.$(':selected')[0];
-    if (!zone || !currentFileId || !selectedNode) return;
-    const fileType = selectedNode.data('type'); 
-    const hasExistingData = drawingTaskCache[currentFileId] && drawingTaskCache[currentFileId].length > 0;
+    if (!zone || !mainMsg || !subMsg) return;
 
-    if (hasExistingData && !isConfirmed) {
-        zone.classList.add('ai-zone-alert');
-        mainMsg.style.color = "#fff"; mainMsg.textContent = "XÁC NHẬN GHI ĐÈ DỮ LIỆU?";
-        subMsg.innerHTML = `<div style="margin-top:8px; display:flex; gap:10px; justify-content:center; pointer-events:auto;"><button onclick="event.stopPropagation(); extractFromCurrentSelected(true)" class="btn-primary-luxury" style="height:24px; padding:0 10px; font-size:9px; background:#ff4d4d !important; border-color:#ff4d4d !important;">YES</button><button onclick="event.stopPropagation(); resetAIZoneUI()" class="btn-secondary-luxury" style="height:24px; padding:0 10px; font-size:9px;">CANCEL</button></div>`;
-        return;
+    if (activeAiFiles.has(fileId)) {
+        zone.classList.remove('ai-zone-alert');
+        zone.classList.add('ai-extracting-active');
+        mainMsg.style.color = "#00BCD4";
+        mainMsg.textContent = "AI DATA ANALYSIS IN PROGRESS";
+        subMsg.textContent = "Vui lòng chờ trong giây lát ...";
+    } else {
+        zone.classList.remove('ai-extracting-active', 'ai-zone-alert');
+        mainMsg.style.color = "#FFFFFF";
+        mainMsg.textContent = "AI DATA EXTRACTION";
+        subMsg.textContent = "Chọn để trích xuất nội dung tự động";
     }
-
-    zone.classList.remove('ai-zone-alert'); zone.classList.add('ai-extracting-active');
-    mainMsg.style.color = "#00BCD4"; mainMsg.textContent = "AI DATA ANALYSIS IN PROGRESS";
-    subMsg.textContent = "Vui lòng chờ trong giây lát ...";
-
-    try {
-        const base64 = await serverCall('getFileBase64ForAI', currentFileId);
-        const binary = atob(base64), bytes = new Uint8Array(binary.length);
-        for (let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        const sliced = await slicePDFEngine(bytes.buffer);
-        const res = await serverCall('extractDataOnly', sliced, "application/pdf", fileType);
-        if (res.error) throw new Error(res.error);
-
-        let tasks = res.notes || [];
-        const unique = []; const seen = new Set();
-        tasks.forEach(t => {
-            const n = (t.note || "").trim();
-            if (n !== "" && !seen.has(n.toUpperCase())) {
-                unique.push({ note: n, dept: (t.dept || "XD").toUpperCase() === "MEP" ? "MEP" : "XD" });
-                seen.add(n.toUpperCase());
-            }
-        });
-
-        await serverCall('batchAddTasksBackend', selectedProjectDrawing, currentFileId, unique, isConfirmed);
-        delete drawingTaskCache[currentFileId];
-        renderTaskList_Drawing(currentFileId);
-        resetAIZoneUI();
-    } catch (e) { alert("Lỗi: " + e.message); resetAIZoneUI(); renderTaskList_Drawing(currentFileId); }
 }
 
 function resetAIZoneUI() {
-    const zone = document.getElementById('ai-paste-zone');
-    const mainMsg = document.getElementById('ai-main-msg');
-    const subMsg = document.getElementById('ai-sub-msg');
-    if (!zone) return;
-    zone.classList.remove('ai-extracting-active'); zone.classList.remove('ai-zone-alert');
-    mainMsg.style.color = "#E0E0E0"; mainMsg.textContent = "AI DATA EXTRACTION";
-    subMsg.innerHTML = "Trích xuất hạng mục cập nhật thay đổi";
+    if (currentFileId) {
+        updateAiButtonUI(currentFileId);
+    }
+}
+
+/**
+ * Lõi trích xuất AI chạy ngầm độc lập (Non-blocking Background Worker)
+ * Tự do chuyển Node, bảo toàn 100% luồng AI và khôi phục hiệu ứng khi quay lại
+ */
+async function extractFromCurrentSelected(isConfirmed = false) {
+    const targetFileId = currentFileId; 
+    const targetProjectCode = selectedProjectDrawing;
+    if (!targetFileId) return;
+
+    if (activeAiFiles.has(targetFileId)) return;
+
+    const targetNode = cyInstance ? cyInstance.getElementById(targetFileId) : null;
+    const fileType = (targetNode && targetNode.length > 0) ? targetNode.data('type') : 'UPDATE';
+    const targetFileName = (targetNode && targetNode.length > 0) ? (targetNode.data('fullName') || targetNode.data('label') || targetFileId) : targetFileId;
+    const cleanFileName = targetFileName.replace(/\.(pdf|xlsx|xls)$/i, "");
+    
+    const hasExistingData = drawingTaskCache[targetFileId] && drawingTaskCache[targetFileId].length > 0;
+
+    if (hasExistingData && !isConfirmed) {
+        const zone = document.getElementById('ai-paste-zone');
+        const mainMsg = document.getElementById('ai-main-msg');
+        const subMsg = document.getElementById('ai-sub-msg');
+        if (zone && mainMsg && subMsg) {
+            zone.classList.add('ai-zone-alert');
+            mainMsg.style.color = "#fff"; 
+            mainMsg.textContent = "XÁC NHẬN GHI ĐÈ DỮ LIỆU?";
+            subMsg.innerHTML = `<div style="margin-top:8px; display:flex; gap:10px; justify-content:center; pointer-events:auto;"><button onclick="event.stopPropagation(); extractFromCurrentSelected(true)" class="btn-primary-luxury" style="height:24px; padding:0 10px; font-size:9px; background:#ff4d4d !important; border-color:#ff4d4d !important;">YES</button><button onclick="event.stopPropagation(); resetAIZoneUI()" class="btn-secondary-luxury" style="height:24px; padding:0 10px; font-size:9px;">CANCEL</button></div>`;
+        }
+        return;
+    }
+
+    activeAiFiles.add(targetFileId);
+    updateAiButtonUI(targetFileId);
+
+    (async () => {
+        try {
+            if (typeof PDFLib === 'undefined' && typeof lazyLoadDrawingLibs === 'function') {
+                await lazyLoadDrawingLibs();
+            }
+
+            let fileBuffer = null;
+
+            // 1. Thử tải nhanh qua Datacenter nội bộ (Nếu file < 20MB, tốn ~1s)
+            try {
+                const base64Res = await serverCall('getFileBase64ForAI', targetFileId);
+                if (base64Res && typeof base64Res === 'string' && !base64Res.startsWith('{')) {
+                    const binary = atob(base64Res);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                    fileBuffer = bytes.buffer;
+                }
+            } catch (fastErr) {
+                console.warn("[Fast-Path Bypassed]: Chuyển sang luồng Drive Stream.");
+            }
+
+            // 2. Tự động chuyển luồng tải trực tiếp nếu file > 20MB làm Apps Script quá tải RAM
+            if (!fileBuffer) {
+                const streamInfo = await serverCall('getDriveFileStreamInfo_Backend', targetFileId);
+                if (!streamInfo || !streamInfo.downloadUrl || !streamInfo.token) {
+                    throw new Error("Không thể kết nối tải tệp từ Google Drive.");
+                }
+                const driveResp = await fetch(streamInfo.downloadUrl, {
+                    headers: { Authorization: "Bearer " + streamInfo.token }
+                });
+                if (!driveResp.ok) {
+                    throw new Error(`Google Drive từ chối cấp dữ liệu (${driveResp.status}): ${driveResp.statusText}`);
+                }
+                fileBuffer = await driveResp.arrayBuffer();
+            }
+
+            // 3. Cắt lát tối đa 4 trang đầu tiên thành tệp nhẹ (~1MB - 3MB)
+            const sliced = await slicePDFEngine(fileBuffer);
+
+            // 4. Gửi sang Gemini AI
+            const res = await serverCall('extractDataOnly', sliced, "application/pdf", fileType);
+            if (!res || res.error) {
+                throw new Error(res?.error || "AI không thể nhận diện dữ liệu bản vẽ.");
+            }
+
+            let tasks = res.notes || [];
+            const unique = []; 
+            const seen = new Set();
+            tasks.forEach(t => {
+                const n = (t.note || "").trim();
+                if (n !== "" && !seen.has(n.toUpperCase())) {
+                    unique.push({ note: n, dept: (t.dept || "XD").toUpperCase() === "MEP" ? "MEP" : "XD" });
+                    seen.add(n.toUpperCase());
+                }
+            });
+
+            await serverCall('batchAddTasksBackend', targetProjectCode, targetFileId, unique, isConfirmed);
+            
+            const newTasksList = unique.map((t, idx) => ({
+                taskId: "T-" + Date.now() + "-" + idx,
+                fileId: targetFileId,
+                description: t.note,
+                team: t.dept
+            }));
+            drawingTaskCache[targetFileId] = newTasksList;
+
+            const projKey = (targetProjectCode || "").toUpperCase().trim();
+            if (projectFullDataCache_Drawing[projKey] && projectFullDataCache_Drawing[projKey].tasks) {
+                if (isConfirmed) {
+                    projectFullDataCache_Drawing[projKey].tasks = projectFullDataCache_Drawing[projKey].tasks.filter(t => t.fileId !== targetFileId);
+                }
+                projectFullDataCache_Drawing[projKey].tasks.push(...newTasksList);
+            }
+
+            showToast_PL(`🚀 Đã trích xuất xong: <b>${cleanFileName}</b>`, "success");
+
+        } catch (err) {
+            console.error(`[AI Error] ${targetFileId}:`, err);
+            showToast_PL(`⚠️ Lỗi AI [${cleanFileName}]: ${err.message || err}`, "error");
+        } finally {
+            activeAiFiles.delete(targetFileId);
+            if (currentFileId === targetFileId) {
+                updateAiButtonUI(targetFileId);
+                renderTaskList_Drawing(targetFileId);
+            }
+        }
+    })();
 }
 
 /**
