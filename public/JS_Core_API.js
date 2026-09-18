@@ -126,12 +126,6 @@ async function openTab(tabId, triggerIntro = true) {
 
 async function loadSystemData(isSilent = false) {
     const token = localStorage.getItem('bcons_session_token');
-    if (!token) {
-        showLoginUI();
-        return;
-    }
-
-    localStorage.removeItem('bcons_cached_system_data');
 
     const isPanelActive = document.getElementById('edit-panel-pl')?.classList.contains('active') ||
                           document.getElementById('transfer-panel-pl')?.classList.contains('active') ||
@@ -143,17 +137,47 @@ async function loadSystemData(isSilent = false) {
     if (displayEl && name) displayEl.textContent = name;
 
     const loading = document.getElementById("loadingSystem");
-    if (loading && !isSilent) {
+    let hasLocalCache = false;
+
+    // 1. ĐỌC CACHE TỨC THÌ (0.05s) - LOẠI BỎ CHỜ ĐỢI LOADER NẾU ĐÃ CÓ DỮ LIỆU CŨ
+    try {
+        const cachedRaw = localStorage.getItem('bcons_cached_system_data');
+        if (cachedRaw) {
+            const cachedData = JSON.parse(cachedRaw);
+            if (cachedData && cachedData.hd && cachedData.pl) {
+                SYSTEM_DATA = cachedData;
+                PRECOMPUTED_PL_DATA = null;
+                pendingUsersList_PL = cachedData.pendingUsers || [];
+                hasLocalCache = true;
+
+                if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
+                    executeFilter_PL(false);
+                }
+                if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
+                    updateContractNo_PL();
+                }
+            }
+        }
+    } catch(e) {
+        console.warn("Cache parse error:", e);
+    }
+
+    // Chỉ bật loader che màn hình nếu hoàn toàn chưa có dữ liệu trong máy
+    if (loading && !isSilent && !hasLocalCache) {
         loading.style.display = "flex";
         loading.style.opacity = "1";
     }
 
+    // 2. CHẠY NGẦM ĐỒNG BỘ DỮ LIỆU MỚI TỪ MÁY CHỦ
     try {
         const sysData = await callBackend('getSystemData');
         if (sysData) {
             SYSTEM_DATA = sysData;
             PRECOMPUTED_PL_DATA = null;
             pendingUsersList_PL = sysData.pendingUsers || [];
+
+            // Lưu bản đệm mới nhất vào thiết bị
+            localStorage.setItem('bcons_cached_system_data', JSON.stringify(sysData));
 
             if (sysData.currentUserRole) {
                 localStorage.setItem('bcons_staff_role', sysData.currentUserRole);
@@ -181,15 +205,17 @@ async function loadSystemData(isSilent = false) {
                 initAblyRealtimeConnection();
             }
         }
-    } catch (error) {
-        console.error("Lỗi khởi tạo hệ thống:", error);
-        if (error.message && error.message.includes("UNAUTHORIZED")) {
+
+        if (!token) {
             showLoginUI();
-        } else {
+        }
+    } catch (error) {
+        console.error("Lỗi đồng bộ máy chủ:", error);
+        // Chỉ thông báo lỗi nếu trên máy hoàn toàn chưa có dữ liệu đệm
+        if (!hasLocalCache) {
             showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng tải lại trang!", "error");
         }
     } finally {
-        // Luôn đảm bảo loader bị ẩn, triệt tiêu hoàn toàn lỗi treo vô tận
         if (loading) {
             loading.style.opacity = "0";
             setTimeout(() => { loading.style.display = "none"; }, 400);
@@ -298,7 +324,19 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0
 async function callBackend(action, data = {}, retries = 1) {
     const token = localStorage.getItem('bcons_session_token');
 
-    if (!token && action !== "loginUser" && action !== "registerUser") {
+    const publicActions = [
+        "getSystemData", 
+        "loginUser", 
+        "registerUser", 
+        "getActiveProjectFolders_Backend", 
+        "getMindmapData", 
+        "getTasksByFileId", 
+        "getAllTasksByProject", 
+        "getProjectDrawingFullData"
+    ];
+
+    // Chỉ chặn ở Client nếu là hành động GHI mà chưa đăng nhập
+    if (!token && !publicActions.includes(action)) {
         showLoginUI();
         throw new Error("UNAUTHORIZED: Yêu cầu đăng nhập!");
     }
@@ -327,8 +365,7 @@ async function callBackend(action, data = {}, retries = 1) {
         retries = 0; 
     }
 
-    // Giảm timeout tải đọc dữ liệu xuống 16s để tránh người dùng phải chờ quá lâu khi lỗi mạng
-    const timeoutDuration = writeActions.includes(action) ? 60000 : 16000;
+    const timeoutDuration = writeActions.includes(action) ? 60000 : 30000;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
         const controller = new AbortController();
