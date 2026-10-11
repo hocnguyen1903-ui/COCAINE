@@ -139,7 +139,7 @@ async function loadSystemData(isSilent = false) {
     const loading = document.getElementById("loadingSystem");
     let hasLocalCache = false;
 
-    // 1. ĐỌC CACHE TỨC THÌ (0.05s) - LOẠI BỎ CHỜ ĐỢI LOADER NẾU ĐÃ CÓ DỮ LIỆU CŨ
+    // 1. KIỂM TRA & NẠP CACHE TỨC THÌ (SMART CACHE HYDRATION)
     try {
         const cachedRaw = localStorage.getItem('bcons_cached_system_data');
         if (cachedRaw) {
@@ -156,19 +156,25 @@ async function loadSystemData(isSilent = false) {
                 if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
                     updateContractNo_PL();
                 }
+
+                // SMART LOADER: Có dữ liệu đệm -> Hạ màn che ngay lập tức (0.05s) cho người dùng thao tác
+                if (loading && !isSilent) {
+                    loading.style.opacity = "0";
+                    setTimeout(() => { loading.style.display = "none"; }, 250);
+                }
             }
         }
-    } catch(e) {
-        console.warn("Cache parse error:", e);
+    } catch (e) {
+        console.warn("Lỗi phân tích bộ nhớ đệm:", e);
     }
 
-    // Chỉ bật loader che màn hình nếu hoàn toàn chưa có dữ liệu trong máy
+    // Nếu hoàn toàn chưa có dữ liệu trong máy: Giữ Loader toàn màn hình để che quá trình tải
     if (loading && !isSilent && !hasLocalCache) {
         loading.style.display = "flex";
         loading.style.opacity = "1";
     }
 
-    // 2. CHẠY NGẦM ĐỒNG BỘ DỮ LIỆU MỚI TỪ MÁY CHỦ
+    // 2. CHẠY NGẦM ĐỒNG BỘ DỮ LIỆU TỪ MÁY CHỦ (SILENT BACKGROUND REVALIDATION)
     try {
         const sysData = await callBackend('getSystemData');
         if (sysData) {
@@ -176,17 +182,17 @@ async function loadSystemData(isSilent = false) {
             PRECOMPUTED_PL_DATA = null;
             pendingUsersList_PL = sysData.pendingUsers || [];
 
-            // Lưu bản đệm mới nhất vào thiết bị
+            // Ghi đè dữ liệu mới nhất vào Cache cho lần mở web tiếp theo
             localStorage.setItem('bcons_cached_system_data', JSON.stringify(sysData));
 
             if (sysData.currentUserRole) {
                 localStorage.setItem('bcons_staff_role', sysData.currentUserRole);
             }
 
+            // Cập nhật giao diện ngầm mà không làm gián đoạn người dùng
             if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
                 executeFilter_PL(false);
             }
-            
             if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
                 updateContractNo_PL();
             }
@@ -211,14 +217,15 @@ async function loadSystemData(isSilent = false) {
         }
     } catch (error) {
         console.error("Lỗi đồng bộ máy chủ:", error);
-        // Chỉ thông báo lỗi nếu trên máy hoàn toàn chưa có dữ liệu đệm
+        // Chỉ hiện thông báo lỗi nếu trên máy chưa từng có dữ liệu đệm nào
         if (!hasLocalCache) {
             showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng tải lại trang!", "error");
         }
     } finally {
-        if (loading) {
+        // Đảm bảo Loader luôn được dọn dẹp nếu thuộc trường hợp chưa có cache trước đó
+        if (loading && loading.style.display !== "none") {
             loading.style.opacity = "0";
-            setTimeout(() => { loading.style.display = "none"; }, 400);
+            setTimeout(() => { loading.style.display = "none"; }, 300);
         }
     }
 }

@@ -303,33 +303,27 @@ function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {
       logSheet.getRange(nextRow, 1, 1, 9).setValues(newRowData);
 
     } else {
+      // Xóa trực tiếp hàng vật lý: An toàn tuyệt đối 100% kể cả khi Sheet đang bị Filter/Sort
       if (lastRowLogChuyen >= 4) {
-        const fullRangeLog = logSheet.getRange(4, 1, lastRowLogChuyen - 3, 9);
-        const allLogData = fullRangeLog.getValues();
+        const dataRange = logSheet.getRange(4, 1, lastRowLogChuyen - 3, 4).getValues();
         
         let contractToFind = targetMa;
         if (contractToFind.match(/^PL\d{2}\s*-/)) {
           contractToFind = contractToFind.split(" - ").slice(1).join(" - ").trim();
         }
 
-        let isRemoved = false;
-        const filteredLogs = allLogData.filter(row => {
-          const valD = row[3]?.toString().trim() || "";
-          const loaiC = row[2]?.toString().trim() || "";
+        // Quét từ dưới lên để tìm đúng dòng cần hủy và xóa hàng vật lý
+        for (let i = dataRange.length - 1; i >= 0; i--) {
+          const loaiC = dataRange[i][2]?.toString().trim() || "";
+          const valD = dataRange[i][3]?.toString().trim() || "";
           
           const isMatchMa = (valD === contractToFind);
           const isMatchLoai = targetMa.match(/^PL\d{2}\s*-/) ? loaiC.startsWith("PL") : loaiC === "HỢP ĐỒNG";
           
-          if (isMatchMa && isMatchLoai && !isRemoved) {
-            isRemoved = true; 
-            return false;
+          if (isMatchMa && isMatchLoai) {
+            logSheet.deleteRow(i + 4); // Xóa chính xác hàng, Google Sheets tự động cập nhật bộ lọc
+            break; 
           }
-          return true;
-        });
-
-        fullRangeLog.clearContent();
-        if (filteredLogs.length > 0) {
-          logSheet.getRange(4, 1, filteredLogs.length, 9).setValues(filteredLogs);
         }
       }
     }
