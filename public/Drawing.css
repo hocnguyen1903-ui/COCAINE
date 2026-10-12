@@ -169,7 +169,7 @@
     #btn-reset-view:hover { background: rgba(255, 186, 8, 0.15) !important; border-color: #FFBA08 !important; transform: scale(1.05); }
     .btn-sync-box { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; background: rgba(255, 186, 8, 0.05); border: 1px solid rgba(255, 186, 8, 0.4); border-radius: 8px; color: #FFBA08; cursor: pointer; }
     .btn-sync-box i { font-size: 17px !important; }
-    .drag-handle { color: #505966; font-size: 16px; cursor: grab !important; display: flex; align-items: center; justify-content: center; width: 24px; height: 100%; user-select: none; -webkit-user-drag: none; }
+    .drag-handle { color: #505966; font-size: 16px; cursor: grab !important; display: flex; align-items: center; justify-content: center; width: 24px; height: 100%; user-select: none; -webkit-user-drag: none; margin-left: -10px; }
     .drag-handle:active { cursor: grabbing !important; }
 
     /* 10. LUXURY GUIDE UI */

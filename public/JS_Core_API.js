@@ -39,8 +39,23 @@ async function openTab(tabId, triggerIntro = true) {
     const targetTab = document.getElementById(tabId);
     if (!targetTab) return;
 
-    // 🚀 CHỈ KHI NGƯỜI DÙNG CLICK SANG TAB DRAWING MỚI NẠP THƯ VIỆN & DỮ LIỆU DỰ ÁN
+    // 🚀 KHỞI TẠO ĐỒNG BỘ TỨC THÌ CHO TAB DRAWING
     if (tabId === 'tab-drawing') {
+        const isLoaded = (typeof isDrawingListLoaded !== 'undefined') ? isDrawingListLoaded : false;
+        const hasProjects = (typeof activeDrawingProjects !== 'undefined' && Array.isArray(activeDrawingProjects)) ? activeDrawingProjects.length > 0 : false;
+        const projInput = document.getElementById("drawing-project-search");
+
+        // Đặt ngay trạng thái Loading tức thì (0ms trễ) nếu chưa có danh sách dự án
+        if (projInput && (!isLoaded || !hasProjects)) {
+            projInput.disabled = true;
+            projInput.placeholder = "Loading projects...";
+        }
+
+        // Kích hoạt gọi API quét dự án song song ngay lập tức, không chờ thư viện nặng
+        if (typeof fetchActiveProjectsForDrawing === 'function') {
+            fetchActiveProjectsForDrawing();
+        }
+
         setTimeout(async () => {
             if (typeof lazyLoadDrawingLibs === 'function' && !isDrawingLibsLoaded) {
                 try {
@@ -137,59 +152,29 @@ async function loadSystemData(isSilent = false) {
     if (displayEl && name) displayEl.textContent = name;
 
     const loading = document.getElementById("loadingSystem");
-    let hasLocalCache = false;
 
-    // 1. KIỂM TRA & NẠP CACHE TỨC THÌ (SMART CACHE HYDRATION)
-    try {
-        const cachedRaw = localStorage.getItem('bcons_cached_system_data');
-        if (cachedRaw) {
-            const cachedData = JSON.parse(cachedRaw);
-            if (cachedData && cachedData.hd && cachedData.pl) {
-                SYSTEM_DATA = cachedData;
-                PRECOMPUTED_PL_DATA = null;
-                pendingUsersList_PL = cachedData.pendingUsers || [];
-                hasLocalCache = true;
-
-                if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
-                    executeFilter_PL(false);
-                }
-                if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
-                    updateContractNo_PL();
-                }
-
-                // SMART LOADER: Có dữ liệu đệm -> Hạ màn che ngay lập tức (0.05s) cho người dùng thao tác
-                if (loading && !isSilent) {
-                    loading.style.opacity = "0";
-                    setTimeout(() => { loading.style.display = "none"; }, 250);
-                }
-            }
-        }
-    } catch (e) {
-        console.warn("Lỗi phân tích bộ nhớ đệm:", e);
-    }
-
-    // Nếu hoàn toàn chưa có dữ liệu trong máy: Giữ Loader toàn màn hình để che quá trình tải
-    if (loading && !isSilent && !hasLocalCache) {
+    // Giữ màn che Loading hoạt động để bảo vệ tính toàn vẹn thị giác
+    if (loading && !isSilent) {
         loading.style.display = "flex";
         loading.style.opacity = "1";
     }
 
-    // 2. CHẠY NGẦM ĐỒNG BỘ DỮ LIỆU TỪ MÁY CHỦ (SILENT BACKGROUND REVALIDATION)
     try {
+        // 1. TẢI DỮ LIỆU TƯƠI MỚI TRỰC TIẾP TỪ MÁY CHỦ (100% FRESH DATA)
         const sysData = await callBackend('getSystemData');
         if (sysData) {
             SYSTEM_DATA = sysData;
             PRECOMPUTED_PL_DATA = null;
             pendingUsersList_PL = sysData.pendingUsers || [];
 
-            // Ghi đè dữ liệu mới nhất vào Cache cho lần mở web tiếp theo
+            // Lưu bản đệm phục hồi ngoại tuyến vào thiết bị
             localStorage.setItem('bcons_cached_system_data', JSON.stringify(sysData));
 
             if (sysData.currentUserRole) {
                 localStorage.setItem('bcons_staff_role', sysData.currentUserRole);
             }
 
-            // Cập nhật giao diện ngầm mà không làm gián đoạn người dùng
+            // Dựng toàn bộ dữ liệu chính xác lên giao diện trước khi mở màn che
             if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
                 executeFilter_PL(false);
             }
@@ -217,15 +202,34 @@ async function loadSystemData(isSilent = false) {
         }
     } catch (error) {
         console.error("Lỗi đồng bộ máy chủ:", error);
-        // Chỉ hiện thông báo lỗi nếu trên máy chưa từng có dữ liệu đệm nào
-        if (!hasLocalCache) {
+
+        // KỊCH BẢN DỰ PHÒNG: Nếu mất mạng, kích hoạt bản đệm cục bộ để không gián đoạn
+        try {
+            const cachedRaw = localStorage.getItem('bcons_cached_system_data');
+            if (cachedRaw) {
+                const cachedData = JSON.parse(cachedRaw);
+                SYSTEM_DATA = cachedData;
+                PRECOMPUTED_PL_DATA = null;
+                pendingUsersList_PL = cachedData.pendingUsers || [];
+
+                if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
+                    executeFilter_PL(false);
+                }
+                if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
+                    updateContractNo_PL();
+                }
+                showToast_PL("⚠️ Đang sử dụng dữ liệu lưu tạm do mất kết nối máy chủ!", "error");
+            } else {
+                showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng tải lại trang!", "error");
+            }
+        } catch (cacheErr) {
             showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng tải lại trang!", "error");
         }
     } finally {
-        // Đảm bảo Loader luôn được dọn dẹp nếu thuộc trường hợp chưa có cache trước đó
-        if (loading && loading.style.display !== "none") {
+        // 2. DỮ LIỆU ĐÃ SẴN SÀNG 100%: HẠ MÀN CHE LOADING
+        if (loading) {
             loading.style.opacity = "0";
-            setTimeout(() => { loading.style.display = "none"; }, 300);
+            setTimeout(() => { loading.style.display = "none"; }, 350);
         }
     }
 }

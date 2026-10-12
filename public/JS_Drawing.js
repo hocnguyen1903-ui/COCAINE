@@ -1696,7 +1696,9 @@ function displayTasksHTML(tasks) {
 }
 
 function renderGroupItems(items) {
-    if (items.length === 0) return `<div class="empty-msg" style="color:#505966; font-size:11px; font-style:italic; padding:15px; text-align:center;">Không có dữ liệu ...</div>`;
+    if (items.length === 0) {
+        return `<div class="empty-msg" style="color:#505966; font-size:11px; font-style:italic; height:38px; display:flex; align-items:center; justify-content:center; padding:0; margin:0;">Không có dữ liệu ...</div>`;
+    }
     
     return items.map(t => `
         <div class="task-item" draggable="false" ondragstart="handleDragStart(event)" ondragend="handleDragEnd(event)" id="task-${t.taskId}">
