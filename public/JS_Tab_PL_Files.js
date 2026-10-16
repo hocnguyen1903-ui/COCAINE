@@ -400,21 +400,26 @@ function executeActualDelete_PL() {
 // KÍCH HOẠT SEARCH & TOOLTIP NOTE (DÁN CUỐI FILE JS_Tab_PL.html)
 // ==========================================================================
 document.addEventListener("DOMContentLoaded", function() {
-    // 1. Kích hoạt Search Engine
+    // 1. KÍCH HOẠT SEARCH ENGINE CHO Ô FIELD0-PL (ĐÃ KHÔI PHỤC)
     const inputField0PL = document.getElementById("field0-pl");
     if (inputField0PL) {
         inputField0PL.addEventListener("input", debounce(() => {
-            if (inputField0PL.value.trim().toUpperCase() !== selectedContractMaHD_PL.toUpperCase()) {
-                selectedContractMaHD_PL = ""; // Người dùng đang chủ động gõ tìm kiếm
+            const val = inputField0PL.value.trim();
+            // Nếu người dùng đang chủ động gõ tìm kiếm thì xóa vết hợp đồng cũ
+            if (val.toUpperCase() !== (window.selectedContractMaHD_PL || "").toUpperCase()) {
+                window.selectedContractMaHD_PL = ""; 
+                window.selectedRowDisplay_PL = "";
+                window.activeSearchQuery_PL = val;
             }
-            filterField0_PL(true); 
-        }, 200));
+            if (typeof filterField0_PL === "function") {
+                filterField0_PL(true);
+            }
+        }, 150));
     }
 
-    // 2. Kích hoạt Tooltip Note (Hover hiện ghi chú)
-    // Biến globalTooltip và tooltipTimeout đã lấy từ file JS_Variables
+    // 2. KÍCH HOẠT TOOLTIP NOTE KHI HOVER
     const dashboardContainer = document.getElementById('dropdown-field0-pl');
-    if (dashboardContainer) {
+    if (dashboardContainer && typeof globalTooltip !== 'undefined') {
         dashboardContainer.addEventListener('mouseover', function(e) {
             const row = e.target.closest('.hoc-tooltip');
             if (!row) return;
@@ -445,35 +450,102 @@ document.addEventListener("DOMContentLoaded", function() {
             globalTooltip.classList.remove('show-tooltip');
         }, { passive: true });
     }
+
+    // 3. KHU VỰC THẢ FILE TRONG BẢNG SCAN PANEL
     const dropZone = document.getElementById('scan-drop-zone');
     const fileInput = document.getElementById('scan-file-input');
-
     if (dropZone && fileInput) {
-        // 1. Click vào vùng zone -> Bật hộp thoại chọn file
         dropZone.addEventListener('click', () => fileInput.click());
-
-        // 2. Lắng nghe khi file được chọn từ hộp thoại
         fileInput.addEventListener('change', (e) => {
             handleFilesSelected(e.target.files);
-            fileInput.value = ""; // Reset để có thể chọn lại cùng 1 file nếu muốn
+            fileInput.value = "";
         });
-
-        // 3. Hiệu ứng khi kéo file lơ lửng trên vùng drop
         dropZone.addEventListener('dragover', (e) => { 
             e.preventDefault(); 
             dropZone.classList.add('dragover'); 
         });
-
-        // 4. Khi kéo file ra khỏi vùng drop
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-
-        // 5. Khi thả file vào vùng drop
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault(); 
             dropZone.classList.remove('dragover');
             handleFilesSelected(e.dataTransfer.files);
         });
     }
+
+    // 4. KÉO THẢ FILE TRỰC TIẾP VÀO TỪNG DÒNG MÃ HĐ/PL TRÊN DASHBOARD
+    if (dashboardContainer) {
+        let currentDragTargetRow = null;
+
+        dashboardContainer.addEventListener('dragenter', (e) => {
+            if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return;
+            e.preventDefault();
+            const row = e.target.closest('.hoc-tooltip');
+            if (row && row !== currentDragTargetRow) {
+                if (currentDragTargetRow) currentDragTargetRow.classList.remove('row-file-dragover');
+                currentDragTargetRow = row;
+                currentDragTargetRow.classList.add('row-file-dragover');
+            }
+        });
+
+        dashboardContainer.addEventListener('dragover', (e) => {
+            if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            const row = e.target.closest('.hoc-tooltip');
+            if (row && row !== currentDragTargetRow) {
+                if (currentDragTargetRow) currentDragTargetRow.classList.remove('row-file-dragover');
+                currentDragTargetRow = row;
+                currentDragTargetRow.classList.add('row-file-dragover');
+            }
+        });
+
+        dashboardContainer.addEventListener('dragleave', (e) => {
+            if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return;
+            if (!dashboardContainer.contains(e.relatedTarget)) {
+                if (currentDragTargetRow) {
+                    currentDragTargetRow.classList.remove('row-file-dragover');
+                    currentDragTargetRow = null;
+                }
+            }
+        });
+
+        dashboardContainer.addEventListener('drop', (e) => {
+            if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (currentDragTargetRow) {
+                currentDragTargetRow.classList.remove('row-file-dragover');
+                currentDragTargetRow = null;
+            }
+
+            const row = e.target.closest('.hoc-tooltip');
+            if (!row) return;
+
+            const displayVal = row.getAttribute('data-display') || "";
+            const maHD = displayVal.split(" | ")[0].trim();
+            if (!maHD) return;
+
+            const droppedFiles = e.dataTransfer.files;
+            if (!droppedFiles || droppedFiles.length === 0) return;
+
+            removeScanFile_PL();
+            openScanPanel_PL(maHD);
+            handleFilesSelected(droppedFiles);
+        });
+    }
+
+    // 5. CHẶN TRÌNH DUYỆT TỰ Ý MỞ FILE TOÀN TRANG KHI THẢ TRƯỢT
+    window.addEventListener('dragover', (e) => {
+        if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+            e.preventDefault();
+        }
+    });
+    window.addEventListener('drop', (e) => {
+        if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+            e.preventDefault();
+        }
+    });
 });
 
 function handleFilesSelected(files) {

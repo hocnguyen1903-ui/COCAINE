@@ -14,14 +14,23 @@ function initTabPL() {
  * Dọn dẹp Form Phụ lục và Reset Dashboard về trạng thái thác đổ ban đầu
  */
 let selectedContractMaHD_PL = "";
+let activeSearchQuery_PL = "";
+
 
 function clearForm_PL() {
     const form = document.getElementById("dataForm-pl");
     if (form) form.reset();
     
-    selectedContractMaHD_PL = ""; // Reset cờ chọn hợp đồng
+    selectedContractMaHD_PL = ""; 
+    selectedRowDisplay_PL = ""; 
+    activeSearchQuery_PL = ""; 
+    currentFilterState_PL = 'ALL'; 
+    currentRenderLimit_PL = 50; 
     selectedAdjustmentIds = [];
     selectedAdjustmentLabels = [];
+    
+    // (ĐÃ BỎ DÒNG drop.scrollTop = 0 Ở ĐÂY ĐỂ KHÔNG BỊ GIẬT TRƯỚC)
+
     const field5 = document.getElementById("field5-pl");
     if (field5) {
         field5.value = "";
@@ -37,7 +46,7 @@ function clearForm_PL() {
             el.classList.add('field-closing');
             setTimeout(() => { 
                 if(el.classList.contains('field-closing')) el.style.display = 'none'; 
-            }, 500);
+            }, 300);
         }
     });
     
@@ -67,12 +76,13 @@ function clearForm_PL() {
     const fp9 = document.querySelector("#field9-pl")?._flatpickr;
     if (fp9) fp9.setDate(today, true);
     
+    // Rút ngắn nhịp chờ xuống 150ms để form thu hồi và sóng đổ hòa quyện mượt mà 1 nhịp
     setTimeout(() => {
         if (typeof renderAdjustmentOptions_PL === "function") renderAdjustmentOptions_PL(); 
         PRECOMPUTED_PL_DATA = null;
-        executeFilter_PL(true); 
+        executeFilter_PL(true, false, false); 
         if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
-    }, 400); 
+    }, 150); 
 }
 
 // ==========================================================================
@@ -136,7 +146,13 @@ function loadMoreData_PL(event) {
 /**
  * HÀM THỰC THI LỌC VÀ RENDER HTML DASHBOARD (CORE LOGIC)
  */
-function executeFilter_PL(allowAnim = true, isLoadMore = false) {
+/**
+ * Hàm thực thi lọc và render HTML Dashboard
+ * @param {boolean} allowAnim - Cho phép chạy hoạt ảnh xuất hiện
+ * @param {boolean} isLoadMore - Đang nhấn nút tải thêm
+ * @param {boolean} preserveScroll - Giữ nguyên vị trí cuộn (khi tạo PL, sửa data). Mặc định là false (cuộn về đỉnh)
+ */
+function executeFilter_PL(allowAnim = true, isLoadMore = false, preserveScroll = false) {
     currentFocusIndex = -1;
     activeDropIndex_PL = -1;
     precomputePLData();
@@ -145,27 +161,40 @@ function executeFilter_PL(allowAnim = true, isLoadMore = false) {
     const drop = document.getElementById("dropdown-field0-pl");
     if (!input || !drop || !PRECOMPUTED_PL_DATA) return;
 
-    const query = input.value.toLowerCase().trim();
-    if (query === '') document.getElementById('field8-pl').value = '';
+    // Lưu vị trí cuộn trước khi vẽ lại
+    const savedScrollTop = drop.scrollTop;
 
-    const currentInputVal = input.value.trim().toUpperCase();
-    let savedScrollTop = isLoadMore ? drop.scrollTop : 0;
-    if (!isLoadMore) currentRenderLimit_PL = 50; 
+    // Xác định từ khóa lọc
+    let query = "";
+    if (selectedContractMaHD_PL && input.value.trim().toUpperCase() === selectedContractMaHD_PL.toUpperCase()) {
+        query = (activeSearchQuery_PL || "").toLowerCase().trim();
+    } else {
+        query = input.value.toLowerCase().trim();
+        activeSearchQuery_PL = query;
+    }
 
-    // 1. GỌI HÀM LỌC & SẮP XẾP DATA
+    if (query === '' && !selectedContractMaHD_PL) {
+        document.getElementById('field8-pl').value = '';
+    }
+
+    const currentInputVal = selectedContractMaHD_PL ? selectedContractMaHD_PL.toUpperCase() : input.value.trim().toUpperCase();
+
+    if (!isLoadMore) currentRenderLimit_PL = Math.max(currentRenderLimit_PL, 50); 
+
+    // 1. Lọc và sắp xếp
     const { finalData, sumHDPL, sumPL } = filterAndSortData_PL(query);
 
-    // 2. GỌI HÀM RENDER HEADER
+    // 2. Render Header
     const headerHTML = buildHeaderHTML_PL(sumHDPL, sumPL);
 
-    // 3. RENDER DOM CỰC NHANH
+    // 3. Render DOM
     while (drop.firstChild) drop.removeChild(drop.lastChild);
     drop.insertAdjacentHTML('beforeend', headerHTML);
 
     if (finalData.length === 0) {
         drop.insertAdjacentHTML('beforeend', `<div class="disable-hover" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 280px;"><i class="bi bi-search" style="font-size: 40px; margin-bottom: 15px; color: #505966; opacity: 0.8;"></i><span style="font-size: 14px; font-style: italic; color: #7A828E;">Vui lòng nhập từ khóa để tìm kiếm...</span></div>`);
     } else {
-        // 4. GỌI HÀM RENDER TỪNG DÒNG (Chỉ lấy đủ số lượng limit)
+        // 4. Render từng dòng
         const listHTML = finalData.slice(0, currentRenderLimit_PL)
             .map((item, index) => buildSingleItemHTML_PL(item, index, currentInputVal, allowAnim))
             .join("");
@@ -179,34 +208,41 @@ function executeFilter_PL(allowAnim = true, isLoadMore = false) {
         }
     }
     
-    drop.scrollTop = isLoadMore ? savedScrollTop : 0; 
+    // NẾU có cờ preserveScroll hoặc đang loadMore thì giữ vị trí cuộn cũ;
+    // NẾU KHÔNG (như bấm Cancel, gõ tìm kiếm mới) thì cuộn về đỉnh (top = 0)
+    drop.scrollTop = (isLoadMore || preserveScroll) ? savedScrollTop : 0;
 }
 
-// ========================================================================
-// CÁC HÀM TIỆN ÍCH BỔ TRỢ CHO EXECUTE FILTER
-// ========================================================================
-
 /**
- * Hàm 1: Chuyên lo việc Lọc (Filter), Tính tiền (Math) và Sắp xếp (Sort)
+ * Hàm lọc & sắp xếp dữ liệu chuẩn
  */
 function filterAndSortData_PL(query) {
     let filtered = PRECOMPUTED_PL_DATA;
 
-    // Kiểm tra nếu ô input chỉ đang lưu mã HĐ do người dùng click chọn -> Không lọc thu nhỏ danh sách
-    const isSelectedContractOnly = (selectedContractMaHD_PL && query === selectedContractMaHD_PL.toLowerCase());
-
-    // Chỉ lọc theo từ khóa khi người dùng thực sự chủ động gõ tìm kiếm
-    if (query && !isSelectedContractOnly) {
-        const keywords = query.split('+').map(k => k.trim()).filter(k => k !== "");
-        filtered = filtered.filter(item => {
-            return keywords.every(kw => {
-                if (kw.startsWith("'")) return item.staffStr.includes(kw.substring(1).trim());
-                else return item.searchStr.includes(kw);
+    // Lọc theo biểu thức: Phân tách nhóm bằng '|' (OR), trong mỗi nhóm bắt buộc đủ từ khóa bằng '+' (AND)
+    if (query) {
+        const orGroups = query.split('|').map(g => g.trim()).filter(g => g !== "");
+        if (orGroups.length > 0) {
+            filtered = filtered.filter(item => {
+                // Thỏa mãn ít nhất một trong các nhóm OR
+                return orGroups.some(group => {
+                    const andKeywords = group.split('+').map(k => k.trim()).filter(k => k !== "");
+                    if (andKeywords.length === 0) return false;
+                    
+                    // Thỏa mãn toàn bộ từ khóa AND trong nhóm đó
+                    return andKeywords.every(kw => {
+                        if (kw.startsWith("'")) {
+                            const staffQuery = kw.substring(1).trim();
+                            return staffQuery === "" || item.staffStr.includes(staffQuery);
+                        }
+                        return item.searchStr.includes(kw);
+                    });
+                });
             });
-        });
+        }
     }
 
-    // Lọc theo trạng thái Bàn giao
+    // Lọc theo trạng thái Bàn giao (ALL, DONE, PENDING)
     if (currentFilterState_PL === 'DONE') filtered = filtered.filter(i => i.transferred === true);
     else if (currentFilterState_PL === 'PENDING') filtered = filtered.filter(i => !i.transferred);
 
@@ -228,7 +264,7 @@ function filterAndSortData_PL(query) {
         }
     });
     
-    // Ghép mảng cuối cùng (Cha đứng trước, các Phụ lục con xếp ngay dưới)
+    // Ghép mảng cuối cùng (Hợp đồng cha đứng trước, các Phụ lục con xếp ngay dưới)
     let finalData = [];
     const sortedParents = Array.from(parentMap.values()).sort((a, b) => b.parent.originalIndex - a.parent.originalIndex);
     sortedParents.forEach(group => {
@@ -272,11 +308,16 @@ function buildHeaderHTML_PL(sumHDPL, sumPL) {
  */
 function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
     const isTransferredClass = i.transferred ? "" : "row-untransferred";
-    const hasScanClass = (i.scanId && i.scanId.trim() !== "") ? "has-scan-file" : "";
-    const isSelected = (i.maHD.toUpperCase() === currentInputVal);
-    const selectedClass = isSelected ? "is-selected-row" : "";
+    
+    // Kiểm tra dòng đang chọn
+    const isSelected = (selectedRowDisplay_PL && i.display === selectedRowDisplay_PL) || 
+                       (!selectedRowDisplay_PL && i.maHD.toUpperCase() === currentInputVal);
+                       
+    const selectedClass = isSelected ? "is-selected-row active" : "";
+    const plRowClass = i.isPL ? "is-pl-row" : "";
     const animationClass = (allowAnim && index < 8) ? "pl-item-appear" : "";
     const animationDelay = (allowAnim && index < 8) ? `style="animation-delay: ${index * 0.04}s"` : "";
+    
     const icon = i.transferred ? '<i class="bi bi-check-circle-fill" style="color: #2ECC71; margin-right: 14px; font-size: 10px;"></i>' : '<i class="bi bi-clock-history" style="color: #FFC000; margin-right: 14px; font-size: 10px;"></i>';
     
     let formattedMa = i.isPL ? `<span style="color: #7A828E; font-style: italic; padding-left: 12px;">› &nbsp;&nbsp; ${i.maHD}</span>` : `<span style="color: white; font-weight: 400;">${i.maHD}</span>`;
@@ -290,12 +331,49 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
             let n = Number(val.replace(/\./g, ""));
             return (!isNaN(n) && n !== 0) ? n.toLocaleString('vi-VN').replace(/,/g, '.') : "";
         };
-        let xx = fmt(xxRaw); let yy = fmt(yyRaw);
+        let xx = fmt(xxRaw); 
+        let yy = fmt(yyRaw);
         let yyStyle = i.isPL ? "color: #7A828E; font-style: italic;" : "color: #FFBA08;";
         giaTriHTML = `<span style="display: inline-block; width: 90px; text-align: right; color: white; font-weight: 400;">${xx}</span><span style="display: inline-block; width: 35px; text-align: center; color: #505966;">|</span><span style="display: inline-block; width: 90px; text-align: right; ${yyStyle} font-weight: 400;">${yy}</span>`;
     }
     
-    const prefixes =["CUNG CẤP VẬT TƯ, NHÂN CÔNG VÀ MÁY THI CÔNG, ", "CUNG CẤP NHÂN CÔNG, VẬT TƯ, MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ NHÂN CÔNG VÀ MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG VÀ MÁY THI CÔNG ", "CUNG CẤP VẬT TƯ PHỤ, NHÂN CÔNG VÀ MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ PHỤ, NHÂN CÔNG VÀ MÁY ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG VÀ MÁY MÓC ", "CUNG CẤP VẶT TƯ, NHÂN CÔNG HẠNG MỤC ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG VÀ MÁY MÓC THI CÔNG, ", "CUNG CẤP NHÂN CÔNG, VẬT TƯ VÀ MÁY THI CÔNG, ", "CUNG CẤP NHÂN CÔNG VÀ MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG, MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ PHỤ, NHÂN CÔNG, MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG, MÁY ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG, MÁY THI CÔNG ", "CUNG CẤP VẬT TƯ VÀ LẮP ĐẶT ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG, ", "CUNG CẤP VẬT TƯ VÀ ", "CUNG CẤP VẬT TƯ, ", "CUNG CẤP VÀ LẮP ĐẶT ", "CUNG CẤP VÀ ", "CUNG CẤP, ", "NHÂN CÔNG, MÁY "];
+    // ========================================================================
+    // LOGIC NHẬN DIỆN FILE H (HỢP ĐỒNG / PHỤ LỤC) VÀ FILE G (PHÊ DUYỆT GIÁ)
+    // ========================================================================
+    let hasH = false;
+    let hasG = false;
+
+    if (i.scanId && i.scanId.trim() !== "") {
+        const fileEntries = i.scanId.split(";;").filter(f => f && f.includes("|"));
+        fileEntries.forEach(entry => {
+            const parts = entry.split("|");
+            const fName = (parts[1] || "").toLowerCase().trim();
+            
+            // Nhận diện file G (Phê duyệt giá): chứa 'pdg', 'pđg', 'phe duyet gia', hoặc 'gia'
+            const isPDG = /pdg|pđg|phe\s*duyet\s*gia|phê\s*duyệt\s*giá/i.test(fName) || 
+                          /\b(gia|giá)\b/i.test(fName);
+            
+            if (isPDG) {
+                hasG = true;
+            } else {
+                // File scan còn lại được tính là file H (Hợp đồng / Phụ lục)
+                hasH = true;
+            }
+        });
+    }
+
+    const hClass = hasH ? "file-badge-h-active" : "file-badge-dim";
+    const gClass = hasG ? "file-badge-g-active" : "file-badge-dim";
+
+    const fileStatusHTML = `
+        <div class="file-status-group">
+            <span class="${hClass}">H</span>
+            <span class="file-badge-divider">|</span>
+            <span class="${gClass}">G</span>
+        </div>
+    `;
+
+    const prefixes = ["CUNG CẤP VẬT TƯ, NHÂN CÔNG VÀ MÁY THI CÔNG, ", "CUNG CẤP NHÂN CÔNG, VẬT TƯ, MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ NHÂN CÔNG VÀ MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG VÀ MÁY THI CÔNG ", "CUNG CẤP VẬT TƯ PHỤ, NHÂN CÔNG VÀ MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ PHỤ, NHÂN CÔNG VÀ MÁY ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG VÀ MÁY MÓC ", "CUNG CẤP VẶT TƯ, NHÂN CÔNG HẠNG MỤC ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG VÀ MÁY MÓC THI CÔNG, ", "CUNG CẤP NHÂN CÔNG, VẬT TƯ VÀ MÁY THI CÔNG, ", "CUNG CẤP NHÂN CÔNG VÀ MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG, MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ PHỤ, NHÂN CÔNG, MÁY THI CÔNG, ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG, MÁY ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG, MÁY THI CÔNG ", "CUNG CẤP VẬT TƯ VÀ LẮP ĐẶT ", "CUNG CẤP VẬT TƯ, NHÂN CÔNG, ", "CUNG CẤP VẬT TƯ VÀ ", "CUNG CẤP VẬT TƯ, ", "CUNG CẤP VÀ LẮP ĐẶT ", "CUNG CẤP VÀ ", "CUNG CẤP, ", "NHÂN CÔNG, MÁY "];
     let cleanedPackage = i.packageI || "";
     if (cleanedPackage) { 
         for (const prefix of prefixes) { 
@@ -305,22 +383,57 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
     let noteParts = [i.dateH, cleanedPackage, i.searchM].filter(Boolean);
     let hoverText = noteParts.join(" -- ");
 
-    return `<div class="${isTransferredClass} ${hasScanClass} ${animationClass} ${selectedClass} hoc-tooltip" ${animationDelay} data-display="${escapeStr(i.display)}" data-hovertext="${escapeStr(hoverText)}" onmousedown="if(event.button === 0 && !${i.isPL}) { selectField0_PL('${escapeStr(i.display)}'); }" oncontextmenu="showContextMenu_PL(event, this, '${escapeStr(i.maHD)}', ${!!i.transferred})" ontouchstart="handleTouchStart_Mobile(event, this, '${escapeStr(i.maHD)}', ${!!i.transferred})" ontouchend="handleTouchEnd_Mobile()" ontouchmove="handleTouchEnd_Mobile()"><div style="display: flex; align-items: center; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px;">${icon} <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${formattedMa}</span></div><div class="money-column-container">${giaTriHTML}</div></div>`;
+    return `<div class="${isTransferredClass} ${animationClass} ${selectedClass} ${plRowClass} hoc-tooltip" 
+                 ${animationDelay} 
+                 data-display="${escapeStr(i.display)}" 
+                 data-hovertext="${escapeStr(hoverText)}" 
+                 onmousedown="if(event.button === 0) { selectField0_PL('${escapeStr(i.display)}'); }" 
+                 oncontextmenu="showContextMenu_PL(event, this, '${escapeStr(i.maHD)}', ${!!i.transferred})" 
+                 ontouchstart="handleTouchStart_Mobile(event, this, '${escapeStr(i.maHD)}', ${!!i.transferred})" 
+                 ontouchend="handleTouchEnd_Mobile()" 
+                 ontouchmove="handleTouchEnd_Mobile()">
+                <div style="display: flex; align-items: center; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px;">
+                    ${icon} 
+                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${formattedMa}</span>
+                </div>
+                <div class="money-column-container" style="display: flex; align-items: center; justify-content: flex-end;">
+                    ${giaTriHTML}
+                    ${fileStatusHTML}
+                </div>
+            </div>`;
 }
 
+let selectedRowDisplay_PL = ""; // Lưu vết chính xác dòng đang click chọn (kể cả dòng PL)
+
 function selectField0_PL(val) {
-    const maHD = val.split(" | ")[0].trim();
-    selectedContractMaHD_PL = maHD;
-    document.getElementById("field0-pl").value = maHD;
+    if (!val) return;
+    selectedRowDisplay_PL = val;
+
+    let rawMa = val.split(" | ")[0].trim();
+    
+    // Nếu click vào dòng Phụ lục, tự động bóc tách lấy mã Hợp đồng gốc
+    let parentMaHD = rawMa;
+    const plMatch = rawMa.match(/^PL\d+\s*-\s*(.*)$/i);
+    if (plMatch && plMatch[1]) {
+        parentMaHD = plMatch[1].trim();
+    }
+
+    selectedContractMaHD_PL = parentMaHD;
+    document.getElementById("field0-pl").value = parentMaHD;
+    
+    // Tự động tính toán và nhảy số PL mới nhất tiếp theo
     updateContractNo_PL(); 
+    
+    // Đổi hiệu ứng sáng nền trực tiếp trên Dashboard
     const drop = document.getElementById("dropdown-field0-pl");
     if (drop) {
         const allRows = Array.from(drop.querySelectorAll('.hoc-tooltip'));
         allRows.forEach((row, idx) => {
             row.classList.remove('is-selected-row', 'active');
+            // Sáng nền đúng dòng vừa click chọn (dù là HĐ hay PL)
             if (row.getAttribute("data-display") === val) {
                 row.classList.add('is-selected-row', 'active');
-                currentFocusIndex = idx; // Đồng bộ vị trí con trỏ bàn phím với dòng vừa click chuột
+                currentFocusIndex = idx;
             }
         });
     }

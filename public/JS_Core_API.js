@@ -41,19 +41,15 @@ async function openTab(tabId, triggerIntro = true) {
 
     // 🚀 KHỞI TẠO ĐỒNG BỘ TỨC THÌ CHO TAB DRAWING
     if (tabId === 'tab-drawing') {
-        const isLoaded = (typeof isDrawingListLoaded !== 'undefined') ? isDrawingListLoaded : false;
-        const hasProjects = (typeof activeDrawingProjects !== 'undefined' && Array.isArray(activeDrawingProjects)) ? activeDrawingProjects.length > 0 : false;
         const projInput = document.getElementById("drawing-project-search");
-
-        // Đặt ngay trạng thái Loading tức thì (0ms trễ) nếu chưa có danh sách dự án
-        if (projInput && (!isLoaded || !hasProjects)) {
-            projInput.disabled = true;
-            projInput.placeholder = "Loading projects...";
+        if (projInput) {
+            projInput.disabled = false;
+            projInput.placeholder = "Project"; // Luôn hiển thị Project, không hiện Loading
         }
 
-        // Kích hoạt gọi API quét dự án song song ngay lập tức, không chờ thư viện nặng
+        // Kích hoạt cập nhật ngầm danh sách dự án
         if (typeof fetchActiveProjectsForDrawing === 'function') {
-            fetchActiveProjectsForDrawing();
+        fetchActiveProjectsForDrawing();
         }
 
         setTimeout(async () => {
@@ -142,6 +138,7 @@ async function openTab(tabId, triggerIntro = true) {
 async function loadSystemData(isSilent = false) {
     const token = localStorage.getItem('bcons_session_token');
 
+    // Nếu đang mở các panel chỉnh sửa/bàn giao/scan thì không can thiệp ngầm
     const isPanelActive = document.getElementById('edit-panel-pl')?.classList.contains('active') ||
                           document.getElementById('transfer-panel-pl')?.classList.contains('active') ||
                           document.getElementById('scan-panel-pl')?.classList.contains('active');
@@ -153,30 +150,75 @@ async function loadSystemData(isSilent = false) {
 
     const loading = document.getElementById("loadingSystem");
 
-    // Giữ màn che Loading hoạt động để bảo vệ tính toàn vẹn thị giác
+    // 1. NẠP DỮ LIỆU TỪ CACHE MỚI NHẤT TRONG LOCALSTORAGE LẬP TỨC (0ms)
+    try {
+        const cachedRaw = localStorage.getItem('bcons_cached_system_data');
+        if (cachedRaw) {
+            const cachedData = JSON.parse(cachedRaw);
+            SYSTEM_DATA = cachedData;
+            PRECOMPUTED_PL_DATA = null;
+            pendingUsersList_PL = cachedData.pendingUsers || [];
+
+            // Dựng sẵn dữ liệu từ cache lên các tab ngay trong lúc màn che loader đang chạy
+            if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
+                executeFilter_PL(false, false, true);
+            }
+            if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
+                updateContractNo_PL();
+            }
+
+            if (name) {
+                const bellContainer = document.getElementById('bellNotificationContainer');
+                if (bellContainer) {
+                    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
+                    if (currentRole.toUpperCase() === "ADMIN") {
+                        bellContainer.style.setProperty('display', 'flex', 'important');
+                    } else {
+                        bellContainer.style.setProperty('display', 'none', 'important');
+                    }
+                }
+                updateBellBadge();
+            }
+        }
+    } catch (cacheErr) {
+        console.warn("Lỗi đọc cache khởi động:", cacheErr);
+    }
+
+    // 2. KHÓA MÀN HÌNH CHỜ ĐÚNG 1.5s RỒI TỰ ĐỘNG HẠ MÀN CHE
     if (loading && !isSilent) {
         loading.style.display = "flex";
         loading.style.opacity = "1";
+
+        setTimeout(() => {
+            loading.style.opacity = "0";
+            setTimeout(() => { 
+                loading.style.display = "none"; 
+                // Kiểm tra đăng nhập sau khi loader tắt
+                if (!token) showLoginUI();
+            }, 350);
+        }, 2500);
+    } else if (!token) {
+        showLoginUI();
     }
 
+    // 3. TẢI DỮ LIỆU TƯƠI MỚI NGẦM TRONG NỀN TỪ MÁY CHỦ (BACKGROUND FETCH)
     try {
-        // 1. TẢI DỮ LIỆU TƯƠI MỚI TRỰC TIẾP TỪ MÁY CHỦ (100% FRESH DATA)
         const sysData = await callBackend('getSystemData');
         if (sysData) {
             SYSTEM_DATA = sysData;
             PRECOMPUTED_PL_DATA = null;
             pendingUsersList_PL = sysData.pendingUsers || [];
 
-            // Lưu bản đệm phục hồi ngoại tuyến vào thiết bị
+            // Cập nhật bản đệm cache mới nhất cho lần mở web kế tiếp
             localStorage.setItem('bcons_cached_system_data', JSON.stringify(sysData));
 
             if (sysData.currentUserRole) {
                 localStorage.setItem('bcons_staff_role', sysData.currentUserRole);
             }
 
-            // Dựng toàn bộ dữ liệu chính xác lên giao diện trước khi mở màn che
+            // Cập nhật giao diện ngầm (bảo toàn vị trí cuộn để không làm gián đoạn người dùng)
             if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
-                executeFilter_PL(false);
+                executeFilter_PL(false, false, true);
             }
             if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
                 updateContractNo_PL();
@@ -196,40 +238,12 @@ async function loadSystemData(isSilent = false) {
                 initAblyRealtimeConnection();
             }
         }
-
-        if (!token) {
-            showLoginUI();
-        }
     } catch (error) {
-        console.error("Lỗi đồng bộ máy chủ:", error);
-
-        // KỊCH BẢN DỰ PHÒNG: Nếu mất mạng, kích hoạt bản đệm cục bộ để không gián đoạn
-        try {
-            const cachedRaw = localStorage.getItem('bcons_cached_system_data');
-            if (cachedRaw) {
-                const cachedData = JSON.parse(cachedRaw);
-                SYSTEM_DATA = cachedData;
-                PRECOMPUTED_PL_DATA = null;
-                pendingUsersList_PL = cachedData.pendingUsers || [];
-
-                if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
-                    executeFilter_PL(false);
-                }
-                if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
-                    updateContractNo_PL();
-                }
-                showToast_PL("⚠️ Đang sử dụng dữ liệu lưu tạm do mất kết nối máy chủ!", "error");
-            } else {
-                showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng tải lại trang!", "error");
-            }
-        } catch (cacheErr) {
-            showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng tải lại trang!", "error");
-        }
-    } finally {
-        // 2. DỮ LIỆU ĐÃ SẴN SÀNG 100%: HẠ MÀN CHE LOADING
-        if (loading) {
-            loading.style.opacity = "0";
-            setTimeout(() => { loading.style.display = "none"; }, 350);
+        console.error("Lỗi đồng bộ ngầm máy chủ:", error);
+        // Nếu đã có cache hiển thị thì không hiện thông báo lỗi làm phiền
+        const hasCache = !!localStorage.getItem('bcons_cached_system_data');
+        if (!hasCache) {
+            showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng kiểm tra mạng!", "error");
         }
     }
 }
@@ -687,22 +701,52 @@ function submitData_PL() {
     if (!f8) return alert("Sếp chưa chọn hợp đồng gốc!");
     loading.style.display = "flex";
     const formData = { field0: document.getElementById("field0-pl")?.value || "", field2: document.getElementById("field2-pl")?.value || "", field8: f8, field9: document.getElementById("field9-pl")?.value || "", date: document.getElementById("dateDisplay-pl")?.innerText || "", selectedBF3: selectedAdjustmentLabels.map(label => label.replace(/điều chỉnh\s*/gi, "").trim()).join(" | "), adjustmentIds: selectedAdjustmentIds.join(", ") };
+    
     callBackend("writeToSheetAndExportDoc_PL", formData).then(res => {
         loading.style.display = "none"; 
         if (res && res.link) window.open(res.link, "_blank"); 
-        SYSTEM_DATA.pl.field0.unshift({ display: `${formData.field8} | ${formData.selectedBF3 || 'Phụ lục'} | ${formData.field2 || formData.field9 || ''}`, note: formData.selectedBF3, transferred: false, scanId: "", hasQ: (formData.field2 && formData.field2 !== "0" && formData.field2 !== ""), hasR: false, hasS: false }); 
-        PRECOMPUTED_PL_DATA = null; executeFilter_PL(false); selectedAdjustmentIds = []; selectedAdjustmentLabels = []; 
-        const f5 = document.getElementById("field5-pl"); if (f5) f5.value = ""; 
+
+        // Kế thừa thông tin từ hợp đồng mẹ để PL mới luôn hiển thị đúng trong bộ lọc
+        const parentContract = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim().toUpperCase() === selectedContractMaHD_PL.toUpperCase());
+
+        SYSTEM_DATA.pl.field0.unshift({ 
+            maHD: formData.field8,
+            display: `${formData.field8} | ${formData.selectedBF3 || 'Phụ lục'} | ${formData.field2 || formData.field9 || ''}`, 
+            note: formData.selectedBF3 || "Phụ lục", 
+            packageI: parentContract ? parentContract.packageI : (formData.selectedBF3 || ""),
+            searchK: parentContract ? parentContract.searchK : "",
+            searchM: parentContract ? parentContract.searchM : "",
+            dateH: formData.date || "",
+            valueK: formData.field2 || formData.field9 || "",
+            c: formData.field2 || "",
+            transferred: false, 
+            scanId: "", 
+            hasQ: (formData.field2 && formData.field2 !== "0" && formData.field2 !== ""), 
+            hasR: false, 
+            hasS: false 
+        }); 
+
+        PRECOMPUTED_PL_DATA = null; 
+        executeFilter_PL(false, false, true); 
+        
+        selectedAdjustmentIds = []; 
+        selectedAdjustmentLabels = []; 
+        const f5 = document.getElementById("field5-pl"); 
+        if (f5) f5.value = ""; 
         renderAdjustmentOptions_PL(); 
-        ["label-field2-pl", "label-field9-pl", "label-field10-pl"].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = "none"; }); 
+        ["label-field2-pl", "label-field9-pl", "label-field10-pl"].forEach(id => { 
+            const el = document.getElementById(id); 
+            if (el) el.style.display = "none"; 
+        }); 
         updateContractNo_PL();
         
-        // Kích hoạt phát tin cập nhật ngay tại Client
+        // Kích hoạt phát tin cập nhật Ably
         publishAblyContractUpdate_Client("CREATE_PL", formData.field8);
         
         loadSystemData(true);
     }).catch(err => {
-        loading.style.display = "none"; alert("Lỗi xuất file: " + (err.message || err));
+        loading.style.display = "none"; 
+        alert("Lỗi xuất file: " + (err.message || err));
     });
 }
 

@@ -154,13 +154,11 @@ h1 {
 
 .hoc-tooltip:not(.row-untransferred)::before { background: #2ECC71 !important; box-shadow: 2px 0 10px rgba(46, 204, 113, 0.8); }
 .hoc-tooltip.row-untransferred::before { background: #FFC000 !important; box-shadow: 2px 0 10px rgba(255, 192, 0, 0.8); }
-.hoc-tooltip.has-scan-file::before { background: #00BCD4 !important; box-shadow: 2px 0 12px rgba(0, 188, 212, 0.9); }
-
 .hoc-tooltip.has-scan-file { 
-    background: linear-gradient(to right, rgba(0, 188, 212, 0.2) 0%, transparent 40%) !important; 
+    background: transparent !important; 
 }
 .hoc-tooltip.has-scan-file:hover {
-    background: linear-gradient(to right, rgba(0, 188, 212, 0.2), rgba(255, 255, 255, 0.08) 100%) !important; 
+    background: rgba(255, 255, 255, 0.08) !important; 
 }
 
 .hoc-tooltip.context-menu-active { 

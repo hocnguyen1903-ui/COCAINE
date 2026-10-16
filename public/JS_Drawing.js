@@ -7,7 +7,18 @@
 let cyInstance = null; 
 let selectedProjectDrawing = ""; 
 let currentlyRenderedProject = ""; 
-let activeDrawingProjects = []; 
+let activeDrawingProjects = [];
+try {
+    const cachedProjects = localStorage.getItem('bcons_cached_drawing_projects');
+    if (cachedProjects) {
+        activeDrawingProjects = JSON.parse(cachedProjects) || [];
+        if (activeDrawingProjects.length > 0) {
+            isDrawingListLoaded = true;
+        }
+    }
+} catch (e) {
+    console.warn("Lỗi đọc cache dự án Drawing:", e);
+}
 let isDrawingListLoaded = false; 
 let currentFileId = ""; 
 let drawingTaskCache = {}; 
@@ -56,36 +67,31 @@ function loadDrawingModule() {
 /* --- public/JS_Drawing.js --- */
 
 function fetchActiveProjectsForDrawing(forceRefresh = false) {
-    if (!forceRefresh && isDrawingListLoaded && activeDrawingProjects.length > 0) return;
-
     const input = document.getElementById("drawing-project-search");
     const syncBtnIcon = document.querySelector("#btn-sync-drawing i");
 
-    if (syncBtnIcon && syncBtnIcon.classList.contains('spinning')) return;
-
-    if (input) {
-        input.disabled = true;
-        input.placeholder = "Loading projects...";
+    // Chỉ xoay icon làm mới khi người dùng chủ động bấm nút Sync thủ công
+    if (forceRefresh && syncBtnIcon) {
+        syncBtnIcon.classList.add('spinning');
     }
-    if (syncBtnIcon) syncBtnIcon.classList.add('spinning');
 
-    // Gọi API quét Cột A Drawing_Log độc lập
+    // ĐẢM BẢO: Ô tìm kiếm luôn mở khóa sẵn sàng nhập, placeholder luôn giữ là "Project"
+    if (input) {
+        input.disabled = false;
+        input.placeholder = "Project";
+    }
+
+    // Gọi API quét Sheet Drawing_Log hoàn toàn trong nền (load ngầm)
     callBackend("getActiveProjectFolders_Backend").then(folderNames => {
-        activeDrawingProjects = folderNames || [];
-        isDrawingListLoaded = true;
-        
-        if (input) {
-            input.disabled = false;
-            input.placeholder = "Project";
+        if (folderNames && Array.isArray(folderNames) && folderNames.length > 0) {
+            activeDrawingProjects = folderNames;
+            isDrawingListLoaded = true;
+            // Lưu lại bản đệm Cache mới nhất vào máy
+            localStorage.setItem('bcons_cached_drawing_projects', JSON.stringify(folderNames));
         }
         if (syncBtnIcon) syncBtnIcon.classList.remove('spinning');
     }).catch(err => {
-        console.error("Lỗi tải danh sách dự án Drawing:", err);
-        isDrawingListLoaded = false; 
-        if (input) {
-            input.disabled = false;
-            input.placeholder = "Failed to load projects";
-        }
+        console.error("Lỗi cập nhật ngầm danh sách dự án Drawing:", err);
         if (syncBtnIcon) syncBtnIcon.classList.remove('spinning');
     });
 }
@@ -97,7 +103,6 @@ function filterProject_Drawing(input) {
     const drop = document.getElementById("drawing-project-drop");
     const query = input.value.toLowerCase().trim();
     
-    // CSS dùng chung để khớp hoàn toàn với dữ liệu mã dự án
     const sharedStyle = `text-align:center; justify-content:center; color:rgba(255, 255, 255, 0.8); font-size:14px; font-style:italic; font-weight:normal; text-transform:lowercase; width:100%;`;
 
     if (activeDrawingProjects.length === 0) {
@@ -114,7 +119,6 @@ function filterProject_Drawing(input) {
         else unmatched.push(name);
     });
 
-    // TRƯỜNG HỢP KHÔNG CÓ DỮ LIỆU KHỚP
     if (query !== "" && matched.length === 0) {
         drop.innerHTML = `<div class="hoc-tooltip disable-hover" style="${sharedStyle}">Không có dữ liệu</div>`;
         drop.classList.add("show");
@@ -124,9 +128,14 @@ function filterProject_Drawing(input) {
     const fullSortedList = [...matched, ...unmatched];
 
     drop.innerHTML = fullSortedList.map((name, index) => {
-        const isFirst = (index === 0 && query !== "") ? "active" : "";
-        return `<div class="hoc-tooltip ${isFirst}" onmousedown="selectProject_Drawing('${name}'); event.preventDefault();">
+        const isFirst = (index === 0);
+        // Dòng đầu tiên nhận class drawing-first-item và badge ↵ Enter
+        const itemClass = isFirst ? "hoc-tooltip drawing-first-item active" : "hoc-tooltip";
+        const enterBadge = isFirst ? `<span class="drawing-enter-badge">↵ Enter</span>` : "";
+        
+        return `<div class="${itemClass}" onmousedown="selectProject_Drawing('${name}'); event.preventDefault();">
                     <span class="dd-label" style="text-align: left; width: 100%;">${name}</span>
+                    ${enterBadge}
                 </div>`;
     }).join("");
     drop.classList.add("show");
@@ -1690,13 +1699,21 @@ function displayTasksHTML(tasks) {
     const xd = tasks.filter(t => t.team === 'XD'), mep = tasks.filter(t => t.team === 'MEP');
     container.innerHTML = `
         <div class="group-label" style="color:#FFBA08; font-size:13px;"><i class="bi bi-bricks" style="margin-right:6px;"></i> Xây dựng </div>
-        <div id="drop-zone-XD" class="task-group-container" ondragover="allowDrop(event)" ondrop="handleDrop(event, 'XD')">${renderGroupItems(xd)}</div>
+        <div id="drop-zone-XD" class="task-group-container" 
+             ondragenter="handleDragEnterZone(event)" 
+             ondragover="allowDrop(event)" 
+             ondragleave="handleDragLeaveZone(event)" 
+             ondrop="handleDrop(event, 'XD')">${renderGroupItems(xd)}</div>
         <div class="group-label" style="color:#00BCD4; margin-top:15px; font-size:13px;"><i class="bi bi-lightning-charge" style="margin-right:6px;"></i> Cơ điện </div>
-        <div id="drop-zone-MEP" class="task-group-container" ondragover="allowDrop(event)" ondrop="handleDrop(event, 'MEP')">${renderGroupItems(mep)}</div>`;
+        <div id="drop-zone-MEP" class="task-group-container" 
+             ondragenter="handleDragEnterZone(event)" 
+             ondragover="allowDrop(event)" 
+             ondragleave="handleDragLeaveZone(event)" 
+             ondrop="handleDrop(event, 'MEP')">${renderGroupItems(mep)}</div>`;
 }
 
 function renderGroupItems(items) {
-    if (items.length === 0) {
+    if (!items || items.length === 0) {
         return `<div class="empty-msg" style="color:#505966; font-size:11px; font-style:italic; height:38px; display:flex; align-items:center; justify-content:center; padding:0; margin:0;">Không có dữ liệu ...</div>`;
     }
     
@@ -1706,7 +1723,8 @@ function renderGroupItems(items) {
                 <i class="bi bi-grip-vertical"></i>
             </div>
             
-            <input type="text" class="task-desc-edit" value="${t.description}" 
+            <input type="text" class="task-desc-edit" value="${t.description || ''}" 
+                   onfocus="this.parentElement.setAttribute('draggable', 'false')"
                    onblur="updateTaskDescInline('${t.taskId}', this.value)" 
                    onkeydown="if(event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); this.blur(); }">
             
@@ -1721,22 +1739,76 @@ function renderGroupItems(items) {
 /**
  * 6. LOGIC KÉO THẢ
  */
-function handleDragStart(e) { draggedElement = e.currentTarget; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", draggedElement.id); draggedElement.after(placeholder); setTimeout(() => { draggedElement.classList.add('dragging'); document.body.appendChild(draggedElement); }, 0); }
+let originalTaskIndex = -1;
+let originalTaskContainer = null;
+let isDropCommitted = false;
+
+function handleDragStart(e) {
+    draggedElement = e.currentTarget;
+    isDropCommitted = false;
+    
+    // Lưu lại vị trí xuất phát ban đầu để phục hồi nếu hủy kéo
+    originalTaskContainer = draggedElement.parentElement;
+    const siblings = Array.from(originalTaskContainer.querySelectorAll('.task-item'));
+    originalTaskIndex = siblings.indexOf(draggedElement);
+
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", draggedElement.id);
+
+    // Đặt placeholder ngay sau phần tử đang kéo
+    draggedElement.after(placeholder);
+
+    requestAnimationFrame(() => {
+        if (draggedElement) {
+            draggedElement.classList.add('is-dragging');
+        }
+    });
+}
+
+function handleDragEnterZone(e) {
+    const zone = e.currentTarget;
+    if (zone && zone.classList.contains('task-group-container')) {
+        zone.classList.add('drag-over-active');
+    }
+}
+
+function handleDragLeaveZone(e) {
+    const zone = e.currentTarget;
+    // Chỉ gỡ class active khi con trỏ thực sự rời khỏi container
+    if (zone && !zone.contains(e.relatedTarget)) {
+        zone.classList.remove('drag-over-active');
+    }
+}
 
 function allowDrop(e) {
     e.preventDefault();
-    const container = e.currentTarget; 
-    const draggingOverItem = e.target.closest('.task-item:not(.dragging)');
     if (!draggedElement) return;
     e.dataTransfer.dropEffect = "move";
+
+    const container = e.currentTarget;
+    container.classList.add('drag-over-active');
+
+    const draggingOverItem = e.target.closest('#dp-task-list .task-item:not(.is-dragging)');
+
     if (draggingOverItem && draggingOverItem !== placeholder) {
         const rect = draggingOverItem.getBoundingClientRect();
-        if (e.clientY < (rect.top + rect.height / 2)) { if (placeholder.nextSibling !== draggingOverItem) draggingOverItem.before(placeholder); } 
-        else { if (placeholder !== draggingOverItem.nextSibling) draggingOverItem.after(placeholder); }
-    } else if ((e.target === container || container.classList.contains('task-group-container')) && !container.contains(placeholder)) {
-        const msg = container.querySelector('.empty-msg'); if (msg) msg.style.display = 'none';
+        if (e.clientY < (rect.top + rect.height / 2)) {
+            if (placeholder.nextSibling !== draggingOverItem) draggingOverItem.before(placeholder);
+        } else {
+            if (placeholder !== draggingOverItem.nextSibling) draggingOverItem.after(placeholder);
+        }
+    } else if (container && !container.contains(placeholder)) {
         container.appendChild(placeholder);
     }
+
+    // Ẩn/hiện chữ "Không có dữ liệu..." mượt mà ngay khi kéo lướt qua
+    document.querySelectorAll('#dp-task-list .task-group-container').forEach(group => {
+        const hasTasks = group.querySelectorAll('.task-item:not(.is-dragging)').length > 0 || group.contains(placeholder);
+        const emptyMsg = group.querySelector('.empty-msg');
+        if (emptyMsg) {
+            emptyMsg.style.display = hasTasks ? 'none' : 'flex';
+        }
+    });
 }
 
 function handleDragEnd(e) { if (!draggedElement) return; if (placeholder.parentElement) placeholder.replaceWith(draggedElement); draggedElement.classList.remove('dragging'); draggedElement.setAttribute('draggable', 'false'); draggedElement = null; }
@@ -1934,6 +2006,7 @@ function resetMindmapView() { if (cyInstance) cyInstance.animate({ fit: { paddin
 function triggerDrawingSync_10s() {
     const statusBar = document.getElementById("sync-status-bar");
     const statusText = document.getElementById("sync-status-text");
+    if (!statusBar || !statusText) return;
     
     clearInterval(syncCountdownInterval);
     clearTimeout(saveOrderTimer);
@@ -1955,20 +2028,36 @@ function triggerDrawingSync_10s() {
     }, 1000);
 
     saveOrderTimer = setTimeout(() => {
-        const finalTasks = drawingTaskCache[currentFileId].filter(t => t.description.trim() !== "");
+        const finalTasks = (drawingTaskCache[currentFileId] || []).filter(t => (t.description || "").trim() !== "");
         
         callBackend('updateTasksOrderBackend', [selectedProjectDrawing, currentFileId, finalTasks])
             .then(() => {
                 saveOrderTimer = null; 
                 drawingTaskCache[currentFileId] = finalTasks; 
                 drawingTaskSnapshot = JSON.parse(JSON.stringify(finalTasks));
+
+                // 🚀 CẬP NHẬT ĐỒNG THỜI VÀO RAM CACHE CỦA DỰ ÁN (Tránh bị giật lại data cũ khi chuyển node)
+                const projKey = (selectedProjectDrawing || "").toUpperCase().trim();
+                if (projectFullDataCache_Drawing[projKey] && projectFullDataCache_Drawing[projKey].tasks) {
+                    projectFullDataCache_Drawing[projKey].tasks = projectFullDataCache_Drawing[projKey].tasks.filter(t => t.fileId !== currentFileId);
+                    projectFullDataCache_Drawing[projKey].tasks.push(...finalTasks.map(t => ({
+                        taskId: t.taskId,
+                        fileId: currentFileId,
+                        description: t.description,
+                        team: t.team
+                    })));
+                }
+
                 statusBar.style.height = "0";
                 statusBar.style.marginBottom = "0";
                 statusBar.style.borderColor = "transparent";
                 displayTasksHTML(finalTasks); 
-                showToast_PL("🚀 Synced!", "success");
+                showToast_PL("🚀 Synced tasks successfully!", "success");
             })
-            .catch(err => console.error("Lỗi đồng bộ:", err));
+            .catch(err => {
+                console.error("Lỗi đồng bộ:", err);
+                statusText.innerHTML = `<span style="color:#ff4d4d;">SYNC FAILED!</span>`;
+            });
     }, 10000);
 }
 
@@ -2015,33 +2104,95 @@ function cancelDrawingSync() {
 
 function handleDrop(e, targetTeam) {
     e.preventDefault();
-    if (!draggedElement || !placeholder.parentElement) return;
-    placeholder.replaceWith(draggedElement);
-    draggedElement.classList.remove('dragging');
-    
-    const allItems = Array.from(document.querySelectorAll('.task-item'));
-    const updatedTasks = allItems.map(el => {
+    isDropCommitted = true; // Đánh dấu đã thả thành công trong vùng hợp lệ
+    finalizeTaskReorder(false);
+}
+
+function handleDragEnd(e) {
+    // Nếu chưa commit drop (thả trượt hoặc ấn ESC), kiểm tra dropEffect
+    const isCanceled = !isDropCommitted || (e.dataTransfer && e.dataTransfer.dropEffect === "none");
+    finalizeTaskReorder(isCanceled);
+}
+
+/**
+ * HOÀN TẤT KÉO THẢ & BẢO TOÀN TRẠNG THÁI SNAPSHOT
+ */
+function finalizeTaskReorder(isCanceled = false) {
+    // 1. Dọn sạch class active trên cả 2 container
+    document.querySelectorAll('#dp-task-list .task-group-container').forEach(c => {
+        c.classList.remove('drag-over-active');
+    });
+
+    if (!draggedElement) return;
+
+    if (isCanceled) {
+        // Trường hợp người dùng hủy kéo: Hoàn trả phần tử về đúng vị trí xuất phát ban đầu
+        if (placeholder.parentElement) placeholder.remove();
+        if (originalTaskContainer) {
+            const siblings = Array.from(originalTaskContainer.querySelectorAll('.task-item'));
+            if (originalTaskIndex >= 0 && originalTaskIndex < siblings.length) {
+                siblings[originalTaskIndex].before(draggedElement);
+            } else {
+                originalTaskContainer.appendChild(draggedElement);
+            }
+        }
+    } else {
+        // Trường hợp thả hợp lệ: Thế chỗ placeholder
+        if (placeholder && placeholder.parentElement) {
+            placeholder.replaceWith(draggedElement);
+        }
+    }
+
+    draggedElement.classList.remove('is-dragging');
+    draggedElement.setAttribute('draggable', 'false');
+    draggedElement = null;
+    originalTaskContainer = null;
+    originalTaskIndex = -1;
+    isDropCommitted = false;
+
+    // 2. Cập nhật lại nhãn "Không có dữ liệu..." ở cả 2 nhóm
+    document.querySelectorAll('#dp-task-list .task-group-container').forEach(group => {
+        const hasTasks = group.querySelectorAll('.task-item').length > 0;
+        const emptyMsg = group.querySelector('.empty-msg');
+        if (emptyMsg) {
+            emptyMsg.style.display = hasTasks ? 'none' : 'flex';
+        }
+    });
+
+    if (isCanceled || !currentFileId || !drawingTaskCache[currentFileId]) return;
+
+    // 3. Bảo toàn snapshot gốc nếu chưa có
+    if (!drawingTaskSnapshot) {
+        drawingTaskSnapshot = JSON.parse(JSON.stringify(drawingTaskCache[currentFileId]));
+    }
+
+    // 4. Quét chính xác thứ tự mới chỉ bên trong #dp-task-list
+    const taskElements = Array.from(document.querySelectorAll('#dp-task-list .task-item'));
+    const updatedTasks = taskElements.map(el => {
         const id = el.id.replace('task-', '');
-        const oldData = drawingTaskCache[currentFileId].find(t => t.taskId === id);
-        return { 
-            ...oldData, 
-            team: el.closest('.task-group-container').id.replace('drop-zone-', '') 
+        const oldData = drawingTaskCache[currentFileId].find(t => t.taskId === id) || {};
+        const groupContainer = el.closest('.task-group-container');
+        const teamCode = groupContainer ? groupContainer.id.replace('drop-zone-', '') : (oldData.team || 'XD');
+        return {
+            taskId: id,
+            description: el.querySelector('.task-desc-edit')?.value || oldData.description || "",
+            team: teamCode
         };
     });
 
-    const isUnchanged = updatedTasks.length === drawingTaskSnapshot.length && 
-        updatedTasks.every((t, i) => 
-            t.taskId === drawingTaskSnapshot[i].taskId && 
+    // 5. So sánh với bản gốc
+    const isUnchanged = updatedTasks.length === drawingTaskSnapshot.length &&
+        updatedTasks.every((t, i) =>
+            t.taskId === drawingTaskSnapshot[i].taskId &&
             t.team === drawingTaskSnapshot[i].team
         );
 
     if (isUnchanged) {
-        // Nếu không đổi -> Tắt thanh đếm ngược ngay lập tức
         if (saveOrderTimer) cancelDrawingSync();
         return;
     }
 
-    // Nếu có đổi -> Tiến hành đếm ngược 10s
+    // 6. Cập nhật cache và kích hoạt đếm ngược 10 giây
     drawingTaskCache[currentFileId] = updatedTasks;
     triggerDrawingSync_10s();
 }
