@@ -902,12 +902,21 @@
                         </div>
                     </div>
 
-                    <div class="info-row" style="margin-bottom: 25px;">
+                    <div class="info-row" style="margin-bottom: 15px;">
                         <div class="info-key"><i class="bi bi-hourglass-split" style="font-size: 18px; line-height: 1; display: block;"></i></div>
                         <div class="info-desc">
                             <b>Thời gian ước tính:</b>
                             <p>File sẽ được tạo sau khoảng <strong id="export-estimated-time" style="color: #00BCD4; font-size: 13px; font-weight: bold;">0 giây</strong>.</p>
                         </div>
+                    </div>
+
+                    <!-- TÙY CHỌN 1: CHỈ XUẤT HỢP ĐỒNG GỐC (CỘNG DỒN GIÁ TRỊ PHỤ LỤC) -->
+                    <div style="margin-bottom: 22px; padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 186, 8, 0.25); border-radius: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer;" onclick="toggleExportOption_UI(event)">
+                        <input type="checkbox" id="exportContractsOnlyCheckbox-pl" style="width: 16px; height: 16px; cursor: pointer; accent-color: #FFBA08; margin: 0;" onclick="event.stopPropagation(); updateExportSummary_PL();">
+                        <label for="exportContractsOnlyCheckbox-pl" style="cursor: pointer; font-size: 12px; color: #E0E0E0; line-height: 1.4; margin: 0; user-select: none;">
+                            <b style="color: #FFBA08; display: block; font-size: 12.5px;">Chỉ xuất Hợp đồng gốc</b>
+                            <span style="color: #95A1AF; font-size: 11px;">Tự động cộng dồn giá trị tất cả Phụ lục vào Hợp đồng mẹ</span>
+                        </label>
                     </div>
                     
                     <div style="display: flex; gap: 15px; width: 100%; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 20px;">

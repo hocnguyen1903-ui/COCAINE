@@ -249,56 +249,177 @@
 }
 
 /* ==========================================================================
-   CỤM NHẬN DIỆN FILE SCAN (H | G) - CÂN ĐỐI 2 LỀ & THỤT LÙI GIÁ TRỊ 50%
+   CỤM NHẬN DIỆN FILE SCAN (H | G) - MỞ RỘNG VÙNG CLICK (HITBOX 16x30px)
    ========================================================================== */
 
 .file-status-group {
     display: inline-flex;
     align-items: center;
-    justify-content: flex-end; /* Ép sát chữ G về biên phải chuẩn 20px */
+    justify-content: flex-end;
     flex-shrink: 0;
-    margin-left: 26px; /* Tăng từ 14px lên 22px (thụt lùi giá trị qua trái thêm 50%) */
+    margin-left: 24px;
     user-select: none;
     letter-spacing: 0.5px;
+    height: 100%; /* Tràn theo chiều cao 37px của dòng */
 }
 
-/* Đè triệt để font-weight: 700 !important của .money-column-container span */
+/* Đè triệt để font-weight và mở rộng hitbox cho từng ký tự H và G */
 .money-column-container .file-status-group span {
     font-size: 10px !important;
-    font-weight: 300 !important; /* Nét thanh mảnh */
+    font-weight: 300 !important;
     text-shadow: none !important;
     line-height: 1 !important;
+}
+
+/* TẠO VÙNG BẤM RỘNG 16px x 30px CHO CẢ H VÀ G */
+.money-column-container .file-status-group span:not(.file-badge-divider) {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 30px; /* Tận dụng gần trọn chiều cao 37px */
+    padding: 0 3px;
+    box-sizing: border-box;
+    border-radius: 4px;
 }
 
 /* Dấu gạch đứng mờ ở giữa */
 .money-column-container .file-status-group span.file-badge-divider {
     color: rgba(255, 255, 255, 0.15) !important;
-    margin: 0 3px !important;
+    margin: 0 1px !important;
     font-weight: 200 !important;
+    pointer-events: none; /* Không cản trở click */
 }
 
 /* Trạng thái MỜ khi chưa có file */
 .money-column-container .file-status-group span.file-badge-dim {
     color: rgba(255, 255, 255, 0.2) !important;
     font-weight: 300 !important;
+    cursor: default !important;
 }
 
-/* Trạng thái SÁNG khi có file: Chỉ sáng màu, nét vẫn mảnh */
+/* Trạng thái SÁNG khi có file H */
 .money-column-container .file-status-group span.file-badge-h-active {
-    color: #00BCD4 !important; /* Xanh Cyan */
+    color: #00BCD4 !important;
     font-weight: 400 !important;
+    cursor: pointer !important;
+    transition: transform 0.15s ease, filter 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
+.money-column-container .file-status-group span.file-badge-h-active:hover {
+    color: #00fbff !important;
+    filter: drop-shadow(0 0 5px rgba(0, 251, 255, 0.7));
+    background: transparent !important; /* Không dùng màu nền */
+    transform: scale(1.2);
+}
+
+/* Trạng thái SÁNG khi có file G */
 .money-column-container .file-status-group span.file-badge-g-active {
-    color: #FFBA08 !important; /* Vàng Gold */
+    color: #FFBA08 !important;
     font-weight: 400 !important;
+    cursor: pointer !important;
+    transition: transform 0.15s ease, filter 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
-/* Hiệu ứng viền phát sáng khi kéo file từ máy tính vào từng dòng HĐ/PL */
+.money-column-container .file-status-group span.file-badge-g-active:hover {
+    color: #FFF176 !important;
+    filter: drop-shadow(0 0 5px rgba(255, 186, 8, 0.7));
+    background: transparent !important; /* Không dùng màu nền */
+    transform: scale(1.2);
+}
+
+/* Hiệu ứng viền khi kéo file từ máy tính vào từng dòng HĐ/PL */
 #dropdown-field0-pl .hoc-tooltip.row-file-dragover {
-    background: rgba(0, 188, 212, 0.08) !important; /* Đổi màu nền Cyan dịu nhẹ */
-    outline: 1px dashed #00BCD4 !important;          /* Viền nét đứt mỏng 1px */
-    outline-offset: -1px;                           /* Khít mép trong, không xô lệch kích thước dòng */
-    transform: none !important;                     /* ĐÃ BỎ: Không thu phóng to nhỏ */
+    background: rgba(0, 188, 212, 0.08) !important;
+    outline: 1px dashed #00BCD4 !important;
+    outline-offset: -1px;
+    transform: none !important;
     transition: background-color 0.15s ease, outline-color 0.15s ease;
+}
+
+/* ==========================================================================
+   GỢI Ý UPLOAD FILE: MỞ RỘNG KHUNG THOÁNG HƠN (HEIGHT 16PX, PADDING 8PX)
+   ========================================================================== */
+
+#dropdown-field0-pl .hoc-tooltip .row-upload-hint {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px; /* Tăng khoảng cách icon và chữ */
+    height: 16px; /* Mở rộng chiều cao từ 14px lên 16px */
+    padding: 0 8px; /* Mở rộng chiều ngang từ 5px lên 8px */
+    border-radius: 8px;
+    box-sizing: border-box;
+
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px dashed rgba(149, 161, 175, 0.45) !important;
+    box-shadow: none !important;
+
+    /* BẬT TƯƠNG TÁC CHUỘT */
+    pointer-events: auto !important;
+    cursor: pointer !important;
+
+    z-index: 5;
+    user-select: none;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+
+    will-change: opacity;
+    transition: opacity 0.2s ease, visibility 0.2s, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+/* Đè trực tiếp cỡ chữ thẻ span bên trong */
+#dropdown-field0-pl .hoc-tooltip .row-upload-hint span {
+    font-size: 10px !important;
+    font-weight: 400 !important;
+    color: rgba(149, 161, 175, 0.6) !important;
+    font-family: 'Poppins', sans-serif !important;
+    letter-spacing: 0.4px !important;
+    line-height: 1 !important;
+    transition: color 0.15s ease;
+}
+
+/* Đè trực tiếp kích thước icon bên trong */
+#dropdown-field0-pl .hoc-tooltip .row-upload-hint i {
+    font-size: 11px !important;
+    font-weight: 400 !important;
+    color: rgba(149, 161, 175, 0.6) !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transition: color 0.15s ease;
+}
+
+/* Khi hover dòng: chạy chớp nháy tuần hoàn */
+#dropdown-field0-pl .hoc-tooltip:hover .row-upload-hint {
+    visibility: visible;
+    animation: microHintPulse 1.8s ease-in-out infinite;
+}
+
+#dropdown-field0-pl .hoc-tooltip .row-upload-hint:hover {
+    animation: none !important;
+    opacity: 1 !important;
+    border-color: rgba(149, 161, 175, 0.6) !important; /* Giữ nguyên màu viền hiện tại */
+    background: rgba(255, 255, 255, 0.04) !important;
+}
+
+#dropdown-field0-pl .hoc-tooltip .row-upload-hint:hover span,
+#dropdown-field0-pl .hoc-tooltip .row-upload-hint:hover i {
+    color: #FFFFFF !important; /* Đổi chữ và icon sang màu trắng */
+}
+
+/* Ẩn tức thì khi file thực tế được kéo vào dòng */
+#dropdown-field0-pl .hoc-tooltip.row-file-dragover .row-upload-hint {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    animation: none !important;
+}
+
+@keyframes microHintPulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.9; }
 }

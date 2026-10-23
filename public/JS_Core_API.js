@@ -815,56 +815,93 @@ function submitData_TB() {
 }
 
 
+/**
+ * Biến lưu trữ tạm thời danh sách mã cần xuất
+ */
+let exportDataCache_PL = {
+    allCodes: [],
+    parentCodes: []
+};
+
+function toggleExportOption_UI(event) {
+    const cb = document.getElementById("exportContractsOnlyCheckbox-pl");
+    if (cb && event.target !== cb) {
+        cb.checked = !cb.checked;
+        updateExportSummary_PL();
+    }
+}
+
+function updateExportSummary_PL() {
+    const cb = document.getElementById("exportContractsOnlyCheckbox-pl");
+    const isContractsOnly = cb ? cb.checked : false;
+    const targetCount = isContractsOnly ? exportDataCache_PL.parentCodes.length : exportDataCache_PL.allCodes.length;
+
+    let estimatedTime = "5 giây";
+    if (targetCount > 50 && targetCount <= 100) estimatedTime = "6 giây";
+    else if (targetCount > 100 && targetCount <= 150) estimatedTime = "7 giây";
+    else if (targetCount > 150 && targetCount <= 250) estimatedTime = "8 giây";
+    else if (targetCount > 250) estimatedTime = "9 giây";
+
+    const countEl = document.getElementById("export-row-count");
+    const timeEl = document.getElementById("export-estimated-time");
+    if (countEl) countEl.textContent = targetCount.toLocaleString('vi-VN');
+    if (timeEl) timeEl.textContent = estimatedTime;
+}
+
 function exportFilteredToNewSheet_PL() {
     const inputField = document.getElementById("field0-pl");
     if (!inputField) return;
-    
-    const query = inputField.value.toLowerCase().trim();
-    
-    // Gọi tiền xử lý dữ liệu hệ thống
+
+    // Lấy query tìm kiếm hiện hành
+    let query = "";
+    if (selectedContractMaHD_PL && inputField.value.trim().toUpperCase() === selectedContractMaHD_PL.toUpperCase()) {
+        query = (activeSearchQuery_PL || "").toLowerCase().trim();
+    } else {
+        query = inputField.value.toLowerCase().trim();
+    }
+
     if (typeof precomputePLData === 'function') precomputePLData();
-    
+
     let finalData = [];
     if (typeof filterAndSortData_PL === 'function') {
         const result = filterAndSortData_PL(query);
         finalData = result.finalData || [];
-    } else {
-        const dropdown = document.getElementById("dropdown-field0-pl");
-        const items = dropdown ? dropdown.querySelectorAll(".hoc-tooltip") : [];
-        finalData = Array.from(items).map(div => {
-            const display = div.getAttribute("data-display");
-            return display ? { maHD: display.split(" | ")[0].trim() } : null;
-        }).filter(Boolean);
     }
-    
-    const filteredA = finalData.map(item => item.maHD).filter(a => a && a !== "");
-    
-    if (filteredA.length === 0) { 
-        showToast_PL("⚠️ Không có dữ liệu nào để xuất!", "error"); 
-        return; 
+
+    const filteredA = finalData.map(item => item.maHD).filter(Boolean);
+
+    if (filteredA.length === 0) {
+        showToast_PL("⚠️ Không có dữ liệu nào để xuất!", "error");
+        return;
     }
-    
-    const actualDataRows = filteredA.length;
-    
-    let estimatedTime = "";
-    if (actualDataRows < 50) estimatedTime = "5 giây"; 
-    else if (actualDataRows <= 100) estimatedTime = "6 giây"; 
-    else if (actualDataRows <= 150) estimatedTime = "7 giây"; 
-    else if (actualDataRows <= 250) estimatedTime = "8 giây"; 
-    else estimatedTime = "9 giây";
+
+    // Bóc tách danh sách các Hợp đồng gốc duy nhất
+    const uniqueParentMap = new Map();
+    filteredA.forEach(code => {
+        let parentCode = code.trim();
+        const plMatch = parentCode.match(/^PL\d+\s*-\s*(.*)$/i);
+        if (plMatch && plMatch[1]) {
+            parentCode = plMatch[1].trim();
+        }
+        if (!uniqueParentMap.has(parentCode)) {
+            uniqueParentMap.set(parentCode, true);
+        }
+    });
+
+    exportDataCache_PL.allCodes = filteredA;
+    exportDataCache_PL.parentCodes = Array.from(uniqueParentMap.keys());
 
     const modal = document.getElementById("confirmExportModal");
     if (!modal) return;
 
-    // Đổ dữ liệu động vào cấu trúc HTML tĩnh đã có sẵn trong index.html
-    document.getElementById("export-row-count").textContent = actualDataRows.toLocaleString('vi-VN');
-    document.getElementById("export-estimated-time").textContent = estimatedTime;
-    
-    // Kích hoạt hiển thị
+    // Mặc định uncheck tùy chọn khi mở modal
+    const cb = document.getElementById("exportContractsOnlyCheckbox-pl");
+    if (cb) cb.checked = false;
+
+    updateExportSummary_PL();
+
     modal.style.display = 'flex';
-    setTimeout(() => {
-        modal.classList.add('show');
-    }, 10);
+    setTimeout(() => modal.classList.add('show'), 10);
 
     window.cancelExport = () => {
         modal.classList.remove('show');
@@ -872,22 +909,29 @@ function exportFilteredToNewSheet_PL() {
     };
 
     document.getElementById("confirmExportBtn").onclick = () => {
+        const isContractsOnly = cb ? cb.checked : false;
         window.cancelExport();
-        const loading = document.getElementById("contractLoading"); 
+
+        const loading = document.getElementById("contractLoading");
         if (loading) {
             loading.style.display = "flex";
-            loading.querySelector('p').textContent = "SYSTEM EXPORTING DATA SPREADSHEET...";
+            loading.querySelector('p').textContent = isContractsOnly 
+                ? "EXPORTING CONSOLIDATED CONTRACTS..." 
+                : "SYSTEM EXPORTING DATA SPREADSHEET...";
         }
-        
-        callBackend("exportToNewSpreadsheet_PL", filteredA)
-            .then(url => {
-                if (loading) loading.style.display = "none"; 
-                if (url) window.open(url, "_blank");
-            })
-            .catch(err => {
-                if (loading) loading.style.display = "none"; 
-                showToast_PL("⚠️ Lỗi xuất dữ liệu: " + (err.message || err), "error");
-            });
+
+        callBackend("exportToNewSpreadsheet_PL", {
+            codes: filteredA,
+            contractsOnly: isContractsOnly
+        })
+        .then(url => {
+            if (loading) loading.style.display = "none";
+            if (url) window.open(url, "_blank");
+        })
+        .catch(err => {
+            if (loading) loading.style.display = "none";
+            showToast_PL("⚠️ Lỗi xuất dữ liệu: " + (err.message || err), "error");
+        });
     };
 }
 

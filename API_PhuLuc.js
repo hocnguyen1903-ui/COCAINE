@@ -183,16 +183,25 @@ function updateContractData_PL(maHD, editType, newValue) {
   }
 }
 
-function exportToNewSpreadsheet_PL(filteredA) {
+function exportToNewSpreadsheet_PL(payload) {
   try {
-    // 🚀 BỔ SUNG KHÓA PHÒNG VỆ: Chặn đứng lỗi nếu mảng truyền lên bị rỗng
-    if (!filteredA || !Array.isArray(filteredA)) {
+    let filteredA = [];
+    let contractsOnly = false;
+
+    if (Array.isArray(payload)) {
+      filteredA = payload;
+    } else if (payload && typeof payload === 'object') {
+      filteredA = payload.codes || [];
+      contractsOnly = !!payload.contractsOnly;
+    }
+
+    if (!filteredA || filteredA.length === 0) {
       throw new Error("Hệ thống không nhận được mảng dữ liệu xuất tệp Spreadsheet hợp lệ!");
     }
 
-    const newSS = SpreadsheetApp.create("DATA HỢP ĐỒNG");
+    const titleSS = contractsOnly ? "DATA HỢP ĐỒNG GỐC (CỘNG DỒN PL)" : "DATA HỢP ĐỒNG & PHỤ LỤC";
+    const newSS = SpreadsheetApp.create(titleSS);
     
-    // 🚀 SỬA TẠI ĐÂY: Tự động di chuyển tệp Spreadsheet vừa tạo vào thư mục xuất bản chỉ định
     const file = DriveApp.getFileById(newSS.getId());
     const destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
     file.moveTo(destinationFolder);
@@ -207,20 +216,70 @@ function exportToNewSpreadsheet_PL(filteredA) {
     const data = sourceSheet.getRange(`A4:N${sourceSheet.getLastRow()}`).getValues();
     const rowsToAdd = [];
 
-    filteredA.forEach(valA => {
-      const matchedRow = data.find(row => (row[0]?.toString().trim() || "") === valA.trim());
-      if (matchedRow) {
-        const giaTriRaw = matchedRow[2] || "";   
-        rowsToAdd.push([
-          matchedRow[7] || "", matchedRow[0] || "", matchedRow[13] || "", 
-          matchedRow[10] || "", matchedRow[1] || "", 
-          (giaTriRaw === "" || isNaN(giaTriRaw)) ? "" : Number(giaTriRaw), 
-          matchedRow[12] || ""
-        ]);
-      }
-    });
+    if (!contractsOnly) {
+      // 1. CHẾ ĐỘ XUẤT ĐẦY ĐỦ (CẢ HĐ VÀ TỪNG PHỤ LỤC RIÊNG LẺ)
+      filteredA.forEach(valA => {
+        const matchedRow = data.find(row => (row[0]?.toString().trim() || "") === valA.trim());
+        if (matchedRow) {
+          const giaTriRaw = matchedRow[2] || "";   
+          rowsToAdd.push([
+            matchedRow[7] || "", matchedRow[0] || "", matchedRow[13] || "", 
+            matchedRow[10] || "", matchedRow[1] || "", 
+            (giaTriRaw === "" || isNaN(giaTriRaw)) ? "" : Number(giaTriRaw), 
+            matchedRow[12] || ""
+          ]);
+        }
+      });
+    } else {
+      // 2. CHẾ ĐỘ CHỈ XUẤT HỢP ĐỒNG GỐC: CỘNG DỒN TẤT CẢ GIÁ TRỊ PHỤ LỤC VÀO HỢP ĐỒNG MẸ
+      const uniqueParentCodes = [];
+      const seenParents = new Set();
 
-    if (rowsToAdd.reverse().length > 0) sheet.getRange(2, 1, rowsToAdd.length, 7).setValues(rowsToAdd);
+      filteredA.forEach(code => {
+        let parentCode = code.trim();
+        const plMatch = parentCode.match(/^PL\d+\s*-\s*(.*)$/i);
+        if (plMatch && plMatch[1]) {
+            parentCode = plMatch[1].trim();
+        }
+        if (!seenParents.has(parentCode.toUpperCase())) {
+            seenParents.add(parentCode.toUpperCase());
+            uniqueParentCodes.push(parentCode);
+        }
+      });
+
+      uniqueParentCodes.forEach(parentCode => {
+        const parentUpper = parentCode.toUpperCase();
+        const parentRow = data.find(row => (row[0]?.toString().trim() || "").toUpperCase() === parentUpper);
+        
+        if (parentRow) {
+          // Lấy giá trị HĐ gốc
+          let totalContractValue = Number(parentRow[2]) || 0;
+
+          // Tìm tất cả phụ lục thuộc HĐ này trong Sheet X và cộng dồn giá trị
+          data.forEach(r => {
+            const rCode = (r[0] || "").toString().trim().toUpperCase();
+            if (rCode.startsWith("PL") && rCode.includes(parentUpper)) {
+              const annexVal = Number(r[2]) || 0;
+              totalContractValue += annexVal;
+            }
+          });
+
+          rowsToAdd.push([
+            parentRow[7] || "",
+            parentRow[0] || "",
+            parentRow[13] || "",
+            parentRow[10] || "",
+            parentRow[1] || "",
+            totalContractValue,
+            parentRow[12] || ""
+          ]);
+        }
+      });
+    }
+
+    if (rowsToAdd.reverse().length > 0) {
+      sheet.getRange(2, 1, rowsToAdd.length, 7).setValues(rowsToAdd);
+    }
 
     const lastDataRow = sheet.getLastRow();
     const fullRange = sheet.getRange(1, 1, lastDataRow, 7);
@@ -233,7 +292,6 @@ function exportToNewSpreadsheet_PL(filteredA) {
     if (lastDataRow >= 2) sheet.getRange("F2:F" + lastDataRow).setNumberFormat("#,##0").setHorizontalAlignment("right");
     sheet.getRange("G2:G" + lastDataRow).setHorizontalAlignment("center");
 
-    // Lặp và đặt độ rộng chuẩn riêng biệt từng cột
     const colWidths = [110, 350, 75, 500, 800, 170, 170];
     colWidths.forEach((width, index) => {
         sheet.setColumnWidth(index + 1, width);
@@ -241,7 +299,9 @@ function exportToNewSpreadsheet_PL(filteredA) {
 
     sheet.setFrozenRows(1);
     return newSS.getUrl();
-  } catch (e) { throw new Error("Lỗi xuất Sheet: " + e.message); }
+  } catch (e) { 
+    throw new Error("Lỗi xuất Sheet: " + e.message); 
+  }
 }
 
 function updateTransferStatus_PL(contractNumber, isTransferred, docTypes) {

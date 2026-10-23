@@ -219,7 +219,8 @@ async function startUploadScan_PL() {
                     const newEntry = res.id + "|" + res.fileName;
                     item.scanId = (item.scanId || "").trim() !== "" ? (item.scanId + ";;" + newEntry) : newEntry;
                     PRECOMPUTED_PL_DATA = null;
-                    executeFilter_PL(false);
+                    // BẬT CỜ preserveScroll = true ĐỂ GIỮ NGUYÊN VỊ TRÍ CUỘN DASHBOARD
+                    executeFilter_PL(false, false, true);
                     renderExistingFiles_PL(currentScanMaHD);
                 }
             } else {
@@ -243,8 +244,12 @@ async function startUploadScan_PL() {
         progressBar.style.backgroundColor = "#ff4d4d"; 
         alert(`Upload Error: ${e.message || e}`);
     } finally {
-        keepAliveAudio.pause(); keepAliveAudio.currentTime = 0;
-        btn.disabled = false;
+        keepAliveAudio.pause(); 
+        keepAliveAudio.currentTime = 0;
+        // Khóa nút nếu đã upload xong sạch hàng chờ, chỉ bật lại nếu có lỗi cần upload lại
+        if (btn) {
+            btn.disabled = (currentScanFiles.length === 0);
+        }
     }
 }
 
@@ -367,7 +372,7 @@ function executeActualDelete_PL() {
     PRECOMPUTED_PL_DATA = null;
     
     renderExistingFiles_PL(currentScanMaHD); // Vẽ lại danh sách file trong khung scan ngay lập tức
-    executeFilter_PL(false);                 // Cập nhật lại icon xanh/vàng trên dashboard ngay lập tức
+    executeFilter_PL(false, false, true);    // Bật preserveScroll = true để giữ nguyên vị trí cuộn               // Cập nhật lại icon xanh/vàng trên dashboard ngay lập tức
 
     // Hiển thị duy nhất 1 thông báo thành công
     showToast_PL("🗑️ Đã xóa file scan thành công!", "success");
@@ -417,12 +422,18 @@ document.addEventListener("DOMContentLoaded", function() {
         }, 150));
     }
 
-    // 2. KÍCH HOẠT TOOLTIP NOTE KHI HOVER
+    // 2. KÍCH HOẠT TOOLTIP NOTE KHI HOVER (CHỐNG CHỚP TẮT KHI RÊ QUA THẺ CON)
     const dashboardContainer = document.getElementById('dropdown-field0-pl');
     if (dashboardContainer && typeof globalTooltip !== 'undefined') {
+        let activeTooltipRow = null;
+
         dashboardContainer.addEventListener('mouseover', function(e) {
             const row = e.target.closest('.hoc-tooltip');
             if (!row) return;
+
+            // Nếu con trỏ vẫn đang nằm trong cùng 1 dòng đã mở chú thích thì giữ nguyên
+            if (activeTooltipRow === row) return;
+            activeTooltipRow = row;
 
             clearTimeout(tooltipTimeout);
             tooltipTimeout = setTimeout(() => {
@@ -441,12 +452,23 @@ document.addEventListener("DOMContentLoaded", function() {
             }, 100); 
         });
 
-        dashboardContainer.addEventListener('mouseout', () => {
+        dashboardContainer.addEventListener('mouseout', function(e) {
+            const currentRow = e.target.closest('.hoc-tooltip');
+            const relatedRow = e.relatedTarget ? e.relatedTarget.closest('.hoc-tooltip') : null;
+
+            // Nếu chuột chỉ di chuyển giữa các phần tử con (icon, text, nút upload, badge H|G) trong cùng 1 dòng -> BỎ QUA
+            if (currentRow && relatedRow === currentRow) {
+                return;
+            }
+
+            activeTooltipRow = null;
             clearTimeout(tooltipTimeout);
             globalTooltip.classList.remove('show-tooltip');
         });
 
         dashboardContainer.addEventListener('scroll', () => {
+            activeTooltipRow = null;
+            clearTimeout(tooltipTimeout);
             globalTooltip.classList.remove('show-tooltip');
         }, { passive: true });
     }
@@ -551,7 +573,10 @@ document.addEventListener("DOMContentLoaded", function() {
 function handleFilesSelected(files) {
     if (!files || !files.length) return;
     
-    // CHỈ CHO PHÉP PDF VÀ EXCEL (.xls, .xlsx)
+    const MAX_SIZE = 20 * 1024 * 1024; // Giới hạn trần 20MB
+    let oversizedFiles = [];
+
+    // 1. Chỉ chấp nhận định dạng PDF và Excel (.xls, .xlsx)
     const incomingFiles = Array.from(files).filter(f => {
         const name = f.name.toLowerCase();
         return f.type === "application/pdf" || name.endsWith(".xls") || name.endsWith(".xlsx");
@@ -562,12 +587,24 @@ function handleFilesSelected(files) {
         return;
     }
 
+    // 2. Kiểm tra dung lượng và lọc trùng lặp
     incomingFiles.forEach(newFile => {
+        if (newFile.size > MAX_SIZE) {
+            const sizeMB = (newFile.size / (1024 * 1024)).toFixed(1);
+            oversizedFiles.push(`${newFile.name} (${sizeMB}MB)`);
+            return; // Chặn không đưa vào hàng chờ upload
+        }
+
         const isDuplicate = currentScanFiles.some(oldFile => 
             oldFile.name === newFile.name && oldFile.size === newFile.size
         );
         if (!isDuplicate) currentScanFiles.push(newFile);
     });
+
+    // 3. Cảnh báo nếu phát hiện file > 20MB
+    if (oversizedFiles.length > 0) {
+        showToast_PL(`⚠️ File vượt quá dung lượng tối đa. Vui lòng nén file < 20MB trước khi tải lên.`, "error");
+    }
 
     updateScanQueueUI();
 }

@@ -304,6 +304,17 @@ function buildHeaderHTML_PL(sumHDPL, sumPL) {
 }
 
 /**
+ * Mở trực tiếp file Scan H hoặc G khi click vào badge
+ */
+function openDirectFile_PL(fileId, event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    if (!fileId) return;
+    window.open("https://drive.google.com/file/d/" + fileId + "/view", "_blank");
+}
+
+/**
  * Hàm 3: Chuyên tạo chuỗi HTML cho 1 dòng dữ liệu (Row Template)
  */
 function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
@@ -337,39 +348,53 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
         giaTriHTML = `<span style="display: inline-block; width: 90px; text-align: right; color: white; font-weight: 400;">${xx}</span><span style="display: inline-block; width: 35px; text-align: center; color: #505966;">|</span><span style="display: inline-block; width: 90px; text-align: right; ${yyStyle} font-weight: 400;">${yy}</span>`;
     }
     
+// ========================================================================
+    // LOGIC NHẬN DIỆN & TRÍCH XUẤT FILEID CHO H (HĐ/PL) VÀ G (PHÊ DUYỆT GIÁ)
     // ========================================================================
-    // LOGIC NHẬN DIỆN FILE H (HỢP ĐỒNG / PHỤ LỤC) VÀ FILE G (PHÊ DUYỆT GIÁ)
-    // ========================================================================
-    let hasH = false;
-    let hasG = false;
+    let fileIdH = "";
+    let fileIdG = "";
 
     if (i.scanId && i.scanId.trim() !== "") {
         const fileEntries = i.scanId.split(";;").filter(f => f && f.includes("|"));
         fileEntries.forEach(entry => {
             const parts = entry.split("|");
+            const fId = parts[0].trim();
             const fName = (parts[1] || "").toLowerCase().trim();
             
-            // Nhận diện file G (Phê duyệt giá): chứa 'pdg', 'pđg', 'phe duyet gia', hoặc 'gia'
             const isPDG = /pdg|pđg|phe\s*duyet\s*gia|phê\s*duyệt\s*giá/i.test(fName) || 
                           /\b(gia|giá)\b/i.test(fName);
             
             if (isPDG) {
-                hasG = true;
+                if (!fileIdG) fileIdG = fId;
             } else {
-                // File scan còn lại được tính là file H (Hợp đồng / Phụ lục)
-                hasH = true;
+                if (i.isPL) {
+                    const plPart = (i.maHD.split(" - ")[0] || "").toLowerCase();
+                    if (fName.includes(plPart)) {
+                        fileIdH = fId;
+                    } else if (!fileIdH) {
+                        fileIdH = fId;
+                    }
+                } else if (!fileIdH) {
+                    fileIdH = fId;
+                }
             }
         });
     }
 
+    const hasH = !!fileIdH;
+    const hasG = !!fileIdG;
+
     const hClass = hasH ? "file-badge-h-active" : "file-badge-dim";
     const gClass = hasG ? "file-badge-g-active" : "file-badge-dim";
 
+    const hClick = hasH ? `onmousedown="openDirectFile_PL('${fileIdH}', event);"` : "";
+    const gClick = hasG ? `onmousedown="openDirectFile_PL('${fileIdG}', event);"` : "";
+
     const fileStatusHTML = `
         <div class="file-status-group">
-            <span class="${hClass}">H</span>
+            <span class="${hClass}" ${hClick}>H</span>
             <span class="file-badge-divider">|</span>
-            <span class="${gClass}">G</span>
+            <span class="${gClass}" ${gClick}>G</span>
         </div>
     `;
 
@@ -396,6 +421,13 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
                     ${icon} 
                     <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${formattedMa}</span>
                 </div>
+
+                <!-- BIỂU TƯỢNG GỢI Ý UPLOAD FILE MỜ CHỚP NHÁY CHÍNH GIỮA KHI HOVER -->
+                <div class="row-upload-hint" onmousedown="if(event.button === 0) { event.stopPropagation(); openScanPanel_PL('${escapeStr(i.maHD)}'); }">
+                    <i class="bi bi-cloud-arrow-up"></i>
+                    <span>Up file here</span>
+                </div>
+
                 <div class="money-column-container" style="display: flex; align-items: center; justify-content: flex-end;">
                     ${giaTriHTML}
                     ${fileStatusHTML}
