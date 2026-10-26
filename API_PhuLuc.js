@@ -183,25 +183,37 @@ function updateContractData_PL(maHD, editType, newValue) {
   }
 }
 
+/**
+ * Xuất dữ liệu ra Google Spreadsheet:
+ * - Dùng dấu chấm phẩy (;) cho hàm =SUBTOTAL(9; ...)
+ * - Sắp xếp cấp Dự án: Nhiều hợp đồng nhất xếp trên cùng, ít hợp đồng nhất xuống dưới cùng
+ * - Sắp xếp cấp Hợp đồng nội bộ: Ngày ký từ cũ nhất đến mới nhất
+ * - Hàng cuối cùng chèn "TỔNG GIÁ TRỊ" tính bằng =SUBTOTAL(9; ...)
+ */
 function exportToNewSpreadsheet_PL(payload) {
   try {
     let filteredA = [];
     let contractsOnly = false;
+    let groupByProject = false;
 
     if (Array.isArray(payload)) {
       filteredA = payload;
     } else if (payload && typeof payload === 'object') {
       filteredA = payload.codes || [];
       contractsOnly = !!payload.contractsOnly;
+      groupByProject = !!payload.groupByProject;
     }
 
     if (!filteredA || filteredA.length === 0) {
       throw new Error("Hệ thống không nhận được mảng dữ liệu xuất tệp Spreadsheet hợp lệ!");
     }
 
-    const titleSS = contractsOnly ? "DATA HỢP ĐỒNG GỐC (CỘNG DỒN PL)" : "DATA HỢP ĐỒNG & PHỤ LỤC";
+    let titleSS = "DATA HỢP ĐỒNG";
+    if (contractsOnly && groupByProject) titleSS = "DATA HỢP ĐỒNG GỐC THEO DỰ ÁN";
+    else if (contractsOnly) titleSS = "DATA HỢP ĐỒNG GỐC (CỘNG DỒN PL)";
+    else if (groupByProject) titleSS = "DATA HỢP ĐỒNG THEO DỰ ÁN";
+
     const newSS = SpreadsheetApp.create(titleSS);
-    
     const file = DriveApp.getFileById(newSS.getId());
     const destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
     file.moveTo(destinationFolder);
@@ -212,26 +224,59 @@ function exportToNewSpreadsheet_PL(payload) {
     sheet.getRange("A1:G1").setFontWeight("bold").setBackground("#00B050").setFontColor("white").setHorizontalAlignment("center").setVerticalAlignment("middle");
     sheet.setRowHeight(1, 35);
 
-    const sourceSheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("X");
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sourceSheet = ss.getSheetByName("X");
     const data = sourceSheet.getRange(`A4:N${sourceSheet.getLastRow()}`).getValues();
-    const rowsToAdd = [];
+
+    // Tra cứu danh mục Tên dự án từ Sheet DATABCONS
+    const bconsSheet = ss.getSheetByName("DATABCONS");
+    const bconsData = bconsSheet ? bconsSheet.getRange(3, 1, Math.max(1, bconsSheet.getLastRow() - 2), 2).getValues() : [];
+    const projectNameMap = new Map();
+    bconsData.forEach(r => {
+      const pCode = (r[0] || "").toString().trim().toUpperCase();
+      const pName = (r[1] || "").toString().trim();
+      if (pCode) {
+        projectNameMap.set(pCode, pName ? `Dự án ${pCode} - ${pName}` : `Dự án ${pCode}`);
+      }
+    });
+
+    function parseDateToTime(val) {
+      if (!val) return 0;
+      if (val instanceof Date) return val.getTime();
+      const s = val.toString().trim();
+      const dmy = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (dmy) {
+        return new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10)).getTime();
+      }
+      const ymd = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (ymd) {
+        return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10)).getTime();
+      }
+      const parsed = Date.parse(s);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+
+    // 1. TRÍCH XUẤT DỮ LIỆU
+    let extractedRows = [];
 
     if (!contractsOnly) {
-      // 1. CHẾ ĐỘ XUẤT ĐẦY ĐỦ (CẢ HĐ VÀ TỪNG PHỤ LỤC RIÊNG LẺ)
       filteredA.forEach(valA => {
         const matchedRow = data.find(row => (row[0]?.toString().trim() || "") === valA.trim());
         if (matchedRow) {
-          const giaTriRaw = matchedRow[2] || "";   
-          rowsToAdd.push([
-            matchedRow[7] || "", matchedRow[0] || "", matchedRow[13] || "", 
-            matchedRow[10] || "", matchedRow[1] || "", 
-            (giaTriRaw === "" || isNaN(giaTriRaw)) ? "" : Number(giaTriRaw), 
-            matchedRow[12] || ""
-          ]);
+          const giaTriRaw = matchedRow[2] || "";
+          const projCode = (matchedRow[13] || "").toString().trim().toUpperCase();
+          extractedRows.push({
+            projCode: projCode,
+            rowData: [
+              matchedRow[7] || "", matchedRow[0] || "", matchedRow[13] || "", 
+              matchedRow[10] || "", matchedRow[1] || "", 
+              (giaTriRaw === "" || isNaN(giaTriRaw)) ? "" : Number(giaTriRaw), 
+              matchedRow[12] || ""
+            ]
+          });
         }
       });
     } else {
-      // 2. CHẾ ĐỘ CHỈ XUẤT HỢP ĐỒNG GỐC: CỘNG DỒN TẤT CẢ GIÁ TRỊ PHỤ LỤC VÀO HỢP ĐỒNG MẸ
       const uniqueParentCodes = [];
       const seenParents = new Set();
 
@@ -252,45 +297,152 @@ function exportToNewSpreadsheet_PL(payload) {
         const parentRow = data.find(row => (row[0]?.toString().trim() || "").toUpperCase() === parentUpper);
         
         if (parentRow) {
-          // Lấy giá trị HĐ gốc
           let totalContractValue = Number(parentRow[2]) || 0;
-
-          // Tìm tất cả phụ lục thuộc HĐ này trong Sheet X và cộng dồn giá trị
           data.forEach(r => {
             const rCode = (r[0] || "").toString().trim().toUpperCase();
             if (rCode.startsWith("PL") && rCode.includes(parentUpper)) {
-              const annexVal = Number(r[2]) || 0;
-              totalContractValue += annexVal;
+              totalContractValue += (Number(r[2]) || 0);
             }
           });
 
-          rowsToAdd.push([
-            parentRow[7] || "",
-            parentRow[0] || "",
-            parentRow[13] || "",
-            parentRow[10] || "",
-            parentRow[1] || "",
-            totalContractValue,
-            parentRow[12] || ""
-          ]);
+          const projCode = (parentRow[13] || "").toString().trim().toUpperCase();
+          extractedRows.push({
+            projCode: projCode,
+            rowData: [
+              parentRow[7] || "", parentRow[0] || "", parentRow[13] || "",
+              parentRow[10] || "", parentRow[1] || "",
+              totalContractValue, parentRow[12] || ""
+            ]
+          });
         }
       });
     }
 
-    if (rowsToAdd.reverse().length > 0) {
+    // 2. TẠO CẤU TRÚC HÀNG VÀ CHÈN HÀM SUBTOTAL(9; ...)
+    const rowsToAdd = [];
+    const groupHeaderRowMeta = [];
+
+    if (!groupByProject) {
+      extractedRows.sort((a, b) => parseDateToTime(a.rowData[0]) - parseDateToTime(b.rowData[0]));
+      extractedRows.forEach(item => rowsToAdd.push(item.rowData));
+    } else {
+      // Gom nhóm theo mã dự án
+      const groupsMap = new Map();
+      extractedRows.forEach(item => {
+        const key = item.projCode || "KHAC";
+        if (!groupsMap.has(key)) groupsMap.set(key, []);
+        groupsMap.get(key).push(item.rowData);
+      });
+
+      // SẮP XẾP CÁC DỰ ÁN: NHIỀU HỢP ĐỒNG NHẤT XẾP TRÊN CÙNG, ÍT HỢP ĐỒNG NHẤT XUỐNG DƯỚI CÙNG
+      const sortedProjectGroups = Array.from(groupsMap.entries()).sort((a, b) => {
+        const countDiff = b[1].length - a[1].length; // Sắp xếp giảm dần theo số lượng hợp đồng
+        if (countDiff !== 0) return countDiff;
+        return a[0].localeCompare(b[0], 'vi', { numeric: true });
+      });
+
+      sortedProjectGroups.forEach(([pCode, rowsInGroup]) => {
+        // A. Sắp xếp ngày ký từ cũ nhất đến mới nhất cho từng dự án
+        rowsInGroup.sort((a, b) => {
+          const tA = parseDateToTime(a[0]);
+          const tB = parseDateToTime(b[0]);
+          if (tA !== tB) return tA - tB;
+          return (a[1] || "").toString().localeCompare((b[1] || "").toString(), 'vi', { numeric: true });
+        });
+
+        const headerTitle = projectNameMap.get(pCode) || (pCode === "KHAC" ? "Dự án khác" : `Dự án ${pCode}`);
+        const headerRowIdx = rowsToAdd.length + 2; // Hàng 1 là tiêu đề cột chính
+        const startRow = headerRowIdx + 1;
+        const endRow = headerRowIdx + rowsInGroup.length;
+
+        // B. Chèn hàm SUBTOTAL(9; ...) dùng dấu chấm phẩy (;)
+        const projectFormula = rowsInGroup.length > 0 
+          ? `=SUBTOTAL(9; F${startRow}:F${endRow})` 
+          : 0;
+
+        groupHeaderRowMeta.push({
+          rowIdx: headerRowIdx,
+          title: headerTitle
+        });
+
+        // Chèn dòng tiêu đề dự án chứa công thức SUBTOTAL tại Cột F
+        rowsToAdd.push([headerTitle, "", "", "", "", projectFormula, ""]);
+
+        // Chèn các hợp đồng thuộc dự án
+        rowsInGroup.forEach(r => rowsToAdd.push(r));
+      });
+    }
+
+    // C. HÀNG TỔNG GIÁ TRỊ TOÀN BỘ CÁC DỰ ÁN: SUBTOTAL(9; ...) dùng dấu chấm phẩy (;)
+    let grandTotalRowIdx = 0;
+    if (rowsToAdd.length > 0) {
+      grandTotalRowIdx = rowsToAdd.length + 2;
+      const grandTotalFormula = `=SUBTOTAL(9; F2:F${grandTotalRowIdx - 1})`;
+      rowsToAdd.push(["TỔNG GIÁ TRỊ HỢP ĐỒNG TRƯỚC VAT", "", "", "", "", grandTotalFormula, ""]);
+    }
+
+    if (rowsToAdd.length > 0) {
       sheet.getRange(2, 1, rowsToAdd.length, 7).setValues(rowsToAdd);
     }
 
     const lastDataRow = sheet.getLastRow();
-    const fullRange = sheet.getRange(1, 1, lastDataRow, 7);
-    fullRange.setVerticalAlignment("middle").setFontFamily("Arial").setFontSize(11).setWrap(true).setBorder(true, true, true, true, true, true, "#000000", SpreadsheetApp.BorderStyle.SOLID);
-    
-    sheet.getRange("A2:A" + lastDataRow).setHorizontalAlignment("center");
-    sheet.getRange("B2:B" + lastDataRow).setHorizontalAlignment("left");
-    sheet.getRange("C2:C" + lastDataRow).setHorizontalAlignment("center");
-    sheet.getRange("D2:E" + lastDataRow).setHorizontalAlignment("left");
-    if (lastDataRow >= 2) sheet.getRange("F2:F" + lastDataRow).setNumberFormat("#,##0").setHorizontalAlignment("right");
-    sheet.getRange("G2:G" + lastDataRow).setHorizontalAlignment("center");
+    if (lastDataRow >= 2) {
+      const fullRange = sheet.getRange(1, 1, lastDataRow, 7);
+      fullRange.setVerticalAlignment("middle")
+               .setFontFamily("Arial")
+               .setFontSize(11)
+               .setWrap(true)
+               .setBorder(true, true, true, true, true, true, "#000000", SpreadsheetApp.BorderStyle.SOLID);
+      
+      sheet.getRange("A2:A" + lastDataRow).setHorizontalAlignment("center");
+      sheet.getRange("B2:B" + lastDataRow).setHorizontalAlignment("left");
+      sheet.getRange("C2:C" + lastDataRow).setHorizontalAlignment("center");
+      sheet.getRange("D2:E" + lastDataRow).setHorizontalAlignment("left");
+      sheet.getRange("F2:F" + lastDataRow).setNumberFormat("#,##0").setHorizontalAlignment("right");
+      sheet.getRange("G2:G" + lastDataRow).setHorizontalAlignment("center");
+
+      // 3. ĐỊNH DẠNG DÒNG TIÊU ĐỀ DỰ ÁN VÀ CỘT F
+      groupHeaderRowMeta.forEach(item => {
+        const rIdx = item.rowIdx;
+        sheet.getRange(rIdx, 1, 1, 5)
+             .merge()
+             .setValue(item.title)
+             .setFontWeight("bold")
+             .setBackground("#D9E1F2")
+             .setFontColor("#1F4E79")
+             .setHorizontalAlignment("left");
+
+        sheet.getRange(rIdx, 6)
+             .setFontWeight("bold")
+             .setBackground("#D9E1F2")
+             .setFontColor("#1F4E79")
+             .setNumberFormat("#,##0")
+             .setHorizontalAlignment("right");
+
+        sheet.getRange(rIdx, 7).setBackground("#D9E1F2");
+        sheet.setRowHeight(rIdx, 30);
+      });
+
+      // 4. ĐỊNH DẠNG HÀNG "TỔNG GIÁ TRỊ" CUỐI CÙNG
+      if (grandTotalRowIdx > 0) {
+        sheet.getRange(grandTotalRowIdx, 1, 1, 5)
+             .merge()
+             .setFontWeight("bold")
+             .setBackground("#C6E0B4")
+             .setFontColor("#274E13")
+             .setHorizontalAlignment("left");
+
+        sheet.getRange(grandTotalRowIdx, 6)
+             .setFontWeight("bold")
+             .setBackground("#C6E0B4")
+             .setFontColor("#274E13")
+             .setNumberFormat("#,##0")
+             .setHorizontalAlignment("right");
+
+        sheet.getRange(grandTotalRowIdx, 7).setBackground("#C6E0B4");
+        sheet.setRowHeight(grandTotalRowIdx, 32);
+      }
+    }
 
     const colWidths = [110, 350, 75, 500, 800, 170, 170];
     colWidths.forEach((width, index) => {

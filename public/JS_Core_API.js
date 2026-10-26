@@ -818,6 +818,9 @@ function submitData_TB() {
 /**
  * Biến lưu trữ tạm thời danh sách mã cần xuất
  */
+/**
+ * Biến lưu trữ tạm thời danh sách mã cần xuất
+ */
 let exportDataCache_PL = {
     allCodes: [],
     parentCodes: []
@@ -828,6 +831,13 @@ function toggleExportOption_UI(event) {
     if (cb && event.target !== cb) {
         cb.checked = !cb.checked;
         updateExportSummary_PL();
+    }
+}
+
+function toggleExportGroupByProject_UI(event) {
+    const cb = document.getElementById("exportGroupByProjectCheckbox-pl");
+    if (cb && event.target !== cb) {
+        cb.checked = !cb.checked;
     }
 }
 
@@ -852,7 +862,6 @@ function exportFilteredToNewSheet_PL() {
     const inputField = document.getElementById("field0-pl");
     if (!inputField) return;
 
-    // Lấy query tìm kiếm hiện hành
     let query = "";
     if (selectedContractMaHD_PL && inputField.value.trim().toUpperCase() === selectedContractMaHD_PL.toUpperCase()) {
         query = (activeSearchQuery_PL || "").toLowerCase().trim();
@@ -875,7 +884,7 @@ function exportFilteredToNewSheet_PL() {
         return;
     }
 
-    // Bóc tách danh sách các Hợp đồng gốc duy nhất
+    // Bóc tách danh sách HĐ gốc duy nhất
     const uniqueParentMap = new Map();
     filteredA.forEach(code => {
         let parentCode = code.trim();
@@ -894,9 +903,11 @@ function exportFilteredToNewSheet_PL() {
     const modal = document.getElementById("confirmExportModal");
     if (!modal) return;
 
-    // Mặc định uncheck tùy chọn khi mở modal
-    const cb = document.getElementById("exportContractsOnlyCheckbox-pl");
-    if (cb) cb.checked = false;
+    // Reset mặc định 2 checkbox khi mở modal
+    const cbContractsOnly = document.getElementById("exportContractsOnlyCheckbox-pl");
+    const cbGroupByProject = document.getElementById("exportGroupByProjectCheckbox-pl");
+    if (cbContractsOnly) cbContractsOnly.checked = false;
+    if (cbGroupByProject) cbGroupByProject.checked = false;
 
     updateExportSummary_PL();
 
@@ -909,20 +920,20 @@ function exportFilteredToNewSheet_PL() {
     };
 
     document.getElementById("confirmExportBtn").onclick = () => {
-        const isContractsOnly = cb ? cb.checked : false;
+        const isContractsOnly = cbContractsOnly ? cbContractsOnly.checked : false;
+        const isGroupByProject = cbGroupByProject ? cbGroupByProject.checked : false;
         window.cancelExport();
 
         const loading = document.getElementById("contractLoading");
         if (loading) {
             loading.style.display = "flex";
-            loading.querySelector('p').textContent = isContractsOnly 
-                ? "EXPORTING CONSOLIDATED CONTRACTS..." 
-                : "SYSTEM EXPORTING DATA SPREADSHEET...";
+            loading.querySelector('p').textContent = "SYSTEM EXPORTING DATA SPREADSHEET...";
         }
 
         callBackend("exportToNewSpreadsheet_PL", {
             codes: filteredA,
-            contractsOnly: isContractsOnly
+            contractsOnly: isContractsOnly,
+            groupByProject: isGroupByProject
         })
         .then(url => {
             if (loading) loading.style.display = "none";
