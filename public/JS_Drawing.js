@@ -34,7 +34,32 @@ let projectFilesCache_Drawing = {};
 let projectFullDataCache_Drawing = {}; 
 let pendingFetches_Drawing = new Set();
 let activeAiFiles = new Set(); // Đồng bộ tên biến toàn cục theo dõi file đang chạy AI ngầm
+// Quản lý danh sách Node PDF được ghim (Pin) lưu trong LocalStorage
+let pinnedDrawingNodes = new Set();
+try {
+    const cachedPinned = localStorage.getItem('bcons_pinned_drawing_nodes');
+    if (cachedPinned) pinnedDrawingNodes = new Set(JSON.parse(cachedPinned));
+} catch(e) {}
 
+// 1. Huy hiệu Ghim ĐÃ GHIM: Vòng tròn viền XANH LÁ (#2ECC71) đồng bộ viền node xanh
+const PIN_ACTIVE_SVG = "data:image/svg+xml;utf8," + encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+  <circle cx="18" cy="18" r="14" fill="#021a31" stroke="#2ECC71" stroke-width="2"/>
+  <g transform="translate(9.6, 9.8) scale(1.05)" fill="#2ECC71">
+    <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.902-1.414.707-.195-.195.512-1.22.707-1.414l3.182-3.182-2.828-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146z"/>
+  </g>
+</svg>
+`.trim());
+
+// 2. Huy hiệu Ghim CHƯA GHIM: Vòng tròn viền VÀNG (#FFBA08) đồng bộ viền node vàng, icon ghim mờ
+const PIN_DIM_SVG = "data:image/svg+xml;utf8," + encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+  <circle cx="18" cy="18" r="14" fill="#021a31" stroke="#FFBA08" stroke-width="2"/>
+  <g transform="translate(9.6, 9.8) scale(1.05)" fill="rgba(255, 186, 8, 0.3)">
+    <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.902-1.414.707-.195-.195.512-1.22.707-1.414l3.182-3.182-2.828-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146z"/>
+  </g>
+</svg>
+`.trim());
 /**
  * 2. KHỞI CHẠY & NẠP DỰ ÁN (ĐỒNG BỘ BỘ NẠP ĐÁY BẢNG HƯỚNG DẪN TĨNH)
  */
@@ -573,6 +598,7 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
                         'font-weight': 'bold' 
                     } 
                 },
+                /* 1. MỌI NODE FILE PDF ĐỀU CÓ HUY HIỆU GHIM Ở ĐỈNH (MẶC ĐỊNH MỜ) */
                 { 
                     selector: 'node[?fileId]', 
                     style: { 
@@ -587,8 +613,30 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
                         'height': 100, 
                         'text-valign': 'center', 
                         'line-height': 1.4,
-                        'color': (el) => el.data('color').toUpperCase() === '#FFBA08' ? '#FFFFFF' : el.data('color')
+                        'color': (el) => el.data('color').toUpperCase() === '#FFBA08' ? '#FFFFFF' : el.data('color'),
+                        /* Huy hiệu ghim luôn xuất hiện trên viền (kích thước 34px) */
+                        'bounds-expansion': 28,
+                        'background-image': PIN_DIM_SVG,
+                        'background-clip': 'none',
+                        'background-fit': 'none',
+                        'background-width': '34px',
+                        'background-height': '34px',
+                        'background-position-x': '50%',
+                        'background-position-y': '-17px',
+                        'background-image-containment': 'over'
                     } 
+                },
+                /* 2. KHI ĐƯỢC GHIM: VIỀN XANH LÁ MẢNH 1.5px (BỎ IN ĐẬM VIỀN) + HUY HIỆU XANH LÁ */
+                {
+                    selector: 'node[?isPinned]',
+                    style: {
+                        'border-width': 1.5, /* BỎ IN ĐẬM: Giữ nguyên độ mảnh viền 1.5px */
+                        'border-color': '#2ECC71', /* Chuyển màu viền sang xanh lá */
+                        'border-style': 'solid',
+                        'shadow-blur': 0,
+                        'shadow-opacity': 0,
+                        'background-image': PIN_ACTIVE_SVG
+                    }
                 },
                 { 
                     selector: 'node[?isDate]', 
@@ -778,7 +826,26 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
             }).run();
         });
 
-        cyInstance.on('tap', 'node', (evt) => { if (evt.target.data('fileId')) updatePanelContent(evt.target.data()); });
+        cyInstance.on('tap', 'node', (evt) => {
+            const node = evt.target;
+            const fileId = node.data('fileId');
+            if (!fileId) return;
+
+            const nodePos = node.position();
+            const topPinY = nodePos.y - (node.height() / 2);
+            const pinX = nodePos.x;
+            const clickDist = Math.hypot(evt.position.x - pinX, evt.position.y - topPinY);
+
+            // 1. Click trúng nút Ghim: Đổi trạng thái Ghim
+            if (clickDist <= 22) {
+                togglePinNode_Drawing(fileId);
+            }
+
+            // 2. Tự động đồng bộ chọn node trên sơ đồ và mở dữ liệu bên panel (kể cả khi bấm Ghim)
+            cyInstance.$(':selected').unselect();
+            node.select();
+            updatePanelContent(node.data());
+        });
         cyInstance.on('dbltap', 'node', (evt) => { if (evt.target.data('fileId') && evt.target.data('url') !== "#") window.open(evt.target.data('url'), '_blank'); });
         cyInstance.on('mouseover', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'pointer');
         cyInstance.on('mouseout', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'default');
@@ -792,12 +859,11 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
 function buildCytoscapeElements(data) {
     let elements = [], addedNodes = new Set();
     const GOLD = '#FFBA08', DEPT_COLORS = { 'STR': '#BCC6CC', 'ARC': '#50C878', 'MEP': '#CD7F32', 'KHÁC': GOLD };
-    const DEPT_ORDER = { 'STR': 1, 'ARC': 2, 'MEP': 3, 'KHÁC': 4 };
 
-    function addNode(id, label, parentId, nodeColor, fileId = null, url = null, isDept = false, isDate = false, type = null, fullName = null, sortValue = 0) {
+    function addNode(id, label, parentId, nodeColor, fileId = null, url = null, isDept = false, isDate = false, type = null, fullName = null, sortValue = 0, isPinned = false) {
         if (!addedNodes.has(id)) {
             elements.push({ 
-                data: { id, label, color: nodeColor, fileId, url, isDept, isDate, type, fullName, sortValue },
+                data: { id, label, color: nodeColor, fileId, url, isDept, isDate, type, fullName, sortValue, isPinned },
                 selectable: !!fileId 
             });
             addedNodes.add(id);
@@ -830,9 +896,7 @@ function buildCytoscapeElements(data) {
             
             const svA = a.sortValue || 0;
             const svB = b.sortValue || 0;
-            if (svA !== svB) {
-                return svB - svA;
-            }
+            if (svA !== svB) return svB - svA;
             
             return a.fileName.localeCompare(b.fileName, 'vi', { numeric: true, sensitivity: 'base' });
         });
@@ -848,14 +912,15 @@ function buildCytoscapeElements(data) {
                 /PĐX/gi, /BVTKTC/gi, /TKBVTC/gi, /STR/gi, /ARC/gi, /MEP/gi, /\d{6}/g
             ];
 
-            patterns.forEach(p => {
-                namePart = namePart.replace(p, "");
-            });
+            patterns.forEach(p => { namePart = namePart.replace(p, ""); });
 
             let cleanName = namePart.replace(/_+/g, "_").replace(/\s+/g, " ").replace(/^[_ \s]+|[_ \s]+$/g, "");
-            // Loại bỏ hoàn toàn đuôi mở rộng .pdf / .xlsx / .xls trên nhãn hiển thị
-            const smartName = cleanName ? cleanName : f.fileName.replace(/\.(pdf|xlsx|xls)$/i, "");
+            const rawSmartName = cleanName ? cleanName : f.fileName.replace(/\.(pdf|xlsx|xls)$/i, "");
             
+            // Trạng thái ghim được điều khiển bằng huy hiệu phía trên, giữ tên sạch sẽ
+            const isPinned = pinnedDrawingNodes.has(f.fileId);
+            const smartName = rawSmartName;
+
             const dateId = f.sortValue || 'nodate', deptKey = f.dept.toUpperCase(), deptColor = DEPT_COLORS[deptKey] || DEPT_COLORS['KHÁC'];
             const formattedDateLabel = (f.dateLabel || "--/--/----").replace(/\//g, "-");
             
@@ -877,7 +942,7 @@ function buildCytoscapeElements(data) {
                     addNode(sNodeHầm, 'HẦM', dNode, GOLD, null, null, false, false, null, null, f.sortValue);
                     addNode(deptIdHầm, f.dept.toUpperCase(), sNodeHầm, deptColor, null, null, true, false, null, null, f.sortValue);
 
-                    addNode(f.fileId, smartName, null, deptColor, f.fileId, f.url, false, false, f.type, f.fileName, f.sortValue);
+                    addNode(f.fileId, smartName, null, deptColor, f.fileId, f.url, false, false, f.type, f.fileName, f.sortValue, isPinned);
 
                     elements.push({ data: { source: deptIdThân, target: f.fileId, color: deptColor, arrowShape: 'triangle' }, selectable: false });
                     elements.push({ data: { source: deptIdHầm, target: f.fileId, color: deptColor, arrowShape: 'triangle' }, selectable: false });
@@ -891,7 +956,7 @@ function buildCytoscapeElements(data) {
                     addNode(sNode, f.branch.toUpperCase(), dNode, GOLD, null, null, false, false, null, null, f.sortValue);
                     addNode(deptId, f.dept.toUpperCase(), sNode, deptColor, null, null, true, false, null, null, f.sortValue);
                     
-                    addNode(f.fileId, smartName, deptId, deptColor, f.fileId, f.url, false, false, f.type, f.fileName, f.sortValue);
+                    addNode(f.fileId, smartName, deptId, deptColor, f.fileId, f.url, false, false, f.type, f.fileName, f.sortValue, isPinned);
                 }
             } else {
                 const bParent = f.type === 'UPDATE' ? 'branch_update' : 'branch_proposal';
@@ -902,8 +967,7 @@ function buildCytoscapeElements(data) {
                 seenFiles.add(dupKey);
 
                 addNode(dNode, formattedDateLabel, bParent, GOLD, null, null, false, true, null, null, f.sortValue);
-                
-                addNode(f.fileId, smartName, dNode, deptColor, f.fileId, f.url, false, false, f.type, f.fileName, f.sortValue);
+                addNode(f.fileId, smartName, dNode, deptColor, f.fileId, f.url, false, false, f.type, f.fileName, f.sortValue, isPinned);
             }
         });
     }
@@ -952,12 +1016,15 @@ function updatePanelContent(nodeData) {
             </div>`;
     }
 
+    const isPinnedNode = pinnedDrawingNodes.has(nodeData.fileId);
+
     document.getElementById('dp-file-list').innerHTML = `
         <div class="existing-file-wrapper" style="padding-right: 5px !important;">
             <div class="existing-file-info" onclick="window.open('${nodeData.url}', '_blank')" style="flex:1; overflow:hidden; display:flex; align-items:center;">
                 <i class="bi bi-file-earmark-pdf-fill file-pdf" style="margin-right:10px"></i>
                 <span class="file-name-text" style="color:#FFBA08 !important; font-size:12px; font-weight:700;">${fileNameClean}</span>
             </div>
+
             <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative;">
                 <button type="button" class="btn-trash-simple btn-scale-hover" onclick="triggerEditDrawing_Client('${nodeData.fileId}', '${escapeStr(nodeData.fullName || fileNameWithExt)}')" style="color: #FFBA08 !important;">
                     <i class="bi bi-pencil-square" style="font-size: 15px;"></i>
@@ -1743,11 +1810,13 @@ let originalTaskIndex = -1;
 let originalTaskContainer = null;
 let isDropCommitted = false;
 
+/**
+ * 6. LOGIC KÉO THẢ: NỀN BÓNG KÉO MÀU XÁM ĐẶC (#546375) TƯƠNG ĐƯƠNG BẢN GỐC, 100% KHÔNG TRONG SUỐT
+ */
 function handleDragStart(e) {
     draggedElement = e.currentTarget;
     isDropCommitted = false;
-    
-    // Lưu lại vị trí xuất phát ban đầu để phục hồi nếu hủy kéo
+
     originalTaskContainer = draggedElement.parentElement;
     const siblings = Array.from(originalTaskContainer.querySelectorAll('.task-item'));
     originalTaskIndex = siblings.indexOf(draggedElement);
@@ -1755,14 +1824,175 @@ function handleDragStart(e) {
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", draggedElement.id);
 
-    // Đặt placeholder ngay sau phần tử đang kéo
-    draggedElement.after(placeholder);
+    try {
+        const scaleY = 0.85; // Thu nhỏ chiều cao 85%
+        const rect = draggedElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
 
-    requestAnimationFrame(() => {
+        const wrapper = document.createElement('div');
+        wrapper.style.position = 'fixed';
+        wrapper.style.top = '-9999px';
+        wrapper.style.left = '-9999px';
+        wrapper.style.width = w + 'px';
+        wrapper.style.height = (h * scaleY) + 'px';
+        wrapper.style.pointerEvents = 'none';
+        wrapper.style.opacity = '1';
+
+        const ghost = draggedElement.cloneNode(true);
+        ghost.classList.remove('is-dragging');
+
+        const ghostInput = ghost.querySelector('input');
+        const origInput = draggedElement.querySelector('input');
+        if (ghostInput && origInput) {
+            ghostInput.value = origInput.value;
+        }
+
+        ghost.style.width = w + 'px';
+        ghost.style.height = h + 'px';
+        ghost.style.margin = '0';
+        
+        // MÀU XÁM ĐẶC TƯƠNG ĐƯƠNG BẢN 40% TRẮNG TRƯỚC ĐÓ, 100% KHÔNG TRONG SUỐT
+        ghost.style.background = '#546375';
+        ghost.style.opacity = '1';
+        ghost.style.border = '1px solid rgba(255, 255, 255, 0.25)';
+        ghost.style.borderRadius = '6px';
+        ghost.style.boxShadow = '0 12px 28px rgba(0, 0, 0, 0.85)';
+        ghost.style.transform = `scaleY(${scaleY})`;
+        ghost.style.transformOrigin = '0 0';
+
+        wrapper.appendChild(ghost);
+        document.body.appendChild(wrapper);
+
+        const clickX = e.clientX ? (e.clientX - rect.left) : 16;
+        const clickY = e.clientY ? (e.clientY - rect.top) : (h / 2);
+        const offsetX = Math.max(14, clickX);
+        const offsetY = clickY * scaleY;
+
+        e.dataTransfer.setDragImage(wrapper, offsetX, offsetY);
+
+        setTimeout(() => {
+            wrapper.remove();
+        }, 0);
+    } catch (err) {
+        console.warn("Lỗi drag image:", err);
+    }
+
+    setTimeout(() => {
         if (draggedElement) {
             draggedElement.classList.add('is-dragging');
         }
+    }, 0);
+}
+
+function allowDrop(e) {
+    e.preventDefault();
+    if (!draggedElement) return;
+    e.dataTransfer.dropEffect = "move";
+
+    const container = e.currentTarget;
+    container.classList.add('drag-over-active');
+
+    const draggingOverItem = e.target.closest('#dp-task-list .task-item');
+
+    // HOÁN ĐỔI VỊ TRÍ LẬP TỨC KHI VỪA CHẠM VÀO HÀNG KHÁC (KHÔNG CHỜ KÉO XUỐNG ĐÁY)
+    if (draggingOverItem && draggingOverItem !== draggedElement) {
+        const isDraggingDown = !!(draggedElement.compareDocumentPosition(draggingOverItem) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+        if (isDraggingDown) {
+            // Kéo xuống: Hàng bên dưới lập tức nhảy lên trên nhường chỗ
+            draggingOverItem.after(draggedElement);
+        } else {
+            // Kéo lên: Hàng bên trên lập tức nhảy xuống dưới nhường chỗ
+            draggingOverItem.before(draggedElement);
+        }
+    } else if (container && !container.contains(draggedElement)) {
+        const emptyMsg = container.querySelector('.empty-msg');
+        if (emptyMsg) {
+            emptyMsg.before(draggedElement);
+        } else {
+            container.appendChild(draggedElement);
+        }
+    }
+
+    // Cập nhật nhãn thông báo rỗng
+    document.querySelectorAll('#dp-task-list .task-group-container').forEach(group => {
+        const taskCount = group.querySelectorAll('.task-item').length;
+        const emptyMsg = group.querySelector('.empty-msg');
+        if (emptyMsg) {
+            emptyMsg.style.display = taskCount > 0 ? 'none' : 'flex';
+        }
     });
+}
+
+function finalizeTaskReorder(isCanceled = false) {
+    document.querySelectorAll('#dp-task-list .task-group-container').forEach(c => {
+        c.classList.remove('drag-over-active');
+    });
+
+    if (!draggedElement) return;
+
+    if (isCanceled && originalTaskContainer) {
+        // Nếu hủy kéo (ấn ESC hoặc thả ra ngoài): Đưa về vị trí ban đầu
+        const siblings = Array.from(originalTaskContainer.querySelectorAll('.task-item')).filter(el => el !== draggedElement);
+        if (originalTaskIndex >= 0 && originalTaskIndex < siblings.length) {
+            siblings[originalTaskIndex].before(draggedElement);
+        } else {
+            originalTaskContainer.appendChild(draggedElement);
+        }
+    }
+
+    draggedElement.classList.remove('is-dragging');
+    draggedElement.setAttribute('draggable', 'false');
+    draggedElement = null;
+    originalTaskContainer = null;
+    originalTaskIndex = -1;
+    isDropCommitted = false;
+
+    // Cập nhật nhãn rỗng của cả 2 nhóm
+    document.querySelectorAll('#dp-task-list .task-group-container').forEach(group => {
+        const taskCount = group.querySelectorAll('.task-item').length;
+        const emptyMsg = group.querySelector('.empty-msg');
+        if (emptyMsg) {
+            emptyMsg.style.display = taskCount > 0 ? 'none' : 'flex';
+        }
+    });
+
+    if (isCanceled || !currentFileId || !drawingTaskCache[currentFileId]) return;
+
+    if (!drawingTaskSnapshot) {
+        drawingTaskSnapshot = JSON.parse(JSON.stringify(drawingTaskCache[currentFileId]));
+    }
+
+    // Đọc chính xác thứ tự mới sau khi hoán đổi trong DOM
+    const taskElements = Array.from(document.querySelectorAll('#dp-task-list .task-item'));
+    const updatedTasks = taskElements.map(el => {
+        const id = el.id.replace('task-', '');
+        const oldData = drawingTaskCache[currentFileId].find(t => t.taskId === id) || {};
+        const groupContainer = el.closest('.task-group-container');
+        const teamCode = groupContainer ? groupContainer.id.replace('drop-zone-', '') : (oldData.team || 'XD');
+        return {
+            taskId: id,
+            description: el.querySelector('.task-desc-edit')?.value || oldData.description || "",
+            team: teamCode
+        };
+    });
+
+    // So sánh thứ tự mới với Snapshot ban đầu
+    const isUnchanged = updatedTasks.length === drawingTaskSnapshot.length &&
+        updatedTasks.every((t, i) =>
+            t.taskId === drawingTaskSnapshot[i].taskId &&
+            t.team === drawingTaskSnapshot[i].team
+        );
+
+    if (isUnchanged) {
+        if (saveOrderTimer) cancelDrawingSync();
+        return;
+    }
+
+    // Lưu cache và kích hoạt đếm ngược lưu 10s
+    drawingTaskCache[currentFileId] = updatedTasks;
+    triggerDrawingSync_10s();
 }
 
 function handleDragEnterZone(e) {
@@ -1780,36 +2010,7 @@ function handleDragLeaveZone(e) {
     }
 }
 
-function allowDrop(e) {
-    e.preventDefault();
-    if (!draggedElement) return;
-    e.dataTransfer.dropEffect = "move";
 
-    const container = e.currentTarget;
-    container.classList.add('drag-over-active');
-
-    const draggingOverItem = e.target.closest('#dp-task-list .task-item:not(.is-dragging)');
-
-    if (draggingOverItem && draggingOverItem !== placeholder) {
-        const rect = draggingOverItem.getBoundingClientRect();
-        if (e.clientY < (rect.top + rect.height / 2)) {
-            if (placeholder.nextSibling !== draggingOverItem) draggingOverItem.before(placeholder);
-        } else {
-            if (placeholder !== draggingOverItem.nextSibling) draggingOverItem.after(placeholder);
-        }
-    } else if (container && !container.contains(placeholder)) {
-        container.appendChild(placeholder);
-    }
-
-    // Ẩn/hiện chữ "Không có dữ liệu..." mượt mà ngay khi kéo lướt qua
-    document.querySelectorAll('#dp-task-list .task-group-container').forEach(group => {
-        const hasTasks = group.querySelectorAll('.task-item:not(.is-dragging)').length > 0 || group.contains(placeholder);
-        const emptyMsg = group.querySelector('.empty-msg');
-        if (emptyMsg) {
-            emptyMsg.style.display = hasTasks ? 'none' : 'flex';
-        }
-    });
-}
 
 function handleDragEnd(e) { if (!draggedElement) return; if (placeholder.parentElement) placeholder.replaceWith(draggedElement); draggedElement.classList.remove('dragging'); draggedElement.setAttribute('draggable', 'false'); draggedElement = null; }
 
@@ -2114,89 +2315,6 @@ function handleDragEnd(e) {
     finalizeTaskReorder(isCanceled);
 }
 
-/**
- * HOÀN TẤT KÉO THẢ & BẢO TOÀN TRẠNG THÁI SNAPSHOT
- */
-function finalizeTaskReorder(isCanceled = false) {
-    // 1. Dọn sạch class active trên cả 2 container
-    document.querySelectorAll('#dp-task-list .task-group-container').forEach(c => {
-        c.classList.remove('drag-over-active');
-    });
-
-    if (!draggedElement) return;
-
-    if (isCanceled) {
-        // Trường hợp người dùng hủy kéo: Hoàn trả phần tử về đúng vị trí xuất phát ban đầu
-        if (placeholder.parentElement) placeholder.remove();
-        if (originalTaskContainer) {
-            const siblings = Array.from(originalTaskContainer.querySelectorAll('.task-item'));
-            if (originalTaskIndex >= 0 && originalTaskIndex < siblings.length) {
-                siblings[originalTaskIndex].before(draggedElement);
-            } else {
-                originalTaskContainer.appendChild(draggedElement);
-            }
-        }
-    } else {
-        // Trường hợp thả hợp lệ: Thế chỗ placeholder
-        if (placeholder && placeholder.parentElement) {
-            placeholder.replaceWith(draggedElement);
-        }
-    }
-
-    draggedElement.classList.remove('is-dragging');
-    draggedElement.setAttribute('draggable', 'false');
-    draggedElement = null;
-    originalTaskContainer = null;
-    originalTaskIndex = -1;
-    isDropCommitted = false;
-
-    // 2. Cập nhật lại nhãn "Không có dữ liệu..." ở cả 2 nhóm
-    document.querySelectorAll('#dp-task-list .task-group-container').forEach(group => {
-        const hasTasks = group.querySelectorAll('.task-item').length > 0;
-        const emptyMsg = group.querySelector('.empty-msg');
-        if (emptyMsg) {
-            emptyMsg.style.display = hasTasks ? 'none' : 'flex';
-        }
-    });
-
-    if (isCanceled || !currentFileId || !drawingTaskCache[currentFileId]) return;
-
-    // 3. Bảo toàn snapshot gốc nếu chưa có
-    if (!drawingTaskSnapshot) {
-        drawingTaskSnapshot = JSON.parse(JSON.stringify(drawingTaskCache[currentFileId]));
-    }
-
-    // 4. Quét chính xác thứ tự mới chỉ bên trong #dp-task-list
-    const taskElements = Array.from(document.querySelectorAll('#dp-task-list .task-item'));
-    const updatedTasks = taskElements.map(el => {
-        const id = el.id.replace('task-', '');
-        const oldData = drawingTaskCache[currentFileId].find(t => t.taskId === id) || {};
-        const groupContainer = el.closest('.task-group-container');
-        const teamCode = groupContainer ? groupContainer.id.replace('drop-zone-', '') : (oldData.team || 'XD');
-        return {
-            taskId: id,
-            description: el.querySelector('.task-desc-edit')?.value || oldData.description || "",
-            team: teamCode
-        };
-    });
-
-    // 5. So sánh với bản gốc
-    const isUnchanged = updatedTasks.length === drawingTaskSnapshot.length &&
-        updatedTasks.every((t, i) =>
-            t.taskId === drawingTaskSnapshot[i].taskId &&
-            t.team === drawingTaskSnapshot[i].team
-        );
-
-    if (isUnchanged) {
-        if (saveOrderTimer) cancelDrawingSync();
-        return;
-    }
-
-    // 6. Cập nhật cache và kích hoạt đếm ngược 10 giây
-    drawingTaskCache[currentFileId] = updatedTasks;
-    triggerDrawingSync_10s();
-}
-
 function addNewTaskItem() {
     // 🚀 BỔ SUNG: Chụp lại trạng thái gốc trước khi chèn phần tử trống để cho phép hoàn tác xóa bỏ dòng mới hoàn toàn nếu bấm Undo
     if (!drawingTaskSnapshot) {
@@ -2488,4 +2606,31 @@ function checkTasksUnchanged() {
         t.team === snap[i].team &&
         t.description.trim() === snap[i].description.trim()
     );
+}
+
+/**
+ * BẬT/TẮT GHIM (PIN) NODE TRỰC TIẾP TRÊN CYTOSCAPE (KHÔNG CHẠY LẠI LAYOUT)
+ */
+function togglePinNode_Drawing(fileId) {
+    if (!fileId) return;
+    const isPinned = pinnedDrawingNodes.has(fileId);
+    
+    if (isPinned) {
+        pinnedDrawingNodes.delete(fileId);
+    } else {
+        pinnedDrawingNodes.add(fileId);
+    }
+    
+    // Lưu trạng thái ghim vào LocalStorage
+    localStorage.setItem('bcons_pinned_drawing_nodes', JSON.stringify(Array.from(pinnedDrawingNodes)));
+    
+    // Đổi trạng thái hiển thị của node trên sơ đồ
+    if (cyInstance) {
+        const node = cyInstance.getElementById(fileId);
+        if (node && node.length > 0) {
+            node.data('isPinned', !isPinned);
+        }
+    }
+    
+    showToast_PL(!isPinned ? "📌 Đã ghim bản vẽ!" : "Đã bỏ ghim bản vẽ", "success");
 }

@@ -154,80 +154,118 @@
     .file-name-text { color: #FFBA08 !important; font-weight: 700 !important; font-size: 11px; }
     .file-pdf { color: #ff4d4d !important; font-size: 18px; }
 
-    /* 8. Tasks & Task Items - TRẢ VỀ STYLE GỐC 100% */
+    /* 8. Tasks & Task Items - DÍNH LIỀN THÀNH 1 KHỐI THỐNG NHẤT, NGĂN CÁCH BẰNG ĐƯỜNG KẺ */
     .task-group-container { 
-    display: flex; 
-    flex-direction: column; 
-    gap: 8px !important; 
-    padding: 10px; 
-    background: rgba(255, 255, 255, 0.01); 
-    border: 1px solid rgba(255, 255, 255, 0.05); 
-    border-radius: 8px; 
-    margin-top: 5px; 
-    min-height: 58px; 
-    transition: all 0.25s ease;
-}
+        display: flex; 
+        flex-direction: column; 
+        gap: 0 !important;          /* Triệt tiêu khoảng cách để các mục dính liền nhau thành 1 khối */
+        padding: 6px !important;    /* 4 mép ngoài cách đều 6px */
+        background: rgba(255, 255, 255, 0.01); 
+        border: 1px solid rgba(255, 255, 255, 0.05); 
+        border-radius: 8px; 
+        margin-top: 5px; 
+        min-height: 56px; 
+        box-sizing: border-box !important;
+        transition: all 0.25s ease;
+    }
+
     #drop-zone-XD.drag-over-active {
-    background: rgba(255, 186, 8, 0.06) !important;
-    border-color: rgba(255, 186, 8, 0.4) !important;
-    box-shadow: inset 0 0 12px rgba(255, 186, 8, 0.1);
-}
+        background: rgba(255, 186, 8, 0.06) !important;
+        border-color: rgba(255, 186, 8, 0.4) !important;
+        box-shadow: inset 0 0 12px rgba(255, 186, 8, 0.1);
+    }
 
     #drop-zone-MEP.drag-over-active {
-    background: rgba(0, 188, 212, 0.06) !important;
-    border-color: rgba(0, 188, 212, 0.4) !important;
-    box-shadow: inset 0 0 12px rgba(0, 188, 212, 0.1);
-}
+        background: rgba(0, 188, 212, 0.06) !important;
+        border-color: rgba(0, 188, 212, 0.4) !important;
+        box-shadow: inset 0 0 12px rgba(0, 188, 212, 0.1);
+    }
+
+    /* Từng hàng trong khối: Mặc định bỏ bo góc và có đường thẳng ngăn cách đáy */
     .task-item { 
-    display: flex; 
-    align-items: center; 
-    height: 38px !important; 
-    padding: 0 12px; 
-    background: rgba(255, 255, 255, 0.08); 
-    border-radius: 4px; 
-    border: 1px solid transparent; 
-    position: relative; 
-    transition: background-color 0.25s ease, border-color 0.25s ease, opacity 0.2s ease, transform 0.2s ease !important; 
-}
+        display: flex; 
+        align-items: center; 
+        height: 42px !important; 
+        padding: 0 12px; 
+        background: rgba(255, 255, 255, 0.08); 
+        border-radius: 0 !important;
+        border: none !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important; /* Đường thẳng ngăn cách giữa các mục */
+        position: relative; 
+        box-sizing: border-box !important;
+        transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.2s ease !important; 
+    }
 
-.task-item:hover, .task-item:focus-within { 
-    background: rgba(244, 241, 230, 0.12) !important; 
-    border-color: rgba(244, 241, 230, 0.4) !important; 
-}
+    /* Mục đầu tiên: Bo tròn 2 góc trên */
+    .task-item:first-of-type {
+        border-top-left-radius: 6px !important;
+        border-top-right-radius: 6px !important;
+    }
 
-/* 4. Trạng thái phần tử đang kéo (Làm mờ bán trong suốt, KHÔNG đẩy ra khỏi layout) */
-.task-item.is-dragging { 
-    opacity: 0.35 !important;
-    transform: scale(0.98);
-}
+    /* Mục cuối cùng: Bo tròn 2 góc dưới và bỏ đường kẻ đáy */
+    .task-item:last-of-type {
+        border-bottom-left-radius: 6px !important;
+        border-bottom-right-radius: 6px !important;
+        border-bottom: none !important;
+    }
 
-/* 5. Placeholder linh hoạt đổi màu theo từng nhóm */
-.task-placeholder { 
-    display: block !important; 
-    height: 38px !important; 
-    width: 100% !important; 
-    border-radius: 4px; 
-    pointer-events: none; 
-    margin: 0 !important;
-    animation: placeholderPulse 1.2s ease-in-out infinite alternate;
-}
+    /* Trường hợp chỉ có đúng 1 mục duy nhất: Bo tròn đều 4 góc */
+    .task-item:first-of-type:last-of-type {
+        border-radius: 6px !important;
+        border-bottom: none !important;
+    }
 
-/* Màu vàng đồng bộ cho nhóm Xây dựng (XD) */
-#drop-zone-XD .task-placeholder {
-    background: rgba(255, 186, 8, 0.1) !important;
-    border: 1.5px dashed #FFBA08 !important;
-}
+    .task-item:hover, .task-item:focus-within { 
+        background: rgba(244, 241, 230, 0.12) !important; 
+    }
 
-/* Màu xanh Cyan đồng bộ cho nhóm Cơ điện (MEP) */
-#drop-zone-MEP .task-placeholder {
-    background: rgba(0, 188, 212, 0.1) !important;
-    border: 1.5px dashed #00BCD4 !important;
-}
-@keyframes placeholderPulse {
-    0% { opacity: 0.6; }
-    100% { opacity: 1; }
-}
-    input.task-desc-edit { flex: 1 !important; background: transparent !important; border: none !important; outline: none !important; box-shadow: none !important; color: rgba(255, 255, 255, 0.8) !important; font-size: 13px !important; padding: 0 !important; margin: 0 10px 0 7px !important; height: 100% !important; line-height: 38px !important; appearance: none; transition: color 0.3s ease; }
+    /* NỀN HÀNG ĐANG KÉO ĐƯỢC LÀM ĐẬM HƠN ĐỂ NỔI BẬT VỊ TRÍ */
+    .task-item.is-dragging { 
+        opacity: 0.2 !important;
+        background: rgba(255, 255, 255, 0.15) !important;
+    }
+
+    .task-placeholder { 
+        display: block !important; 
+        height: 42px !important; 
+        width: 100% !important; 
+        border-radius: 4px; 
+        pointer-events: none; 
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        animation: placeholderPulse 1.2s ease-in-out infinite alternate;
+    }
+
+    #drop-zone-XD .task-placeholder {
+        background: rgba(255, 186, 8, 0.1) !important;
+        border: 1.5px dashed #FFBA08 !important;
+    }
+
+    #drop-zone-MEP .task-placeholder {
+        background: rgba(0, 188, 212, 0.1) !important;
+        border: 1.5px dashed #00BCD4 !important;
+    }
+
+    @keyframes placeholderPulse {
+        0% { opacity: 0.6; }
+        100% { opacity: 1; }
+    }
+
+    input.task-desc-edit { 
+        flex: 1 !important; 
+        background: transparent !important; 
+        border: none !important; 
+        outline: none !important; 
+        box-shadow: none !important; 
+        color: rgba(255, 255, 255, 0.8) !important; 
+        font-size: 13px !important; 
+        padding: 0 !important; 
+        margin: 0 10px 0 7px !important; 
+        height: 100% !important; 
+        line-height: 42px !important; 
+        appearance: none; 
+        transition: color 0.3s ease; 
+    }
 
     /* 9. Loader & Utils */
     .drawing-loader-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(3, 28, 53, 0.85); backdrop-filter: blur(15px); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; border-radius: 15px; animation: luxuryBgPulse 3s ease-in-out infinite; }
