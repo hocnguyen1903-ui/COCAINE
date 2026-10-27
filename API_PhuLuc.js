@@ -218,6 +218,13 @@ function exportToNewSpreadsheet_PL(payload) {
     const destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
     file.moveTo(destinationFolder);
 
+    // BẬT CHẾ ĐỘ: BẤT KỲ AI CÓ LINK ĐỀU CÓ THỂ CHỈNH SỬA
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+    } catch (shareErr) {
+      console.warn("Bỏ qua cảnh báo setSharing do chính sách bảo mật Workspace: " + shareErr.message);
+    }
+
     const sheet = newSS.getActiveSheet();
     sheet.appendRow(["NGÀY KÝ", "SỐ HỢP ĐỒNG / PLHĐ", "DỰ ÁN", "TÊN NHÀ THẦU", "TÊN GÓI THẦU", "GIÁ TRỊ (VND)", "NGƯỜI THỰC HIỆN"]);
     
