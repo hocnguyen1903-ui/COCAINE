@@ -310,7 +310,7 @@
     color: #00fbff !important;
     filter: drop-shadow(0 0 5px rgba(0, 251, 255, 0.7));
     background: transparent !important; /* Không dùng màu nền */
-    transform: scale(1.2);
+    transform: scale(1.15);
 }
 
 /* Trạng thái SÁNG khi có file G */
@@ -325,7 +325,7 @@
     color: #FFF176 !important;
     filter: drop-shadow(0 0 5px rgba(255, 186, 8, 0.7));
     background: transparent !important; /* Không dùng màu nền */
-    transform: scale(1.2);
+    transform: scale(1.15);
 }
 
 /* Hiệu ứng viền khi kéo file từ máy tính vào từng dòng HĐ/PL */

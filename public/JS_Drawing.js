@@ -328,7 +328,7 @@ function flashNode_Drawing(node) {
 }
 
 /**
- * HÀM CƯỠNG CHẾ TỌA ĐỘ DỌC: Ép sơ đồ gióng thẳng hàng trục đứng chuẩn xác theo thời gian
+ * HÀM CƯỠNG CHẾ TỌA ĐỘ DỌC: KHÔI PHỤC ĐỐI XỨNG CÂN ĐỐI 100%, ĐI DÂY TỰ NHIÊN CHUẨN CẤU TRÚC
  */
 function enforceBidirectionalLayout() {
     if (!cyInstance) return;
@@ -430,10 +430,9 @@ function enforceBidirectionalLayout() {
     }
 
     // ==========================================================
-    // 3. CỤM BÊN PHẢI: BẢN VẼ CẬP NHẬT CĂN TÂM TRỤC CHÍNH XÁC
+    // 3. CỤM BÊN PHẢI (BẢN VẼ CẬP NHẬT)
     // ==========================================================
     if (branchUpdate.length > 0) {
-        // Đặt node mẹ BẢN VẼ CẬP NHẬT thẳng hàng ngang qua tâm Root
         branchUpdate.position('y', Y_root);
 
         const dateNodes = branchUpdate.outgoers('node').filter(n => n.data('isDate'));
@@ -458,14 +457,14 @@ function enforceBidirectionalLayout() {
                 });
             }
 
-            // 🚀 CĂN GIỮA TUYỆT ĐỐI: Gióng trung điểm của toàn bộ 8 ngày/file khớp với trục Y của BẢN VẼ CẬP NHẬT
+            // Căn giữa trục Y cụm phải đối xứng Root
             const allRightElements = dateNodes.union(dateNodes.successors());
             const rightBB = allRightElements.boundingBox();
             const rightCenterY = rightBB.y1 + rightBB.h / 2;
             const diffCenterY = Y_root - rightCenterY;
 
             allRightElements.forEach(el => {
-                if (el.isNode()) el.position('y', el.position('y') + diffCenterY);
+                el.position('y', el.position('y') + diffCenterY);
             });
         }
     }
@@ -534,7 +533,7 @@ function renderMindmap(projectCode, forceRefresh = false) {
 }
 
 /**
- * HÀM TÁCH BIỆT DỰNG GRAPH CYTOSCAPE (TĂNG HIỆU NĂNG TÁI SỬ DỤNG)
+ * HÀM TÁCH BIỆT DỰNG GRAPH CYTOSCAPE (TỐI ĐA 7 FILE MỚI NHẤT + NÚT MỞ RỘNG BẢN VẼ CŨ)
  */
 function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
     if (cyInstance) { cyInstance.destroy(); cyInstance = null; }
@@ -598,7 +597,6 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
                         'font-weight': 'bold' 
                     } 
                 },
-                /* 1. MỌI NODE FILE PDF ĐỀU CÓ HUY HIỆU GHIM Ở ĐỈNH (MẶC ĐỊNH MỜ) */
                 { 
                     selector: 'node[?fileId]', 
                     style: { 
@@ -614,7 +612,6 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
                         'text-valign': 'center', 
                         'line-height': 1.4,
                         'color': (el) => el.data('color').toUpperCase() === '#FFBA08' ? '#FFFFFF' : el.data('color'),
-                        /* Huy hiệu ghim luôn xuất hiện trên viền (kích thước 34px) */
                         'bounds-expansion': 28,
                         'background-image': PIN_DIM_SVG,
                         'background-clip': 'none',
@@ -626,16 +623,35 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
                         'background-image-containment': 'over'
                     } 
                 },
-                /* 2. KHI ĐƯỢC GHIM: VIỀN XANH LÁ MẢNH 1.5px (BỎ IN ĐẬM VIỀN) + HUY HIỆU XANH LÁ */
                 {
                     selector: 'node[?isPinned]',
                     style: {
-                        'border-width': 1.5, /* BỎ IN ĐẬM: Giữ nguyên độ mảnh viền 1.5px */
-                        'border-color': '#2ECC71', /* Chuyển màu viền sang xanh lá */
+                        'border-width': 1.5,
+                        'border-color': '#2ECC71',
                         'border-style': 'solid',
                         'shadow-blur': 0,
                         'shadow-opacity': 0,
                         'background-image': PIN_ACTIVE_SVG
+                    }
+                },
+                /* NÚT MỞ RỘNG Ở CỘT FILE: VIỀN ĐỨT, NỀN VÀNG TRONG SUỐT 20% */
+                {
+                    selector: 'node[?isExpandBtn][!isDate]',
+                    style: {
+                        'width': 240,
+                        'height': 36,
+                        'shape': 'round-rectangle',
+                        'background-color': '#FFBA08',
+                        'background-opacity': 0.2,
+                        'border-width': 1.5,
+                        'border-style': 'dashed',
+                        'border-color': '#FFBA08',
+                        'color': '#FFBA08',
+                        'font-size': 14.5,
+                        'font-weight': '600',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'overlay-opacity': 0
                     }
                 },
                 { 
@@ -665,11 +681,12 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
                         'target-arrow-color': 'data(color)', 
                         'line-opacity': 0.8 
                     } 
-                },                    
+                },                 
                 { selector: 'node:selected', style: { 'background-color': '#FFBA08', 'background-opacity': 0.2, 'border-width': (el) => el.style('border-width') } }
             ]
         });
 
+        // 1. Thu gọn nhánh TKTC mặc định
         const branchGoc = cyInstance.getElementById('branch_goc');
         if (branchGoc.length > 0 && branchGoc.successors().length > 0) {
             branchGoc.data('collapsed', true);
@@ -680,39 +697,45 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
             cyInstance.remove(branchGoc.successors());
         }
 
+        // 2. TỰ ĐỘNG GIỚI HẠN HIỂN THỊ TỐI ĐA 7 FILE MỚI NHẤT CHO CẬP NHẬT & ĐỀ XUẤT
+        setupBranchLimiter_Drawing(cyInstance, 'branch_update');
+        setupBranchLimiter_Drawing(cyInstance, 'branch_proposal');
+
         cyInstance.resize();
         
+        // 3. CỐ ĐỊNH KHOẢNG CÁCH 45PX THEO CHUẨN
+        const dagreSortFunc = (a, b) => {
+            const getPri = (n) => {
+                if (n.id() === 'root') return 1;
+                if (['branch_goc', 'branch_update', 'branch_proposal'].includes(n.id())) return 2;
+                if (n.data('isDate')) return 3;
+                if (n.id().includes('_Thân') || n.id().includes('_Hầm')) return 4;
+                if (n.data('isDept')) return 5;
+                if (n.data('isExpandBtn')) return 7; // Nút xem thêm luôn xếp cuối cột
+                return 6;
+            };
+            const pA = getPri(a);
+            const pB = getPri(b);
+            if (pA !== pB) return pA - pB;
+            
+            const svA = a.data('sortValue') || 0;
+            const svB = b.data('sortValue') || 0;
+            if (svA !== svB) return svB - svA;
+            
+            const nameA = a.data('fullName') || a.data('label') || "";
+            const nameB = b.data('fullName') || b.data('label') || "";
+            return nameB.localeCompare(nameA, 'vi', { numeric: true, sensitivity: 'base' });
+        };
+
         cyInstance.layout({ 
             name: 'dagre', 
             rankDir: 'LR', 
-            nodeSep: 45, 
+            nodeSep: 45, /* Cố định 45px chuẩn */
             rankSep: 80, 
             animate: false, 
             fit: true, 
-            padding: 20, 
-            sort: (a, b) => {
-                const getPri = (n) => {
-                    if (n.id() === 'root') return 1;
-                    if (['branch_goc', 'branch_update', 'branch_proposal'].includes(n.id())) return 2;
-                    if (n.data('isDate')) return 3;
-                    if (n.id().includes('_Thân') || n.id().includes('_Hầm')) return 4;
-                    if (n.data('isDept')) return 5;
-                    return 6;
-                };
-                const pA = getPri(a);
-                const pB = getPri(b);
-                if (pA !== pB) return pA - pB;
-                
-                const svA = a.data('sortValue') || 0;
-                const svB = b.data('sortValue') || 0;
-                if (svA !== svB) {
-                    return svB - svA;
-                }
-                
-                const nameA = a.data('fullName') || a.data('label') || "";
-                const nameB = b.data('fullName') || b.data('label') || "";
-                return nameB.localeCompare(nameA, 'vi', { numeric: true, sensitivity: 'base' });
-            },
+            padding: 20,
+            sort: dagreSortFunc,
             stop: () => { 
                 enforceBidirectionalLayout();
                 if (localLoader) localLoader.style.display = "none";
@@ -722,13 +745,12 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
             } 
         }).run();
         
+        // Sự kiện click mở rộng nhánh TKTC
         cyInstance.on('tap', 'node#branch_goc', function(evt) {
             const node = evt.target;
             const isCollapsed = node.data('collapsed');
 
-            cyInstance.nodes().forEach(n => {
-                n.scratch('startPos', { ...n.position() });
-            });
+            cyInstance.nodes().forEach(n => n.scratch('startPos', { ...n.position() }));
             const startZoom = cyInstance.zoom();
             const startPan = { ...cyInstance.pan() };
 
@@ -736,7 +758,6 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
                 const hiddenElements = node.scratch('hiddenElements');
                 if (hiddenElements) {
                     cyInstance.add(hiddenElements);
-
                     const parentPos = node.position();
                     hiddenElements.forEach(el => {
                         if (el.isNode()) {
@@ -749,13 +770,10 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
                 node.data('label', node.data('originalLabel') + ' [ - ]');
             } else {
                 if (node.successors().length === 0) return;
-
                 node.data('collapsed', true);
                 node.data('label', node.data('originalLabel') + ' [ + ]');
-
                 node.scratch('hiddenElements', node.successors());
                 cyInstance.remove(node.successors());
-
                 closeFileDetail();
             }
 
@@ -767,67 +785,61 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
                 animate: false, 
                 fit: false, 
                 padding: 20,
-                sort: (a, b) => {
-                    const getPri = (n) => {
-                        if (n.id() === 'root') return 1;
-                        if (['branch_goc', 'branch_update', 'branch_proposal'].includes(n.id())) return 2;
-                        if (n.data('isDate')) return 3;
-                        if (n.id().includes('_Thân') || n.id().includes('_Hầm')) return 4;
-                        if (n.data('isDept')) return 5;
-                        return 6;
-                    };
-                    const pA = getPri(a);
-                    const pB = getPri(b);
-                    if (pA !== pB) return pA - pB;
-                    
-                    const svA = a.data('sortValue') || 0;
-                    const svB = b.data('sortValue') || 0;
-                    if (svA !== svB) {
-                        return svB - svA; 
-                    }
-                    
-                    const nameA = a.data('fullName') || a.data('label') || "";
-                    const nameB = b.data('fullName') || b.data('label') || "";
-                    return nameB.localeCompare(nameA, 'vi', { numeric: true, sensitivity: 'base' });
-                },
+                sort: dagreSortFunc,
                 stop: () => {
                     enforceBidirectionalLayout(); 
-                    
-                    const endPositions = new Map();
-                    cyInstance.nodes().forEach(n => endPositions.set(n.id(), { ...n.position() }));
-
-                    cyInstance.fit(null, 20);
-                    const targetZoom = cyInstance.zoom();
-                    const targetPan = { ...cyInstance.pan() };
-
-                    cyInstance.zoom(startZoom);
-                    cyInstance.pan(startPan);
-                    
-                    cyInstance.nodes().forEach(n => {
-                        const startPos = n.scratch('startPos');
-                        if (startPos) n.position(startPos);
-                    });
-
-                    cyInstance.nodes().forEach(n => {
-                        n.animate({
-                            position: endPositions.get(n.id()),
-                            duration: 350,
-                            easing: 'ease-out-cubic'
-                        });
-                    });
-                    
-                    cyInstance.animate({
-                        zoom: targetZoom,
-                        pan: targetPan,
-                        duration: 350,
-                        easing: 'ease-out-cubic'
-                    });
+                    animateGraphTransition_Drawing(startZoom, startPan);
                 }
             }).run();
         });
 
+        // 4. SỰ KIỆN CLICK NÚT MỞ RỘNG / THU GỌN BẢN VẼ CŨ
+        cyInstance.on('tap', 'node[?isExpandBtn]', function(evt) {
+            const targetNode = evt.target;
+            const branchId = targetNode.data('branchId');
+            const btn = cyInstance.getElementById('btn_expand_' + branchId);
+            const dateBtn = cyInstance.getElementById('date_expand_' + branchId);
+            const isExpanded = btn.data('expanded');
+            const hiddenElements = btn.scratch('hiddenElements');
+            if (!hiddenElements) return;
+
+            cyInstance.nodes().forEach(n => n.scratch('startPos', { ...n.position() }));
+            const startZoom = cyInstance.zoom();
+            const startPan = { ...cyInstance.pan() };
+
+            if (!isExpanded) {
+                cyInstance.add(hiddenElements);
+                btn.data('expanded', true);
+                btn.data('label', 'Thu gọn bản vẽ cũ');
+                if (dateBtn.length > 0) dateBtn.data('label', '-');
+            } else {
+                btn.data('expanded', false);
+                btn.data('label', `Xem thêm ${btn.data('hiddenCount')} bản vẽ cũ...`);
+                if (dateBtn.length > 0) dateBtn.data('label', '+');
+                cyInstance.remove(hiddenElements);
+                closeFileDetail();
+            }
+
+            cyInstance.layout({
+                name: 'dagre',
+                rankDir: 'LR',
+                nodeSep: 45,
+                rankSep: 80,
+                animate: false,
+                fit: false,
+                padding: 20,
+                sort: dagreSortFunc,
+                stop: () => {
+                    enforceBidirectionalLayout();
+                    animateGraphTransition_Drawing(startZoom, startPan);
+                }
+            }).run();
+        });
+
+        // Sự kiện click chọn Node
         cyInstance.on('tap', 'node', (evt) => {
             const node = evt.target;
+            if (node.data('isExpandBtn')) return; // Bỏ qua nếu là nút mở rộng
             const fileId = node.data('fileId');
             if (!fileId) return;
 
@@ -836,24 +848,157 @@ function drawCytoscapeGraph(projectCode, filesList, cyArea, localLoader) {
             const pinX = nodePos.x;
             const clickDist = Math.hypot(evt.position.x - pinX, evt.position.y - topPinY);
 
-            // 1. Click trúng nút Ghim: Đổi trạng thái Ghim
             if (clickDist <= 22) {
                 togglePinNode_Drawing(fileId);
             }
 
-            // 2. Tự động đồng bộ chọn node trên sơ đồ và mở dữ liệu bên panel (kể cả khi bấm Ghim)
             cyInstance.$(':selected').unselect();
             node.select();
             updatePanelContent(node.data());
         });
+
         cyInstance.on('dbltap', 'node', (evt) => { if (evt.target.data('fileId') && evt.target.data('url') !== "#") window.open(evt.target.data('url'), '_blank'); });
         cyInstance.on('mouseover', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'pointer');
         cyInstance.on('mouseout', 'node[?fileId]', () => document.getElementById('cy').style.cursor = 'default');
-        
+        cyInstance.on('mouseover', 'node[?isExpandBtn]', () => document.getElementById('cy').style.cursor = 'pointer');
+        cyInstance.on('mouseout', 'node[?isExpandBtn]', () => document.getElementById('cy').style.cursor = 'default');
         cyInstance.on('mouseover', 'node#branch_goc', () => document.getElementById('cy').style.cursor = 'pointer');
         cyInstance.on('mouseout', 'node#branch_goc', () => document.getElementById('cy').style.cursor = 'default');
         
     }, 100);
+}
+
+function setupBranchLimiter_Drawing(cy, branchId) {
+    const branch = cy.getElementById(branchId);
+    if (branch.length === 0) return;
+
+    const fileNodes = branch.successors('node[?fileId]').toArray().sort((a, b) => {
+        return (b.data('sortValue') || 0) - (a.data('sortValue') || 0);
+    });
+
+    if (fileNodes.length <= 6) return;
+
+    const visibleFiles = fileNodes.slice(0, 6);
+    const hiddenFiles = fileNodes.slice(6);
+    const hiddenFileIds = new Set(hiddenFiles.map(f => f.id()));
+
+    const dateNodes = branch.outgoers('node').filter(n => n.data('isDate'));
+    const hiddenDateNodes = [];
+    dateNodes.forEach(dNode => {
+        const childFiles = dNode.outgoers('node[?fileId]').toArray();
+        if (childFiles.length > 0 && childFiles.every(f => hiddenFileIds.has(f.id()))) {
+            hiddenDateNodes.push(dNode);
+        }
+    });
+
+    let elementsToHide = cy.collection();
+    hiddenFiles.forEach(f => {
+        elementsToHide = elementsToHide.union(f).union(f.connectedEdges());
+    });
+    hiddenDateNodes.forEach(d => {
+        elementsToHide = elementsToHide.union(d).union(d.connectedEdges());
+    });
+
+    const hiddenCount = hiddenFiles.length;
+    const dateBtnId = 'date_expand_' + branchId;
+    const btnId = 'btn_expand_' + branchId;
+
+    cy.add([
+        // 1. Node Ngày tháng mang tên "Trước đó" (cùng cột với các ngày khác)
+        {
+            group: 'nodes',
+            selectable: false,
+            data: {
+                id: dateBtnId,
+                label: '+',
+                isDate: true,
+                isExpandBtn: true,
+                branchId: branchId,
+                expanded: false,
+                hiddenCount: hiddenCount,
+                sortValue: -999999
+            }
+        },
+        // 2. Node File mang nhãn xem thêm (cùng cột với các file khác)
+        {
+            group: 'nodes',
+            selectable: false,
+            data: {
+                id: btnId,
+                label: `Xem thêm ${hiddenCount} bản vẽ cũ...`,
+                isExpandBtn: true,
+                branchId: branchId,
+                expanded: false,
+                hiddenCount: hiddenCount,
+                sortValue: -999999
+            }
+        },
+        // 3. Dây nhánh chính nối từ Nhánh mẹ sang Node Ngày "Trước đó" (chung 1 trục dọc thẳng tắp)
+        {
+            group: 'edges',
+            data: {
+                id: 'edge_main_' + btnId,
+                source: branchId,
+                target: dateBtnId,
+                color: '#FFBA08',
+                arrowShape: 'none'
+            }
+        },
+        // 4. Dây nối từ Node Ngày "Trước đó" sang Node File "Xem thêm" (đường ngang mũi tên chuẩn)
+        {
+            group: 'edges',
+            data: {
+                id: 'edge_file_' + btnId,
+                source: dateBtnId,
+                target: btnId,
+                color: '#FFBA08',
+                arrowShape: 'triangle'
+            }
+        }
+    ]);
+
+    const btnNode = cy.getElementById(btnId);
+    const dateBtnNode = cy.getElementById(dateBtnId);
+    btnNode.scratch('hiddenElements', elementsToHide);
+    dateBtnNode.scratch('hiddenElements', elementsToHide);
+
+    cy.remove(elementsToHide);
+}
+
+/**
+ * HOẠT ẢNH CHUYỂN CẢNH MƯỢT MÀ KHI BUNG/THU GỌN SƠ ĐỒ (350MS)
+ */
+function animateGraphTransition_Drawing(startZoom, startPan) {
+    if (!cyInstance) return;
+
+    const endPositions = new Map();
+    cyInstance.nodes().forEach(n => endPositions.set(n.id(), { ...n.position() }));
+
+    cyInstance.fit(null, 20);
+    const targetZoom = cyInstance.zoom();
+    const targetPan = { ...cyInstance.pan() };
+
+    cyInstance.zoom(startZoom);
+    cyInstance.pan(startPan);
+    cyInstance.nodes().forEach(n => {
+        const startPos = n.scratch('startPos');
+        if (startPos) n.position(startPos);
+    });
+
+    cyInstance.nodes().forEach(n => {
+        n.animate({
+            position: endPositions.get(n.id()),
+            duration: 350,
+            easing: 'ease-out-cubic'
+        });
+    });
+
+    cyInstance.animate({
+        zoom: targetZoom,
+        pan: targetPan,
+        duration: 350,
+        easing: 'ease-out-cubic'
+    });
 }
 
 function buildCytoscapeElements(data) {
