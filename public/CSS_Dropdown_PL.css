@@ -285,7 +285,7 @@
 
 /* Dấu gạch đứng mờ ở giữa */
 .money-column-container .file-status-group span.file-badge-divider {
-    color: rgba(255, 255, 255, 0.15) !important;
+    color: rgba(255, 255, 255, 0.05) !important;
     margin: 0 1px !important;
     font-weight: 200 !important;
     pointer-events: none; /* Không cản trở click */
@@ -293,7 +293,7 @@
 
 /* Trạng thái MỜ khi chưa có file */
 .money-column-container .file-status-group span.file-badge-dim {
-    color: rgba(255, 255, 255, 0.2) !important;
+    color: rgba(255, 255, 255, 0.1) !important;
     font-weight: 300 !important;
     cursor: default !important;
 }
@@ -310,7 +310,6 @@
     color: #00fbff !important;
     filter: drop-shadow(0 0 5px rgba(0, 251, 255, 0.7));
     background: transparent !important; /* Không dùng màu nền */
-    transform: scale(1.15);
 }
 
 /* Trạng thái SÁNG khi có file G */
@@ -325,7 +324,6 @@
     color: #FFF176 !important;
     filter: drop-shadow(0 0 5px rgba(255, 186, 8, 0.7));
     background: transparent !important; /* Không dùng màu nền */
-    transform: scale(1.15);
 }
 
 /* Hiệu ứng viền khi kéo file từ máy tính vào từng dòng HĐ/PL */

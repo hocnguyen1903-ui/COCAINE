@@ -14,7 +14,7 @@ function openScanPanel_PL(maHD) {
     const title = document.getElementById('sp-header-title'); 
     if (title) {
         title.innerHTML = `
-            <span style="color: #95A1AF; font-size: 10px; font-weight: 500; letter-spacing: 0.5px;">QUẢN LÝ FILE MỀM:</span><br>
+            <span style="color: #95A1AF; font-size: 10px; font-weight: 500; letter-spacing: 0.5px;">QUẢN LÝ FILE:</span><br>
             <span style="color: #FFBA08; font-size: 13px; font-weight: 700;">${maHD}</span>
         `;
     }

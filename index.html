@@ -401,47 +401,47 @@
                 </div>
                 
                 <div style="padding: 15px 20px;">
-    <!-- Sử dụng cấu trúc ẩn tàng hình để vượt qua màng lọc bảo mật Click-jacking của Safari macOS -->
-    <input type="file" id="scan-file-input" accept=".pdf, .xls, .xlsx" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; opacity: 0;" multiple>
-    
-    <div id="scan-drop-zone" class="scan-drop-zone">
-        <div id="scan-state-empty" style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
-            <i class="bi bi-cloud-arrow-up" style="font-size: 36px; color: #FFBA08; margin-bottom: 8px;"></i>
-            <!-- Đổi chữ thông báo -->
-            <div style="color: #E0E0E0; font-size: 13.5px; font-weight: 600;">Drag & drop FILE here!</div>
-            <div style="color: #95A1AF; font-size: 11px; margin-top: 5px;">Or click to browse from computer</div>
-        </div>
+                    <input type="file" id="scan-file-input" accept=".pdf, .xls, .xlsx" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; opacity: 0;" multiple>
+                    
+                    <!-- 1. DANH SÁCH FILE ĐÃ CÓ NẰM Ở PHÍA TRÊN -->
+                    <div id="scan-current-file-info" style="display: none; margin-bottom: 24px;"></div>
 
-        <div id="scan-state-file" style="display: none; width: 100%; flex-direction: column; align-items: center;">
-            <i class="bi bi-file-earmark-check-fill" style="font-size: 40px; color: #2ECC71; margin-bottom: 5px;"></i>
-            <div id="scan-file-name" style="color: #FFBA08; font-size: 13px; font-weight: bold; text-align: center; word-break: break-all; max-width: 95%; margin-bottom: 2px;">hd_test.pdf</div>
-            <div id="scan-file-size" style="color: #95A1AF; font-size: 11px; margin-bottom: 12px; font-style: italic;">0 MB</div>
-            
-            <button type="button" class="btn-danger-luxury" onclick="removeScanFile_PL(event)" style="padding: 5px 12px; font-size: 11px; border-radius: 20px; box-shadow: none;">
-                <i class="bi bi-trash3"></i> Remove file
-            </button>
-        </div>
-    </div>
-                        <div id="scan-current-file-info" style="display: none; margin-top: 10px;"></div>
+                    <!-- 2. KHUNG KÉO THẢ TẢI FILE NẰM Ở PHÍA DƯỚI -->
+                    <div id="scan-drop-zone" class="scan-drop-zone">
+                        <div id="scan-state-empty" style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
+                            <i class="bi bi-cloud-arrow-up" style="font-size: 32px; color: #FFBA08; margin-bottom: 6px;"></i>
+                            <div style="color: #E0E0E0; font-size: 11.5px; font-weight: 600;">Drag & drop FILE here!</div>
+                            <div style="color: #95A1AF; font-size: 9.5px; margin-top: 4px;">Or click to browse from computer</div>
+                        </div>
+
+                        <div id="scan-state-file" style="display: none; width: 100%; flex-direction: column; align-items: center;">
+                            <i class="bi bi-file-earmark-check-fill" style="font-size: 40px; color: #2ECC71; margin-bottom: 5px;"></i>
+                            <div id="scan-file-name" style="color: #FFBA08; font-size: 13px; font-weight: bold; text-align: center; word-break: break-all; max-width: 95%; margin-bottom: 2px;">hd_test.pdf</div>
+                            <div id="scan-file-size" style="color: #95A1AF; font-size: 11px; margin-bottom: 12px; font-style: italic;">0 MB</div>
+                            
+                            <button type="button" class="btn-danger-luxury" onclick="removeScanFile_PL(event)" style="padding: 5px 12px; font-size: 11px; border-radius: 20px; box-shadow: none;">
+                                <i class="bi bi-trash3"></i> Remove file
+                            </button>
+                        </div>
+                    </div>
                         
                     <div id="scan-progress-container" style="display: none; margin-top: 15px; padding: 0 5px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                        <span id="scan-status-text" style="color: #FFBA08; font-size: 10px; font-weight: bold; text-transform: uppercase;">Đang xử lý...</span>
-                        <span id="scan-percent-text" style="color: #E0E0E0; font-size: 10px;">0%</span>
-                    </div>
-                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
-                    <div id="scan-progress-bar" style="width: 0%; height: 100%; background: #FFBA08; box-shadow: 0 0 10px #FFBA08; transition: width 0.2s ease;"></div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span id="scan-status-text" style="color: #FFBA08; font-size: 10px; font-weight: bold; text-transform: uppercase;">Đang xử lý...</span>
+                            <span id="scan-percent-text" style="color: #E0E0E0; font-size: 10px;">0%</span>
+                        </div>
+                        <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
+                            <div id="scan-progress-bar" style="width: 0%; height: 100%; background: #FFBA08; box-shadow: 0 0 10px #FFBA08; transition: width 0.2s ease;"></div>
+                        </div>
                     </div>
                 </div>
 
-                </div>
-
-                <div style="padding: 12px 15px; display: flex; gap: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
+                <div style="padding: 12px 15px 0 15px; display: flex; gap: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
                     <button type="button" class="btn-secondary-luxury" style="flex:1; padding: 10px; border-radius: 6px; font-size: 11px;" onclick="closeScanPanel_PL()">CANCEL</button>
                     <button type="button" id="btn-upload-scan" class="btn-primary-luxury" style="flex:1; padding: 10px; border-radius: 6px; font-size: 11px;" disabled onclick="startUploadScan_PL()">
                         <i class="bi bi-cloud-upload-fill"></i> UPLOAD
                     </button>
-                </div>               
+                </div>            
             </div>            
         </div> 
         <label style="margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 7px;">
@@ -723,11 +723,11 @@
     <!-- Giữ nguyên margin-bottom 0px sát đáy gọn gàng -->
     <div id="drawing-upload-zone" class="scan-drop-zone" style="min-height: 100px; height: auto !important; margin-top: auto !important; margin-bottom: 0px !important; width: 100%; padding: 12px !important; box-sizing: border-box;">
             
-            <!-- 1. Trạng thái trống (Chờ kéo thả hoặc click chọn) -->
+            <!-- 1. Trạng thái trống (Đã đồng bộ tuyệt đối với tab Hợp đồng) -->
             <div id="drawing-state-empty" style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
-                <i class="bi bi-cloud-arrow-up" style="font-size: 36px; color: #FFBA08; margin-bottom: 8px;"></i>
-                <div style="color: #E0E0E0; font-size: 13px; font-weight: 700; letter-spacing: 1px;">Drag & drop FILE here!</div>
-                <div style="color: #95A1AF; font-size: 11px; margin-top: 4px; font-style: italic;">Or click to browse from computer</div>
+                <i class="bi bi-cloud-arrow-up" style="font-size: 32px; color: #FFBA08; margin-bottom: 6px;"></i>
+                <div style="color: #E0E0E0; font-size: 11.5px; font-weight: 600;">Drag & drop FILE here!</div>
+                <div style="color: #95A1AF; font-size: 9.5px; margin-top: 4px;">Or click to browse from computer</div>
             </div>
 
                         <!-- 2. Trạng thái Hàng chờ (Đồng bộ với tab PLHD, có nút X xóa từng file, nút Cancel & Upload) -->

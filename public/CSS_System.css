@@ -65,9 +65,9 @@
 
 /* --- 6.2. SCAN MANAGEMENT & PROGRESS FEEDBACK --- */
 .scan-drop-zone { 
-    border: 2px dashed rgba(149, 161, 175, 0.4); 
+    border: 1px dashed rgba(149, 161, 175, 0.35); 
     border-radius: 12px; 
-    padding: 15px 10px; 
+    padding: 10px; 
     text-align: center; 
     cursor: pointer; 
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
@@ -75,7 +75,7 @@
     flex-direction: column; 
     align-items: center; 
     justify-content: center; 
-    min-height: 100px; 
+    min-height: 80px; 
     position: relative; 
     background: rgba(0, 0, 0, 0.25);
 }
