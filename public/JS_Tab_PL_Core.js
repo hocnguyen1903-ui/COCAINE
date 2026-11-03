@@ -83,6 +83,9 @@ function clearForm_PL() {
         executeFilter_PL(true, false, false); 
         if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
     }, 150); 
+    if (typeof closePreviewModal_PL === "function") {
+        closePreviewModal_PL();
+    };
 }
 
 // ==========================================================================
@@ -304,17 +307,6 @@ function buildHeaderHTML_PL(sumHDPL, sumPL) {
 }
 
 /**
- * Mở trực tiếp file Scan H hoặc G khi click vào badge
- */
-function openDirectFile_PL(fileId, event) {
-    if (event) {
-        event.stopPropagation();
-    }
-    if (!fileId) return;
-    window.open("https://drive.google.com/file/d/" + fileId + "/view", "_blank");
-}
-
-/**
  * Hàm 3: Chuyên tạo chuỗi HTML cho 1 dòng dữ liệu (Row Template)
  */
 function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
@@ -347,35 +339,57 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
         let yyStyle = i.isPL ? "color: #7A828E; font-style: italic;" : "color: #FFBA08;";
         giaTriHTML = `<span style="display: inline-block; width: 90px; text-align: right; color: white; font-weight: 400;">${xx}</span><span style="display: inline-block; width: 35px; text-align: center; color: #505966;">|</span><span style="display: inline-block; width: 90px; text-align: right; ${yyStyle} font-weight: 400;">${yy}</span>`;
     }
-    
+
+/**
+ * Mở trực tiếp file Scan H hoặc G khi click vào badge, truyền kèm tên file thực tế
+ */
+window.openDirectFile_PL = function(fileId, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    if (!fileId) return;
+    const targetRow = event ? event.target.closest('.hoc-tooltip') : null;
+    viewScanFile_PL(fileId, null, targetRow);
+};   
+
 // ========================================================================
-    // LOGIC NHẬN DIỆN & TRÍCH XUẤT FILEID CHO H (HĐ/PL) VÀ G (PHÊ DUYỆT GIÁ)
+    // LOGIC NHẬN DIỆN & TRÍCH XUẤT ĐẦY ĐỦ FILEID + TÊN FILE GỐC CHO H VÀ G
     // ========================================================================
     let fileIdH = "";
+    let fileNameH = "";
     let fileIdG = "";
+    let fileNameG = "";
 
     if (i.scanId && i.scanId.trim() !== "") {
         const fileEntries = i.scanId.split(";;").filter(f => f && f.includes("|"));
         fileEntries.forEach(entry => {
             const parts = entry.split("|");
             const fId = parts[0].trim();
-            const fName = (parts[1] || "").toLowerCase().trim();
+            const fNameRaw = (parts[1] || "").trim();
+            const fNameLower = fNameRaw.toLowerCase();
             
-            const isPDG = /pdg|pđg|phe\s*duyet\s*gia|phê\s*duyệt\s*giá/i.test(fName) || 
-                          /\b(gia|giá)\b/i.test(fName);
+            const isPDG = /pdg|pđg|phe\s*duyet\s*gia|phê\s*duyệt\s*giá/i.test(fNameLower) || 
+                          /\b(gia|giá)\b/i.test(fNameLower);
             
             if (isPDG) {
-                if (!fileIdG) fileIdG = fId;
+                if (!fileIdG) {
+                    fileIdG = fId;
+                    fileNameG = fNameRaw;
+                }
             } else {
                 if (i.isPL) {
                     const plPart = (i.maHD.split(" - ")[0] || "").toLowerCase();
-                    if (fName.includes(plPart)) {
+                    if (fNameLower.includes(plPart)) {
                         fileIdH = fId;
+                        fileNameH = fNameRaw;
                     } else if (!fileIdH) {
                         fileIdH = fId;
+                        fileNameH = fNameRaw;
                     }
                 } else if (!fileIdH) {
                     fileIdH = fId;
+                    fileNameH = fNameRaw;
                 }
             }
         });

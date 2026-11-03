@@ -421,3 +421,143 @@
     0%, 100% { opacity: 0.35; }
     50%      { opacity: 0.95; }
 }
+
+/* ==========================================================================
+   KIẾN TRÚC MASTER - DETAIL (SPLIT VIEW DOCKING PREVIEW)
+   ========================================================================== */
+
+/* 1. Dashboard bên trái: CHỈ CHO PHÉP TRƯỢT NGANG TRỤC X (TRIỆT TIÊU NHẢY LÊN/XUỐNG) */
+#tab-plhd .form-container {
+    transition: max-width 0.4s cubic-bezier(0.22, 1, 0.36, 1), 
+                width 0.4s cubic-bezier(0.22, 1, 0.36, 1), 
+                margin-left 0.4s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    will-change: max-width, width, margin-left;
+}
+
+/* 2. Khung Preview: Lướt mở/tắt bằng translate3d 0.4s đồng bộ 100% với hiệu ứng tab */
+#pl-dock-preview-panel {
+    position: fixed;
+    top: 85px;
+    right: 30px;
+    width: calc((100vh - 120px) * 0.71);
+    max-width: 45vw;
+    min-width: 480px;
+    height: calc(100vh - 120px);
+    background: #031c35;
+    border: 1.5px solid #FFBA08;
+    border-radius: 12px;
+    z-index: 2000000;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translate3d(calc(100% + 60px), 0, 0);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform, opacity;
+}
+
+#tab-plhd.split-preview-active #pl-dock-preview-panel {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Header của khung Preview: Màu vàng Gold đồng bộ với Header Dashboard */
+.dock-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 18px;
+    border-bottom: 1.5px solid rgba(0, 0, 0, 0.2) !important;
+    background: #FFBA08 !important;
+    flex-shrink: 0;
+}
+
+.dock-preview-title-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    overflow: hidden;
+    flex: 1;
+    padding-right: 15px;
+}
+
+.dock-preview-title-box i {
+    color: #031c35 !important;
+    font-size: 16px;
+}
+
+.dock-preview-title-box span {
+    color: #031c35 !important;
+    font-size: 13px;
+    font-weight: 700 !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dock-preview-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+}
+
+.dock-preview-actions button {
+    background: none;
+    border: none;
+    color: #031c35 !important;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0;
+    line-height: 1;
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.dock-preview-actions button:hover {
+    color: #000000 !important;
+    transform: scale(1.2);
+}
+
+.dock-preview-actions button:last-child:hover {
+    color: #d63031 !important;
+}
+
+/* Nền bên dưới file scan: Đổi thành #031c35 trùng với màu nền Dashboard */
+.dock-preview-body {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    position: relative;
+    background: #031c35 !important;
+    overflow: hidden;
+}
+
+.dock-preview-body iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* 4. Highlight đường viền dòng hồ sơ đang được mở xem trước */
+#dropdown-field0-pl .hoc-tooltip.is-previewing-row {
+    background-color: rgba(0, 188, 212, 0.1) !important;
+    outline: 1.5px solid rgba(0, 188, 212, 0.5) !important;
+    outline-offset: -1.5px;
+}
+
+/* 5. Fallback responsive cho màn hình Tablet / Laptop nhỏ (< 1024px) */
+@media screen and (max-width: 1024px) {
+    #tab-plhd.split-preview-active .form-container {
+        max-width: 100% !important;
+        width: calc(100% - 30px) !important;
+        margin: 90px auto 40px auto !important;
+    }
+    #pl-dock-preview-panel {
+        width: 94vw !important;
+        right: 3vw !important;
+        top: 75px !important;
+        height: 85vh !important;
+    }
+}

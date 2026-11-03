@@ -39,6 +39,11 @@ async function openTab(tabId, triggerIntro = true) {
     const targetTab = document.getElementById(tabId);
     if (!targetTab) return;
 
+    // ĐỒNG BỘ: Tự động lướt tắt Dock Preview nếu đang mở khi chuyển sang tab khác
+    if (tabId !== 'tab-plhd' && typeof closePreviewModal_PL === 'function') {
+        closePreviewModal_PL();
+    }
+
     // 🚀 KHỞI TẠO ĐỒNG BỘ TỨC THÌ CHO TAB DRAWING
     if (tabId === 'tab-drawing') {
         const projInput = document.getElementById("drawing-project-search");

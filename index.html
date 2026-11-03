@@ -988,5 +988,37 @@
     <script src="public/JS_Tab_PL_Files.js"></script>
     <script src="public/JS_Tab_TB.js"></script>
     <script src="public/JS_Drawing.js"></script>
+
+    <!-- KHUNG PREVIEW DOCK BÊN PHẢI (QUẢN LÝ 100% TẠI CSS) -->
+        <div id="pl-dock-preview-panel">
+            <div class="dock-preview-header">
+                <div class="dock-preview-title-box">
+                    <i class="bi bi-file-earmark-pdf-fill"></i>
+                    <span id="preview-file-name">File Preview</span>
+                </div>
+                <div class="dock-preview-actions">
+                    <button type="button" id="preview-btn-copy" title="Sao chép liên kết file">
+                        <i class="bi bi-link-45deg"></i>
+                    </button>
+                    <button type="button" id="preview-btn-download" title="Tải xuống tệp">
+                        <i class="bi bi-download"></i>
+                    </button>
+                    <button type="button" id="preview-btn-external" title="Mở trong tab mới">
+                        <i class="bi bi-box-arrow-up-right"></i>
+                    </button>
+                    <button type="button" onclick="closePreviewModal_PL()" title="Đóng preview (ESC)">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="dock-preview-body">
+                <div id="preview-loading-spinner" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; flex-direction: column; align-items: center; gap: 8px; z-index: 2; pointer-events: none;">
+                    <i class="bi bi-arrow-repeat" style="font-size: 22px; color: #FFBA08; animation: rotation 1s linear infinite;"></i>
+                    <span style="font-size: 10px; color: #95A1AF; font-family: 'Poppins', sans-serif; letter-spacing: 0.5px;">LOADING ...</span>
+                </div>
+                <iframe id="preview-file-iframe" src="" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; display: block; opacity: 0; transition: opacity 0.3s ease;" allow="autoplay"></iframe>
+            </div>
+        </div>
+    
 </body>
 </html>

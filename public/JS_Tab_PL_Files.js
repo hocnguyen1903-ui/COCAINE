@@ -124,23 +124,209 @@ function renderExistingFiles_PL(maHD) {
 }
 
 /**
- * Mở link Drive của file scan
+ * ĐIỀU PHỐI PREVIEW DOCK: HIỂN THỊ TỨC THÌ, CHỐNG KẸT OFFLINE VÀ BẢO ĐẢM 100% MỞ KHUNG
  */
-function viewScanFile_PL(id, name) {
+let currentPreviewFileId_PL = "";
+
+function viewScanFile_PL(id, name, targetRowElement = null) {
     if (!id || id === "undefined") return;
     let targetId = id;
+    let targetName = (name && name !== "undefined") ? name.trim() : "";
+
+    // Bóc tách ID nếu chuỗi có định dạng tổng hợp
     if (id.includes(";;")) {
         const fileEntries = id.split(";;").filter(String);
         targetId = fileEntries[0].split("|")[0].trim();
+        if (!targetName && fileEntries[0].includes("|")) targetName = fileEntries[0].split("|")[1].trim();
         if (name && name.startsWith("PL")) {
             const plNo = name.split(" - ")[0].toUpperCase(); 
             const match = fileEntries.find(f => f.toUpperCase().includes(plNo));
-            if (match) targetId = match.split("|")[0].trim();
+            if (match) {
+                targetId = match.split("|")[0].trim();
+                targetName = match.split("|")[1]?.trim() || targetName;
+            }
         }
     } else if (id.includes("|")) {
-        targetId = id.split("|")[0].trim();
+        const parts = id.split("|");
+        targetId = parts[0].trim();
+        if (!targetName) targetName = parts[1]?.trim() || "";
     }
-    if (targetId) window.open("https://drive.google.com/file/d/" + targetId + "/view", '_blank');
+
+    if (!targetId) return;
+
+    // Tự động tìm lại tên file thực tế từ SYSTEM_DATA
+    if (!targetName && typeof SYSTEM_DATA !== "undefined" && SYSTEM_DATA?.pl?.field0) {
+        for (const item of SYSTEM_DATA.pl.field0) {
+            const scanStr = String(item.scanId || "");
+            if (scanStr.includes(targetId)) {
+                const matchedEntry = scanStr.split(";;").find(entry => entry.startsWith(targetId + "|"));
+                if (matchedEntry) {
+                    targetName = matchedEntry.split("|")[1]?.trim() || "";
+                    break;
+                }
+            }
+        }
+    }
+    if (!targetName) targetName = "Tệp đính kèm.pdf";
+
+    const tabPL = document.getElementById("tab-plhd");
+    const panel = document.getElementById("pl-dock-preview-panel");
+    const iframe = document.getElementById("preview-file-iframe");
+    const nameEl = document.getElementById("preview-file-name");
+    const extBtn = document.getElementById("preview-btn-external");
+    const dlBtn = document.getElementById("preview-btn-download");
+    const copyBtn = document.getElementById("preview-btn-copy");
+    const formContainer = tabPL ? tabPL.querySelector(".form-container") : null;
+
+    if (!panel || !iframe) return;
+
+    const fileViewUrl = `https://drive.google.com/file/d/${targetId}/view`;
+
+    // 1. Tên file & các nút công cụ
+    if (nameEl) nameEl.textContent = targetName;
+    if (extBtn) extBtn.onclick = () => window.open(fileViewUrl, '_blank');
+    if (dlBtn) dlBtn.onclick = (e) => downloadScanFile_PL(targetId, e);
+
+    if (copyBtn) {
+        copyBtn.onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(fileViewUrl);
+                showToast_PL("🔗 Đã sao chép liên kết file!", "success");
+            } catch (err) {
+                const tmp = document.createElement("input");
+                tmp.value = fileViewUrl;
+                document.body.appendChild(tmp);
+                tmp.select();
+                document.execCommand("copy");
+                document.body.removeChild(tmp);
+                showToast_PL("🔗 Đã sao chép liên kết file!", "success");
+            }
+        };
+    }
+
+    // 2. NGẮT HIỂN THỊ TỨC THỜI (0MS) & ĐỢI GOOGLE DRIVE THU HỒI THANH CÔNG CỤ HOÀN TẤT
+    currentPreviewFileId_PL = targetId;
+    const spinner = document.getElementById("preview-loading-spinner");
+    if (spinner) spinner.style.display = "flex";
+
+    // Cắt đứt opacity về 0 ngay lập tức, không cho phép rò rỉ hình ảnh đang nhảy
+    iframe.style.transition = "none";
+    iframe.style.opacity = "0";
+    iframe.offsetHeight; // Kích hoạt reflow lập tức
+    iframe.style.transition = "opacity 0.3s ease";
+
+    let hasRendered = false;
+    const revealIframe = () => {
+        if (hasRendered) return;
+        hasRendered = true;
+        if (spinner) spinner.style.display = "none";
+        iframe.style.opacity = "1"; // Chỉ làm sáng khi Google Drive đã kéo trang PDF lên đỉnh chuẩn xác
+    };
+
+    // Chờ 950ms sau khi tải trang để Google Drive chạy xong script thu hồi khoảng cách 56px
+    iframe.onload = () => setTimeout(revealIframe, 950);
+    setTimeout(revealIframe, 1400); // Chốt chặn an toàn tối đa 1.4s
+
+    iframe.src = `https://drive.google.com/file/d/${targetId}/preview`;
+
+    // 3. Highlight dòng dữ liệu
+    document.querySelectorAll('#dropdown-field0-pl .hoc-tooltip').forEach(r => r.classList.remove('is-previewing-row'));
+    if (targetRowElement) {
+        targetRowElement.classList.add('is-previewing-row');
+    }
+
+    // 4. TRƯỢT DASHBOARD: GIẢM CHIỀU RỘNG, TĂNG 3 KHOẢNG HỞ LÊN 30PX (TỔNG 90PX)
+    if (formContainer && window.innerWidth >= 1024) {
+        panel.style.display = "flex";
+        const actualPreviewWidth = panel.getBoundingClientRect().width || Math.min(window.innerWidth * 0.45, Math.max(480, (window.innerHeight - 120) * 0.72));
+        
+        // 90px = 30px (lề trái) + 30px (khoảng giữa) + 30px (lề phải)
+        const targetDashWidth = Math.max(500, window.innerWidth - actualPreviewWidth - 90);
+        const currentLeft = formContainer.getBoundingClientRect().left;
+
+        if (tabPL) tabPL.style.setProperty('align-items', 'flex-start', 'important');
+        formContainer.style.setProperty('margin-top', '90px', 'important');
+        formContainer.style.setProperty('margin-bottom', '90px', 'important');
+        formContainer.style.setProperty('margin-right', '0', 'important');
+
+        if (!tabPL.classList.contains("split-preview-active")) {
+            formContainer.style.setProperty('margin-left', `${currentLeft}px`, 'important');
+            formContainer.style.setProperty('width', `${formContainer.offsetWidth}px`, 'important');
+            formContainer.style.setProperty('max-width', 'none', 'important');
+            formContainer.offsetHeight; // Reflow
+        }
+
+        // Dashboard thu nhỏ chiều rộng và dịch lề trái cách mép đúng 30px
+        formContainer.style.setProperty('width', `${targetDashWidth}px`, 'important');
+        formContainer.style.setProperty('max-width', `${targetDashWidth}px`, 'important');
+        formContainer.style.setProperty('margin-left', '30px', 'important');
+    }
+
+    // 5. MỞ NGAY LẬP TỨC KHUNG PREVIEW (KHÔNG CHỜ requestAnimationFrame)
+    panel.style.display = "flex";
+    panel.offsetHeight; // Kích hoạt render tức thời
+    panel.style.setProperty('transform', 'translate3d(0, 0, 0)', 'important');
+    panel.style.setProperty('opacity', '1', 'important');
+    panel.style.setProperty('pointer-events', 'auto', 'important');
+
+    if (tabPL) tabPL.classList.add("split-preview-active");
+}
+
+/**
+ * ĐÓNG DOCK PREVIEW: TRƯỢT THẲNG HÀNG TRÊN TRỤC NGANG TỪ TRÁI SANG PHẢI VỀ TÂM
+ */
+function closePreviewModal_PL() {
+    const tabPL = document.getElementById("tab-plhd");
+    const panel = document.getElementById("pl-dock-preview-panel");
+    const iframe = document.getElementById("preview-file-iframe");
+    const formContainer = tabPL ? tabPL.querySelector(".form-container") : null;
+
+    currentPreviewFileId_PL = "";
+
+    document.querySelectorAll('#dropdown-field0-pl .hoc-tooltip').forEach(r => r.classList.remove('is-previewing-row'));
+
+    if (panel) {
+        panel.style.setProperty('transform', 'translate3d(calc(100% + 60px), 0, 0)', 'important');
+        panel.style.setProperty('opacity', '0', 'important');
+        panel.style.setProperty('pointer-events', 'none', 'important');
+    }
+
+    if (formContainer && tabPL && tabPL.classList.contains("split-preview-active")) {
+        const defaultWidth = Math.min(1100, window.innerWidth - 30);
+        const centerLeft = Math.max(15, (window.innerWidth - defaultWidth) / 2);
+
+        // Khóa cố định trục dọc, chỉ dịch chuyển lề trái về tâm
+        formContainer.style.setProperty('width', `${defaultWidth}px`, 'important');
+        formContainer.style.setProperty('max-width', `${defaultWidth}px`, 'important');
+        formContainer.style.setProperty('margin-left', `${centerLeft}px`, 'important');
+
+        setTimeout(() => {
+            formContainer.style.removeProperty('max-width');
+            formContainer.style.removeProperty('width');
+            formContainer.style.removeProperty('margin-top');
+            formContainer.style.removeProperty('margin-bottom');
+            formContainer.style.removeProperty('margin-right');
+            formContainer.style.removeProperty('margin-left');
+            tabPL.style.removeProperty('align-items');
+            if (panel && !tabPL.classList.contains("split-preview-active")) {
+                panel.style.display = "none";
+                if (iframe) {
+                    iframe.src = "";
+                    iframe.style.opacity = "0";
+                }
+            }
+        }, 400);
+    } else if (panel) {
+        setTimeout(() => {
+            panel.style.display = "none";
+            if (iframe) {
+                iframe.src = "";
+                iframe.style.opacity = "0";
+            }
+        }, 400);
+    }
+
+    if (tabPL) tabPL.classList.remove("split-preview-active");
 }
 
 // ==========================================================================

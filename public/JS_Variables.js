@@ -179,6 +179,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" || e.key === "Esc") {
+            if (typeof closePreviewModal_PL === "function") closePreviewModal_PL();
             document.querySelectorAll('.smooth-dropdown').forEach(d => d.classList.remove('show'));           
             const adjDrop = document.getElementById('dropdown-field5-pl');
             if (adjDrop) adjDrop.classList.remove('open-smooth');
