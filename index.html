@@ -1012,9 +1012,12 @@
                 </div>
             </div>
             <div class="dock-preview-body">
-                <div id="preview-loading-spinner" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; flex-direction: column; align-items: center; gap: 8px; z-index: 2; pointer-events: none;">
-                    <i class="bi bi-arrow-repeat" style="font-size: 22px; color: #FFBA08; animation: rotation 1s linear infinite;"></i>
-                    <span style="font-size: 10px; color: #95A1AF; font-family: 'Poppins', sans-serif; letter-spacing: 0.5px;">LOADING ...</span>
+                <div id="preview-loading-spinner" class="drawing-loader-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(3, 28, 53, 0.85); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); animation: luxuryBgPulse 3s ease-in-out infinite; border-radius: 0; z-index: 2; pointer-events: none;">
+                    <div class="loader-content" style="margin-top: 0; gap: 20px;">
+                        <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse" style="width: 85px;">
+                        <div class="shimmer-bar" style="width: 170px;"></div>
+                        <p class="loader-text" style="font-size: 8.5px; letter-spacing: 4px;">FILE LOADING</p>
+                    </div>
                 </div>
                 <iframe id="preview-file-iframe" src="" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; display: block; opacity: 0; transition: opacity 0.3s ease;" allow="autoplay"></iframe>
             </div>

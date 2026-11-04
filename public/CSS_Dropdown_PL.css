@@ -33,17 +33,16 @@
 
 #dropdown-field0-pl::-webkit-scrollbar { display: none !important; }
 
-/* 1. Thanh Header tổng - lề 20px đối xứng */
+/* 1. Thanh Header tổng - đồng bộ màu vàng chuẩn #FFBA08, bỏ mờ */
 #dropdown-field0-pl section.disable-hover { 
     position: sticky !important; 
     top: 0; left: 0; z-index: 20; 
     width: 100% !important; 
     margin: 0 !important; 
-    background: rgba(255, 186, 8) !important; 
-    border-bottom: 1.5px solid rgba(255, 186, 8, 0.6) !important; 
+    background: #FFBA08 !important; 
+    border-bottom: 1.5px solid rgba(0, 0, 0, 0.2) !important; 
     box-sizing: border-box; 
-    padding: 8px 26px !important; /* Đổi thành 30px */
-    backdrop-filter: blur(10px);
+    padding: 8px 26px !important; 
     transform: translate3d(0, 0, 0);
 }
 
@@ -83,9 +82,9 @@
 
 #dropdown-field0-pl .hoc-tooltip i, 
 #dropdown-field0-pl .hoc-tooltip div { 
-    font-size: 10.5px !important; 
+    font-size: 11px !important; 
     font-weight: 500 !important; 
-    -webkit-font-smoothing: subpixel-antialiased;
+    -webkit-font-smoothing: antialiased;
 }
 
 .money-column-container { flex-shrink: 0; white-space: nowrap; text-align: right; }
@@ -437,12 +436,11 @@
 /* 2. Khung Preview: Lướt mở/tắt bằng translate3d 0.4s đồng bộ 100% với hiệu ứng tab */
 #pl-dock-preview-panel {
     position: fixed;
-    top: 85px;
+    top: 180px;
     right: 30px;
-    width: calc((100vh - 120px) * 0.71);
-    max-width: 45vw;
-    min-width: 480px;
-    height: calc(100vh - 120px);
+    width: min(850px, 50vw);
+    min-width: 580px;
+    height: auto;
     background: #031c35;
     border: 1.5px solid #FFBA08;
     border-radius: 12px;
@@ -491,10 +489,11 @@
 .dock-preview-title-box span {
     color: #031c35 !important;
     font-size: 13px;
-    font-weight: 700 !important;
+    font-weight: 400 !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    -webkit-font-smoothing: antialiased;
 }
 
 .dock-preview-actions {

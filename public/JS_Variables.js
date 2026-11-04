@@ -245,23 +245,11 @@ document.addEventListener('focusout', function(e) {
 window.addEventListener('resize', () => {
     if (typeof updateAppScrollState === "function") updateAppScrollState();
     
-    // Tự động tính toán lại tỉ lệ Dashboard và Preview Dock khi resize cửa sổ
+    // Tự động tính toán duy trì 3 khoảng trống cân bằng hoàn hảo khi resize cửa sổ
     const tabPL = document.getElementById("tab-plhd");
     if (tabPL && tabPL.classList.contains("split-preview-active") && activeTabId === "tab-plhd") {
-        const panel = document.getElementById("pl-dock-preview-panel");
-        const formContainer = tabPL.querySelector(".form-container");
-        if (formContainer && panel) {
-            if (window.innerWidth >= 1024) {
-                const actualPreviewWidth = panel.getBoundingClientRect().width || Math.min(window.innerWidth * 0.45, Math.max(480, (window.innerHeight - 120) * 0.72));
-                const targetDashWidth = Math.max(500, window.innerWidth - actualPreviewWidth - 90);
-                formContainer.style.setProperty('width', `${targetDashWidth}px`, 'important');
-                formContainer.style.setProperty('max-width', `${targetDashWidth}px`, 'important');
-                formContainer.style.setProperty('margin-left', '30px', 'important');
-            } else {
-                formContainer.style.removeProperty('width');
-                formContainer.style.removeProperty('max-width');
-                formContainer.style.removeProperty('margin-left');
-            }
+        if (typeof syncPrvSplitLayout_PL === "function") {
+            syncPrvSplitLayout_PL();
         }
     }
 });

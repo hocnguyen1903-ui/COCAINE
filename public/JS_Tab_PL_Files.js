@@ -50,27 +50,29 @@ function closeScanPanel_PL() {
 }
 
 /**
- * Logic nhận diện và mở file chính từ Dashboard (Double click bên ngoài)
+ * Mở trực tiếp file scan trên Google Drive (Tab mới trình duyệt)
  */
 function handleViewMainFile_PL(maHD, rawScanData) {
     if (!rawScanData) return;
-    const files = rawScanData.split(";;");
-    if (files.length === 1) return viewScanFile_PL(files[0].split("|")[0]);
+    const files = rawScanData.split(";;").filter(Boolean);
+    if (files.length === 0) return;
 
-    let mainFileId = files[0].split("|")[0]; 
-    if (maHD.startsWith("PL")) {
-        const plPart = maHD.split(" - ")[0]; 
-        const match = files.find(f => f.split("|")[1].toUpperCase().includes(plPart.toUpperCase()));
-        if (match) mainFileId = match.split("|")[0];
-    } else {
-        const parts = maHD.match(/(\d+)\/(\d+)\/HĐTCXD-(.*?)\//);
-        if (parts) {
-            const key = `${parts[3]}_${parts[1]}_${parts[2]}`.toUpperCase();
-            const match = files.find(f => f.split("|")[1].toUpperCase().includes(key));
-            if (match) mainFileId = match.split("|")[0];
+    let mainFileId = files[0].split("|")[0].trim();
+    if (files.length > 1) {
+        if (maHD.startsWith("PL")) {
+            const plPart = maHD.split(" - ")[0]; 
+            const match = files.find(f => f.split("|")[1].toUpperCase().includes(plPart.toUpperCase()));
+            if (match) mainFileId = match.split("|")[0].trim();
+        } else {
+            const parts = maHD.match(/(\d+)\/(\d+)\/HĐTCXD-(.*?)\//);
+            if (parts) {
+                const key = `${parts[3]}_${parts[1]}_${parts[2]}`.toUpperCase();
+                const match = files.find(f => f.split("|")[1].toUpperCase().includes(key));
+                if (match) mainFileId = match.split("|")[0].trim();
+            }
         }
     }
-    viewScanFile_PL(mainFileId);
+    window.open(`https://drive.google.com/file/d/${mainFileId}/view`, '_blank');
 }
 
 /**
@@ -131,8 +133,10 @@ let currentPreviewFileId_PL = "";
 // ==========================================================================
 // STATE MANAGEMENT & CONTROLLER CHO VIEWPORT THAO TÁC PREVIEW (ZOOM & PAN)
 // ==========================================================================
+const DEFAULT_PRV_ZOOM = 1; // Tăng tỷ lệ zoom mặc định lên 118% loại bỏ lề thừa và phóng to chữ
+
 let prvViewportState = {
-    zoom: 1.0,
+    zoom: DEFAULT_PRV_ZOOM,
     panX: 0,
     panY: 0,
     minZoom: 1.0,
@@ -142,8 +146,81 @@ let prvViewportState = {
     startY: 0
 };
 
+let prvWheelYieldTimer = null;
+let isPrvGlobalListenerBound = false;
+
 /**
- * Cập nhật tọa độ transform GPU của iframe và trạng thái bắt chuột của overlay
+ * Cân đối 3 khoảng trống đều nhau tuyệt đối: Lề trái == Khe giữa == Lề phải
+ */
+function syncPrvSplitLayout_PL() {
+    const tabPL = document.getElementById("tab-plhd");
+    const panel = document.getElementById("pl-dock-preview-panel");
+    const formContainer = tabPL ? tabPL.querySelector(".form-container") : null;
+    if (!tabPL || !panel || !formContainer) return;
+
+    if (window.innerWidth >= 1024) {
+        const screenW = window.innerWidth;
+        
+        let prvW = Math.min(760, Math.max(520, Math.round(screenW * 0.38)));
+        const minGap = 25;
+        let dashW = Math.min(1100, screenW - prvW - (3 * minGap));
+        if (dashW < 520) {
+            prvW = Math.max(460, Math.round(screenW * 0.35));
+            dashW = Math.max(500, screenW - prvW - (3 * minGap));
+        }
+
+        const G = Math.max(15, Math.floor((screenW - dashW - prvW) / 3));
+
+        // 🚀 ĐỒNG BỘ ĐỈNH VÀ ĐÁY THẲNG HÀNG CHÍNH XÁC VỚI KHUNG DASHBOARD (BỎ VÙNG NGÀY THÁNG)
+        const dashRect = formContainer.getBoundingClientRect();
+        panel.style.top = `${dashRect.top}px`;
+        panel.style.height = `${dashRect.height}px`;
+
+        panel.style.width = `${prvW}px`;
+        panel.style.right = `${G}px`;
+
+        tabPL.style.setProperty('align-items', 'flex-start', 'important');
+        formContainer.style.setProperty('margin-top', '90px', 'important');
+        formContainer.style.setProperty('margin-bottom', '90px', 'important');
+        formContainer.style.setProperty('margin-right', '0', 'important');
+        formContainer.style.setProperty('margin-left', `${G}px`, 'important');
+        formContainer.style.setProperty('width', `${dashW}px`, 'important');
+        formContainer.style.setProperty('max-width', '1100px', 'important');
+    } else {
+        panel.style.removeProperty('top');
+        panel.style.removeProperty('height');
+        panel.style.removeProperty('width');
+        panel.style.removeProperty('right');
+        formContainer.style.removeProperty('width');
+        formContainer.style.removeProperty('max-width');
+        formContainer.style.removeProperty('margin-left');
+    }
+}
+
+/**
+ * Thuật toán chặn biên (Clamping): Triệt tiêu khoảng trống xanh/đen, giữ tài liệu luôn khít khung
+ */
+function clampPrvPan() {
+    const bodyContainer = document.querySelector("#pl-dock-preview-panel .dock-preview-body");
+    if (!bodyContainer) return;
+
+    const W = bodyContainer.clientWidth;
+    const H = bodyContainer.clientHeight;
+    const minPanX = W * (1 - prvViewportState.zoom);
+    const minPanY = H * (1 - prvViewportState.zoom);
+
+    if (prvViewportState.zoom <= 1.0) {
+        prvViewportState.panX = 0;
+        prvViewportState.panY = 0;
+        return;
+    }
+
+    prvViewportState.panX = Math.min(0, Math.max(minPanX, prvViewportState.panX));
+    prvViewportState.panY = Math.min(0, Math.max(minPanY, prvViewportState.panY));
+}
+
+/**
+ * Cập nhật tọa độ transform GPU của iframe
  */
 function applyPrvTransform() {
     const iframe = document.getElementById("preview-file-iframe");
@@ -156,16 +233,16 @@ function applyPrvTransform() {
         prvViewportState.panY = 0;
         iframe.style.transformOrigin = "0 0";
         iframe.style.transform = "none";
-        
-        // Trạng thái 1x: Chuyển overlay thành không chặn chuột để iframe nhận trực tiếp con lăn cuộn 13 trang
+
         if (overlay && !prvViewportState.isDragging) {
             overlay.style.pointerEvents = "none";
             overlay.style.cursor = "default";
         }
     } else {
-        // Trạng thái phóng to (> 1x): Bật overlay chặn chuột 100% để chuột trái kéo Pan và chặn zoom web ngoài
+        clampPrvPan();
         iframe.style.transformOrigin = "0 0";
         iframe.style.transform = `translate3d(${prvViewportState.panX}px, ${prvViewportState.panY}px, 0) scale(${prvViewportState.zoom})`;
+
         if (overlay) {
             overlay.style.pointerEvents = "auto";
             overlay.style.cursor = prvViewportState.isDragging ? "grabbing" : "grab";
@@ -174,13 +251,40 @@ function applyPrvTransform() {
 }
 
 /**
- * Reset vị trí hiển thị và hệ số zoom về trạng thái ban đầu (Cuộn đa trang tự nhiên)
+ * Reset vị trí hiển thị và hệ số zoom về 1.0x ban đầu
  */
 function resetPrvTransform() {
-    prvViewportState.zoom = 1.0;
+    prvViewportState.zoom = DEFAULT_PRV_ZOOM;
     prvViewportState.panX = 0;
     prvViewportState.panY = 0;
     prvViewportState.isDragging = false;
+    applyPrvTransform();
+}
+
+/**
+ * Lõi tính toán tỷ lệ zoom theo tâm trỏ chuột (Focal-point Zoom)
+ */
+function executePrvZoom(deltaY, clientX, clientY) {
+    const bodyContainer = document.querySelector("#pl-dock-preview-panel .dock-preview-body");
+    const overlay = document.getElementById("preview-interaction-overlay");
+    if (!bodyContainer) return;
+
+    if (overlay) overlay.style.pointerEvents = "auto";
+
+    const rect = bodyContainer.getBoundingClientRect();
+    const mouseX = clientX - rect.left;
+    const mouseY = clientY - rect.top;
+
+    const zoomFactor = deltaY < 0 ? 1.15 : (1 / 1.15);
+    const prevZoom = prvViewportState.zoom;
+    let nextZoom = Math.min(prvViewportState.maxZoom, Math.max(prvViewportState.minZoom, prevZoom * zoomFactor));
+
+    if (nextZoom < 1.05) nextZoom = 1.0;
+
+    prvViewportState.panX = mouseX - (mouseX - prvViewportState.panX) * (nextZoom / prevZoom);
+    prvViewportState.panY = mouseY - (mouseY - prvViewportState.panY) * (nextZoom / prevZoom);
+    prvViewportState.zoom = nextZoom;
+
     applyPrvTransform();
 }
 
@@ -199,27 +303,17 @@ function initPrvViewportInteraction() {
         overlay.style.cssText = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; background: transparent; touch-action: none;";
         bodyContainer.appendChild(overlay);
 
-        // 1. NHẤP ĐÚP VÀ GIỮ CHUỘT TRÁI ĐỂ KÉO TRANG (DOUBLE-CLICK & DRAG)
-        let lastClickTime = 0;
-
+        // 1. KÉO THẢ DI CHUYỂN BẰNG CHUỘT TRÁI (PAN)
         overlay.addEventListener("pointerdown", (e) => {
-            if (e.button !== 0) return; // Chỉ bắt chuột trái
+            if (e.button !== 0) return;
             e.preventDefault();
 
-            const currentTime = new Date().getTime();
-            const timeDiff = currentTime - lastClickTime;
+            prvViewportState.isDragging = true;
+            prvViewportState.startX = e.clientX - prvViewportState.panX;
+            prvViewportState.startY = e.clientY - prvViewportState.panY;
 
-            // Nếu 2 lần bấm cách nhau dưới 350ms -> Kích hoạt chế độ kéo trang
-            if (timeDiff < 350) {
-                prvViewportState.isDragging = true;
-                prvViewportState.startX = e.clientX - prvViewportState.panX;
-                prvViewportState.startY = e.clientY - prvViewportState.panY;
-
-                overlay.setPointerCapture(e.pointerId);
-                overlay.style.cursor = "grabbing";
-            }
-            
-            lastClickTime = currentTime;
+            overlay.setPointerCapture(e.pointerId);
+            overlay.style.cursor = "grabbing";
         });
 
         overlay.addEventListener("pointermove", (e) => {
@@ -236,96 +330,104 @@ function initPrvViewportInteraction() {
             if (!prvViewportState.isDragging) return;
             prvViewportState.isDragging = false;
             try { overlay.releasePointerCapture(e.pointerId); } catch(err) {}
-            overlay.style.cursor = "default";
             applyPrvTransform();
         };
 
         overlay.addEventListener("pointerup", stopDrag);
         overlay.addEventListener("pointercancel", stopDrag);
 
-        // Bấm chuột giữa (con lăn) để khôi phục lại Zoom 1x
-        overlay.addEventListener("auxclick", (e) => {
-            if (e.button === 1) {
-                e.preventDefault();
-                resetPrvTransform();
-            }
+        // Nhấp đúp chuột: Khôi phục lại 1x tức thì để cuộn tài liệu 13 trang tự nhiên
+        overlay.addEventListener("dblclick", (e) => {
+            e.preventDefault();
+            resetPrvTransform();
         });
 
-        // 2. ZOOM & CUỘN BÊN TRONG LỚP OVERLAY
+        // 2. ZOOM & CUỘN TRÊN LỚP OVERLAY
         overlay.addEventListener("wheel", (e) => {
             const isZoomKey = e.ctrlKey || e.metaKey;
 
             if (isZoomKey) {
-                // CHẶN BROWSER ZOOM TOÀN TRANG
+                // Chặn zoom trình duyệt ngoài, chỉ zoom vùng prv
                 e.preventDefault();
                 e.stopPropagation();
-
-                const rect = bodyContainer.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-
-                const zoomFactor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
-                const prevZoom = prvViewportState.zoom;
-                const nextZoom = Math.min(prvViewportState.maxZoom, Math.max(prvViewportState.minZoom, prevZoom * zoomFactor));
-
-                prvViewportState.panX = mouseX - (mouseX - prvViewportState.panX) * (nextZoom / prevZoom);
-                prvViewportState.panY = mouseY - (mouseY - prvViewportState.panY) * (nextZoom / prevZoom);
-                prvViewportState.zoom = nextZoom;
-
-                applyPrvTransform();
-            } else if (prvViewportState.zoom > 1.01) {
-                // Đang zoom to: Lăn chuột di chuyển trang scan theo chiều dọc / ngang
-                e.preventDefault();
-                e.stopPropagation();
-
-                const factor = e.deltaMode === 1 ? 28 : 1;
-                prvViewportState.panY -= e.deltaY * factor;
-                prvViewportState.panX -= e.deltaX * factor;
-
-                applyPrvTransform();
+                executePrvZoom(e.deltaY, e.clientX, e.clientY);
+            } else {
+                // LĂN CHUỘT THƯỜNG: Nhả overlay 350ms để luồng con lăn đi thẳng vào iframe cuộn qua các trang 1 -> 13
+                overlay.style.pointerEvents = "none";
+                clearTimeout(prvWheelYieldTimer);
+                prvWheelYieldTimer = setTimeout(() => {
+                    if (prvViewportState.zoom > 1.01) {
+                        overlay.style.pointerEvents = "auto";
+                    }
+                }, 350);
             }
         }, { passive: false });
-
-        // 3. ĐÓN ĐẦU PHÍM CTRL / CMD: KÍCH HOẠT OVERLAY TRƯỚC KHI CON LĂN BẮT ĐẦU QUAY
-        window.addEventListener("keydown", (e) => {
-    if (e.code === "Space" && e.target === document.body) {
-        e.preventDefault(); // Chặn cuộn trang của phím Space
-        overlay.style.pointerEvents = "auto";
-        overlay.style.cursor = "grab";
     }
-});
 
-window.addEventListener("keyup", (e) => {
-    if (e.code === "Space" && prvViewportState.zoom <= 1.01) {
-        overlay.style.pointerEvents = "none";
-    }
-});
+    // 3. ĐĂNG KÝ HỆ THỐNG PHÒNG THỦ CHỐNG CƯỚP FOCUS & BẮT PHÍM TOÀN CỤC (CHỈ GÁN 1 LẦN)
+    if (!isPrvGlobalListenerBound) {
+        isPrvGlobalListenerBound = true;
 
-        // 4. CHẶN VÀ BẮT SỰ KIỆN ZOOM TOÀN CỤC KHI CON TRỎ Ở TRONG VÙNG PRV
-        bodyContainer.addEventListener("mouseenter", () => {
-            // Lấy lại focus cho cửa sổ chính khi chuột di chuyển vào prv để keydown luôn hoạt động
-            window.focus();
+        // Thu hồi focus về window chính ngay lập tức nếu iframe cố gắng cướp focus bàn phím
+        window.addEventListener("blur", () => {
+            setTimeout(() => {
+                const activeEl = document.activeElement;
+                if (activeEl && activeEl.id === "preview-file-iframe") {
+                    activeEl.blur();
+                    window.focus();
+                }
+            }, 0);
         });
 
-        // Bắt sự kiện wheel ở giai đoạn Capturing trên toàn bộ panel để triệt tiêu zoom trình duyệt
-        panel.addEventListener("wheel", (e) => {
+        // Di chuột trên vùng khung preview tự động giải phóng focus của iframe
+        bodyContainer.addEventListener("mousemove", () => {
+            const activeEl = document.activeElement;
+            if (activeEl && activeEl.id === "preview-file-iframe") {
+                activeEl.blur();
+                window.focus();
+            }
+        });
+
+        // Bắt đầu giữ phím Ctrl/Cmd: Bật ngay lập tức overlay để đón đầu cử chỉ con lăn chuột
+        window.addEventListener("keydown", (e) => {
+            if (e.key === "Control" || e.key === "Meta" || e.ctrlKey || e.metaKey) {
+                const currentPanel = document.getElementById("pl-dock-preview-panel");
+                if (currentPanel && currentPanel.style.display !== "none") {
+                    const currentOverlay = document.getElementById("preview-interaction-overlay");
+                    if (currentOverlay) {
+                        currentOverlay.style.pointerEvents = "auto";
+                    }
+                }
+            }
+        }, true);
+
+        // Nhả phím Ctrl/Cmd: Trả lại trạng thái cuộn tự nhiên nếu đang ở 1x
+        window.addEventListener("keyup", (e) => {
+            if ((e.key === "Control" || e.key === "Meta") && prvViewportState.zoom <= 1.01) {
+                const currentOverlay = document.getElementById("preview-interaction-overlay");
+                if (currentOverlay && !prvViewportState.isDragging) {
+                    currentOverlay.style.pointerEvents = "none";
+                }
+            }
+        }, true);
+
+        // Chặn đứng hoàn toàn Touchpad Pinch & Ctrl+Wheel toàn cục khi con trỏ nằm trong khung prv
+        window.addEventListener("wheel", (e) => {
             if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                e.stopPropagation();
+                const currentPanel = document.getElementById("pl-dock-preview-panel");
+                if (currentPanel && currentPanel.style.display !== "none") {
+                    const rect = currentPanel.getBoundingClientRect();
+                    const isInsidePrv = (
+                        e.clientX >= rect.left && e.clientX <= rect.right &&
+                        e.clientY >= rect.top && e.clientY <= rect.bottom
+                    );
 
-                const rect = bodyContainer.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-
-                const zoomFactor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
-                const prevZoom = prvViewportState.zoom;
-                const nextZoom = Math.min(prvViewportState.maxZoom, Math.max(prvViewportState.minZoom, prevZoom * zoomFactor));
-
-                prvViewportState.panX = mouseX - (mouseX - prvViewportState.panX) * (nextZoom / prevZoom);
-                prvViewportState.panY = mouseY - (mouseY - prvViewportState.panY) * (nextZoom / prevZoom);
-                prvViewportState.zoom = nextZoom;
-
-                applyPrvTransform();
+                    if (isInsidePrv) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        executePrvZoom(e.deltaY, e.clientX, e.clientY);
+                    }
+                }
             }
         }, { passive: false, capture: true });
     }
@@ -452,32 +554,10 @@ function viewScanFile_PL(id, name, targetRowElement = null) {
         targetRowElement.classList.add('is-previewing-row');
     }
 
-    // 4. TRƯỢT DASHBOARD BÊN TRÁI ĐỒNG BỘ
-    if (formContainer && window.innerWidth >= 1024) {
-        panel.style.display = "flex";
-        const actualPreviewWidth = panel.getBoundingClientRect().width || Math.min(window.innerWidth * 0.45, Math.max(480, (window.innerHeight - 120) * 0.72));
-        const targetDashWidth = Math.max(500, window.innerWidth - actualPreviewWidth - 90);
-        const currentLeft = formContainer.getBoundingClientRect().left;
-
-        if (tabPL) tabPL.style.setProperty('align-items', 'flex-start', 'important');
-        formContainer.style.setProperty('margin-top', '90px', 'important');
-        formContainer.style.setProperty('margin-bottom', '90px', 'important');
-        formContainer.style.setProperty('margin-right', '0', 'important');
-
-        if (!tabPL.classList.contains("split-preview-active")) {
-            formContainer.style.setProperty('margin-left', `${currentLeft}px`, 'important');
-            formContainer.style.setProperty('width', `${formContainer.offsetWidth}px`, 'important');
-            formContainer.style.setProperty('max-width', 'none', 'important');
-            formContainer.offsetHeight; // Reflow
-        }
-
-        formContainer.style.setProperty('width', `${targetDashWidth}px`, 'important');
-        formContainer.style.setProperty('max-width', `${targetDashWidth}px`, 'important');
-        formContainer.style.setProperty('margin-left', '30px', 'important');
-    }
-
-    // 5. MỞ KHUNG PREVIEW
+    // 4. CÂN ĐỐI ĐỒNG BỘ 3 KHE HỞ VÀ MỞ KHUNG PREVIEW
     panel.style.display = "flex";
+    syncPrvSplitLayout_PL();
+
     panel.offsetHeight;
     panel.style.setProperty('transform', 'translate3d(0, 0, 0)', 'important');
     panel.style.setProperty('opacity', '1', 'important');
@@ -487,7 +567,7 @@ function viewScanFile_PL(id, name, targetRowElement = null) {
 }
 
 /**
- * ĐÓNG DOCK PREVIEW: TRƯỢT THẲNG HÀNG TRÊN TRỤC NGANG TỪ TRÁI SANG PHẢI VỀ TÂM
+ * ĐÓNG DOCK PREVIEW: TRƯỢT THẲNG HÀNG TRÊN TRỤC NGANG VỀ TÂM VỚI MAX-WIDTH 1100PX
  */
 function closePreviewModal_PL() {
     const tabPL = document.getElementById("tab-plhd");
@@ -510,9 +590,8 @@ function closePreviewModal_PL() {
         const defaultWidth = Math.min(1100, window.innerWidth - 30);
         const centerLeft = Math.max(15, (window.innerWidth - defaultWidth) / 2);
 
-        // Khóa cố định trục dọc, chỉ dịch chuyển lề trái về tâm
         formContainer.style.setProperty('width', `${defaultWidth}px`, 'important');
-        formContainer.style.setProperty('max-width', `${defaultWidth}px`, 'important');
+        formContainer.style.setProperty('max-width', '1100px', 'important');
         formContainer.style.setProperty('margin-left', `${centerLeft}px`, 'important');
 
         setTimeout(() => {
@@ -525,6 +604,10 @@ function closePreviewModal_PL() {
             tabPL.style.removeProperty('align-items');
             if (panel && !tabPL.classList.contains("split-preview-active")) {
                 panel.style.display = "none";
+                panel.style.removeProperty('top');
+                panel.style.removeProperty('height');
+                panel.style.removeProperty('right');
+                panel.style.removeProperty('width');
                 if (iframe) {
                     iframe.src = "";
                     iframe.style.opacity = "0";
@@ -534,6 +617,10 @@ function closePreviewModal_PL() {
     } else if (panel) {
         setTimeout(() => {
             panel.style.display = "none";
+            panel.style.removeProperty('top');
+            panel.style.removeProperty('height');
+            panel.style.removeProperty('right');
+            panel.style.removeProperty('width');
             if (iframe) {
                 iframe.src = "";
                 iframe.style.opacity = "0";

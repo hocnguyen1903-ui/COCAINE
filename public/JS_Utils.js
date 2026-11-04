@@ -381,7 +381,8 @@ function handleDoubleTap_Scan(e, id, fileName) {
     if ((timesince < 300) && (timesince > 0)) {
         e.preventDefault(); 
         if (navigator.vibrate) navigator.vibrate(40);
-        viewScanFile_PL(id, fileName);
+        // Nhấp đúp vào file scan trong bảng quản lý file: Mở trực tiếp trên Google Drive
+        window.open(`https://drive.google.com/file/d/${id}/view`, '_blank');
         lastTap_Scan = 0;
     } else {
         lastTap_Scan = now;

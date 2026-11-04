@@ -32,7 +32,7 @@ function showContextMenu_PL(event, element, maHD, isTransferred) {
     ctxMenu.style.left = x + "px"; 
     ctxMenu.style.top = y + "px";
 
-    // 4. Kiểm tra trạng thái File Scan để hiển thị nhãn menu tương ứng
+    // 4. Kiểm tra trạng thái File Scan để hiển thị nhãn menu tương ứng (Mở trực tiếp trên web)
     const itemData = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === maHD);
     const hasScan = !!(itemData && itemData.scanId);
     
@@ -41,8 +41,8 @@ function showContextMenu_PL(event, element, maHD, isTransferred) {
     const scanLabel = hasScan ? "Open to view" : "Upload Scans";
     const scanClass = hasScan ? "ctx-view" : "ctx-scan-empty";
     
-    // Logic: Nếu có file rồi thì bấm vào nhãn chính là Xem, nếu chưa có thì là Nạp
-    const mainAction = hasScan ? `viewScanFile_PL('${itemData.scanId}', '${escapeStr(maHD)}')` : `openScanPanel_PL('${escapeStr(maHD)}')`;
+    // Mở trực tiếp trên tab mới của trình duyệt thay vì mở dock prv
+    const mainAction = hasScan ? `handleViewMainFile_PL('${escapeStr(maHD)}', '${escapeStr(itemData.scanId)}')` : `openScanPanel_PL('${escapeStr(maHD)}')`;
 
     ctxMenu.innerHTML = `
         <div class="ctx-menu-item ${statusClass}" onclick="confirmTransfer_PL()"><span>${statusText}</span></div>

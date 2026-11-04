@@ -83,9 +83,6 @@ function clearForm_PL() {
         executeFilter_PL(true, false, false); 
         if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
     }, 150); 
-    if (typeof closePreviewModal_PL === "function") {
-        closePreviewModal_PL();
-    };
 }
 
 // ==========================================================================
@@ -284,9 +281,9 @@ function filterAndSortData_PL(query) {
  */
 function buildHeaderHTML_PL(sumHDPL, sumPL) {
     const formatMoney = (n) => n.toLocaleString('vi-VN').replace(/,/g, '.');
-    const getFltStyle = (type) => `cursor: pointer; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; color: ${currentFilterState_PL === type ? '#FFBA08' : '#222831'}; background: ${currentFilterState_PL === type ? '#222831' : 'transparent'}; border: ${currentFilterState_PL === type ? '1px solid #222831' : '1px solid rgba(34, 40, 49, 0.3)'}; transition: all 0.2s;`;
+    const getFltStyle = (type) => `cursor: pointer; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; color: ${currentFilterState_PL === type ? '#FFBA08' : '#031c35'}; background: ${currentFilterState_PL === type ? '#031c35' : 'transparent'}; border: ${currentFilterState_PL === type ? '1px solid #031c35' : '1px solid rgba(3, 28, 53, 0.3)'}; transition: all 0.2s;`;
     
-    return `<section class="disable-hover" style="position: sticky; top: 0; background: rgba(255, 186, 8); color: #222831; padding: 6px 12px; z-index: 50; border-bottom: 2px solid #1a1f26; display: flex; justify-content: space-between; align-items: center; font-size: 13px; transform: translateZ(0);">
+    return `<section class="disable-hover" style="position: sticky; top: 0; background: #FFBA08; color: #031c35; padding: 6px 12px; z-index: 50; border-bottom: 1.5px solid rgba(0, 0, 0, 0.2); display: flex; justify-content: space-between; align-items: center; font-size: 13px; transform: translateZ(0);">
         <span style="display: flex; gap: 15px; align-items: center;">
             <span style="display: flex; align-items: center; gap: 6px;">
                 <i class="bi bi-currency-exchange" style="font-size: 17px;"></i>
@@ -343,7 +340,9 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
     
     const icon = i.transferred ? '<i class="bi bi-check-circle-fill" style="color: #2ECC71; margin-right: 14px; font-size: 10px;"></i>' : '<i class="bi bi-clock-history" style="color: #FFC000; margin-right: 14px; font-size: 10px;"></i>';
     
-    let formattedMa = i.isPL ? `<span style="color: #7A828E; font-style: italic; padding-left: 12px;">› &nbsp;&nbsp; ${i.maHD}</span>` : `<span style="color: white; font-weight: 400;">${i.maHD}</span>`;
+    let formattedMa = i.isPL 
+        ? `<span style="color: #94A3B8; font-style: italic; padding-left: 12px; font-size: 11.5px; font-weight: 400;">› &nbsp;&nbsp; ${i.maHD}</span>` 
+        : `<span style="color: #FFFFFF; font-weight: 500; font-size: 11.5px; letter-spacing: 0.2px;">${i.maHD}</span>`;
     let giaTriHTML = "";
     let displayParts = i.display.split(" | ");
     
