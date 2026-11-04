@@ -124,115 +124,216 @@ function renderExistingFiles_PL(maHD) {
 }
 
 /**
- * ĐIỀU PHỐI PREVIEW DOCK: QUẢN LÝ ZOOM CON LĂN NỘI BỘ & KÉO THẢ DI CHUYỂN BẰNG CHUỘT (PAN/ZOOM)
+ * ĐIỀU PHỐI PREVIEW DOCK: HIỂN THỊ TỨC THÌ, CHỐNG KẸT OFFLINE VÀ BẢO ĐẢM 100% MỞ KHUNG
  */
 let currentPreviewFileId_PL = "";
-let previewZoom_PL = 1;
-let previewPanX_PL = 0;
-let previewPanY_PL = 0;
-let isPreviewDragging_PL = false;
-let previewStartX_PL = 0;
-let previewStartY_PL = 0;
-let isPanZoomInitialized_PL = false;
 
-function applyPreviewTransform_PL() {
+// ==========================================================================
+// STATE MANAGEMENT & CONTROLLER CHO VIEWPORT THAO TÁC PREVIEW (ZOOM & PAN)
+// ==========================================================================
+let prvViewportState = {
+    zoom: 1.0,
+    panX: 0,
+    panY: 0,
+    minZoom: 1.0,
+    maxZoom: 4.5,
+    isDragging: false,
+    startX: 0,
+    startY: 0
+};
+
+/**
+ * Cập nhật tọa độ transform GPU của iframe và trạng thái bắt chuột của overlay
+ */
+function applyPrvTransform() {
     const iframe = document.getElementById("preview-file-iframe");
-    if (iframe) {
-        iframe.style.transformOrigin = "center center";
-        iframe.style.transform = `translate3d(${previewPanX_PL}px, ${previewPanY_PL}px, 0) scale(${previewZoom_PL})`;
+    const overlay = document.getElementById("preview-interaction-overlay");
+    if (!iframe) return;
+
+    if (prvViewportState.zoom <= 1.01) {
+        prvViewportState.zoom = 1.0;
+        prvViewportState.panX = 0;
+        prvViewportState.panY = 0;
+        iframe.style.transformOrigin = "0 0";
+        iframe.style.transform = "none";
+        
+        // Trạng thái 1x: Chuyển overlay thành không chặn chuột để iframe nhận trực tiếp con lăn cuộn 13 trang
+        if (overlay && !prvViewportState.isDragging) {
+            overlay.style.pointerEvents = "none";
+            overlay.style.cursor = "default";
+        }
+    } else {
+        // Trạng thái phóng to (> 1x): Bật overlay chặn chuột 100% để chuột trái kéo Pan và chặn zoom web ngoài
+        iframe.style.transformOrigin = "0 0";
+        iframe.style.transform = `translate3d(${prvViewportState.panX}px, ${prvViewportState.panY}px, 0) scale(${prvViewportState.zoom})`;
+        if (overlay) {
+            overlay.style.pointerEvents = "auto";
+            overlay.style.cursor = prvViewportState.isDragging ? "grabbing" : "grab";
+        }
     }
 }
 
-function resetPreviewPanZoom_PL(smooth = false) {
-    previewZoom_PL = 1;
-    previewPanX_PL = 0;
-    previewPanY_PL = 0;
-    isPreviewDragging_PL = false;
-    const iframe = document.getElementById("preview-file-iframe");
-    const body = document.querySelector(".dock-preview-body");
-    if (body) body.style.cursor = "grab";
-    if (iframe) {
-        if (smooth) {
-            iframe.style.transition = "transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1)";
-            setTimeout(() => { iframe.style.transition = "opacity 0.3s ease"; }, 250);
-        } else {
-            iframe.style.transition = "opacity 0.3s ease";
-        }
-        applyPreviewTransform_PL();
+/**
+ * Reset vị trí hiển thị và hệ số zoom về trạng thái ban đầu (Cuộn đa trang tự nhiên)
+ */
+function resetPrvTransform() {
+    prvViewportState.zoom = 1.0;
+    prvViewportState.panX = 0;
+    prvViewportState.panY = 0;
+    prvViewportState.isDragging = false;
+    applyPrvTransform();
+}
+
+/**
+ * Khởi tạo bộ điều khiển tương tác (Chặn zoom trình duyệt, hỗ trợ kéo chuột trái khi zoom và cuộn đa trang tự nhiên)
+ */
+function initPrvViewportInteraction() {
+    const bodyContainer = document.querySelector("#pl-dock-preview-panel .dock-preview-body");
+    const panel = document.getElementById("pl-dock-preview-panel");
+    if (!bodyContainer || !panel) return;
+
+    let overlay = document.getElementById("preview-interaction-overlay");
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "preview-interaction-overlay";
+        overlay.style.cssText = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; background: transparent; touch-action: none;";
+        bodyContainer.appendChild(overlay);
+
+        // 1. NHẤP ĐÚP VÀ GIỮ CHUỘT TRÁI ĐỂ KÉO TRANG (DOUBLE-CLICK & DRAG)
+        let lastClickTime = 0;
+
+        overlay.addEventListener("pointerdown", (e) => {
+            if (e.button !== 0) return; // Chỉ bắt chuột trái
+            e.preventDefault();
+
+            const currentTime = new Date().getTime();
+            const timeDiff = currentTime - lastClickTime;
+
+            // Nếu 2 lần bấm cách nhau dưới 350ms -> Kích hoạt chế độ kéo trang
+            if (timeDiff < 350) {
+                prvViewportState.isDragging = true;
+                prvViewportState.startX = e.clientX - prvViewportState.panX;
+                prvViewportState.startY = e.clientY - prvViewportState.panY;
+
+                overlay.setPointerCapture(e.pointerId);
+                overlay.style.cursor = "grabbing";
+            }
+            
+            lastClickTime = currentTime;
+        });
+
+        overlay.addEventListener("pointermove", (e) => {
+            if (!prvViewportState.isDragging) return;
+            e.preventDefault();
+
+            prvViewportState.panX = e.clientX - prvViewportState.startX;
+            prvViewportState.panY = e.clientY - prvViewportState.startY;
+
+            applyPrvTransform();
+        });
+
+        const stopDrag = (e) => {
+            if (!prvViewportState.isDragging) return;
+            prvViewportState.isDragging = false;
+            try { overlay.releasePointerCapture(e.pointerId); } catch(err) {}
+            overlay.style.cursor = "default";
+            applyPrvTransform();
+        };
+
+        overlay.addEventListener("pointerup", stopDrag);
+        overlay.addEventListener("pointercancel", stopDrag);
+
+        // Bấm chuột giữa (con lăn) để khôi phục lại Zoom 1x
+        overlay.addEventListener("auxclick", (e) => {
+            if (e.button === 1) {
+                e.preventDefault();
+                resetPrvTransform();
+            }
+        });
+
+        // 2. ZOOM & CUỘN BÊN TRONG LỚP OVERLAY
+        overlay.addEventListener("wheel", (e) => {
+            const isZoomKey = e.ctrlKey || e.metaKey;
+
+            if (isZoomKey) {
+                // CHẶN BROWSER ZOOM TOÀN TRANG
+                e.preventDefault();
+                e.stopPropagation();
+
+                const rect = bodyContainer.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                const zoomFactor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
+                const prevZoom = prvViewportState.zoom;
+                const nextZoom = Math.min(prvViewportState.maxZoom, Math.max(prvViewportState.minZoom, prevZoom * zoomFactor));
+
+                prvViewportState.panX = mouseX - (mouseX - prvViewportState.panX) * (nextZoom / prevZoom);
+                prvViewportState.panY = mouseY - (mouseY - prvViewportState.panY) * (nextZoom / prevZoom);
+                prvViewportState.zoom = nextZoom;
+
+                applyPrvTransform();
+            } else if (prvViewportState.zoom > 1.01) {
+                // Đang zoom to: Lăn chuột di chuyển trang scan theo chiều dọc / ngang
+                e.preventDefault();
+                e.stopPropagation();
+
+                const factor = e.deltaMode === 1 ? 28 : 1;
+                prvViewportState.panY -= e.deltaY * factor;
+                prvViewportState.panX -= e.deltaX * factor;
+
+                applyPrvTransform();
+            }
+        }, { passive: false });
+
+        // 3. ĐÓN ĐẦU PHÍM CTRL / CMD: KÍCH HOẠT OVERLAY TRƯỚC KHI CON LĂN BẮT ĐẦU QUAY
+        window.addEventListener("keydown", (e) => {
+    if (e.code === "Space" && e.target === document.body) {
+        e.preventDefault(); // Chặn cuộn trang của phím Space
+        overlay.style.pointerEvents = "auto";
+        overlay.style.cursor = "grab";
+    }
+});
+
+window.addEventListener("keyup", (e) => {
+    if (e.code === "Space" && prvViewportState.zoom <= 1.01) {
+        overlay.style.pointerEvents = "none";
+    }
+});
+
+        // 4. CHẶN VÀ BẮT SỰ KIỆN ZOOM TOÀN CỤC KHI CON TRỎ Ở TRONG VÙNG PRV
+        bodyContainer.addEventListener("mouseenter", () => {
+            // Lấy lại focus cho cửa sổ chính khi chuột di chuyển vào prv để keydown luôn hoạt động
+            window.focus();
+        });
+
+        // Bắt sự kiện wheel ở giai đoạn Capturing trên toàn bộ panel để triệt tiêu zoom trình duyệt
+        panel.addEventListener("wheel", (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const rect = bodyContainer.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                const zoomFactor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
+                const prevZoom = prvViewportState.zoom;
+                const nextZoom = Math.min(prvViewportState.maxZoom, Math.max(prvViewportState.minZoom, prevZoom * zoomFactor));
+
+                prvViewportState.panX = mouseX - (mouseX - prvViewportState.panX) * (nextZoom / prevZoom);
+                prvViewportState.panY = mouseY - (mouseY - prvViewportState.panY) * (nextZoom / prevZoom);
+                prvViewportState.zoom = nextZoom;
+
+                applyPrvTransform();
+            }
+        }, { passive: false, capture: true });
     }
 }
 
-function initPreviewPanZoom_PL() {
-    if (isPanZoomInitialized_PL) return;
-    const body = document.querySelector(".dock-preview-body");
-    const iframe = document.getElementById("preview-file-iframe");
-    if (!body || !iframe) return;
-
-    isPanZoomInitialized_PL = true;
-    body.style.cursor = "grab";
-    iframe.style.pointerEvents = "none"; // Chuyển giao toàn bộ tương tác chuột về khung chứa body
-    iframe.style.willChange = "transform";
-
-    // 1. ZOOM BẰNG CON LĂN CHUỘT: CHỈ ZOOM KHUNG PREVIEW, TRIỆT TIÊU CUỘN/ZOOM TOÀN TRANG
-    body.addEventListener("wheel", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const rect = body.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-
-        const prevZoom = previewZoom_PL;
-        const zoomFactor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
-        const nextZoom = Math.min(Math.max(previewZoom_PL * zoomFactor, 0.6), 5.0);
-
-        if (nextZoom === prevZoom) return;
-
-        // Công thức giữ nguyên tọa độ điểm dưới con trỏ chuột khi zoom (Zoom-at-cursor)
-        const ratio = nextZoom / prevZoom;
-        previewPanX_PL = mouseX - centerX - (mouseX - centerX - previewPanX_PL) * ratio;
-        previewPanY_PL = mouseY - centerY - (mouseY - centerY - previewPanY_PL) * ratio;
-        previewZoom_PL = nextZoom;
-
-        iframe.style.transition = "none";
-        applyPreviewTransform_PL();
-    }, { passive: false });
-
-    // 2. DI CHUYỂN TRANG SCAN BẰNG CON TRỎ CHUỘT (DRAG-TO-PAN)
-    body.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return; // Chỉ nhận chuột trái
-        e.preventDefault();
-        isPreviewDragging_PL = true;
-        previewStartX_PL = e.clientX - previewPanX_PL;
-        previewStartY_PL = e.clientY - previewPanY_PL;
-        body.style.cursor = "grabbing";
-        iframe.style.transition = "none";
-    });
-
-    window.addEventListener("mousemove", (e) => {
-        if (!isPreviewDragging_PL) return;
-        e.preventDefault();
-        previewPanX_PL = e.clientX - previewStartX_PL;
-        previewPanY_PL = e.clientY - previewStartY_PL;
-        applyPreviewTransform_PL();
-    });
-
-    window.addEventListener("mouseup", () => {
-        if (isPreviewDragging_PL) {
-            isPreviewDragging_PL = false;
-            body.style.cursor = "grab";
-        }
-    });
-
-    // 3. DOUBLE CLICK RESET VỀ KÍCH THƯỚC BAN ĐẦU
-    body.addEventListener("dblclick", (e) => {
-        e.preventDefault();
-        resetPreviewPanZoom_PL(true);
-    });
-}
-
+/**
+ * ĐIỀU PHỐI PREVIEW DOCK: HIỂN THỊ TỨC THÌ, CHỐNG TẢI LẠI TRÙNG LẶP & ĐỒNG BỘ LAYOUT DASHBOARD
+ */
 function viewScanFile_PL(id, name, targetRowElement = null) {
     if (!id || id === "undefined") return;
     let targetId = id;
@@ -270,8 +371,9 @@ function viewScanFile_PL(id, name, targetRowElement = null) {
 
     if (!panel || !iframe) return;
 
-    // Khởi tạo controller Pan/Zoom độc quyền
-    initPreviewPanZoom_PL();
+    // Khởi tạo và reset vị trí pan/zoom về gốc khi mở file
+    initPrvViewportInteraction();
+    resetPrvTransform();
 
     // CHỐNG TẢI LẠI TRÙNG LẶP: Nếu đang mở đúng file này và dock đang hiển thị thì chỉ cập nhật highlight
     if (currentPreviewFileId_PL === targetId && tabPL && tabPL.classList.contains("split-preview-active")) {
@@ -281,9 +383,6 @@ function viewScanFile_PL(id, name, targetRowElement = null) {
         }
         return;
     }
-
-    // Reset pan/zoom về trạng thái ban đầu khi tải file mới
-    resetPreviewPanZoom_PL(false);
 
     // Tự động tìm lại tên file thực tế từ SYSTEM_DATA nếu chưa có
     if (!targetName && typeof SYSTEM_DATA !== "undefined" && SYSTEM_DATA?.pl?.field0) {
@@ -387,6 +486,9 @@ function viewScanFile_PL(id, name, targetRowElement = null) {
     if (tabPL) tabPL.classList.add("split-preview-active");
 }
 
+/**
+ * ĐÓNG DOCK PREVIEW: TRƯỢT THẲNG HÀNG TRÊN TRỤC NGANG TỪ TRÁI SANG PHẢI VỀ TÂM
+ */
 function closePreviewModal_PL() {
     const tabPL = document.getElementById("tab-plhd");
     const panel = document.getElementById("pl-dock-preview-panel");
@@ -394,7 +496,7 @@ function closePreviewModal_PL() {
     const formContainer = tabPL ? tabPL.querySelector(".form-container") : null;
 
     currentPreviewFileId_PL = "";
-    resetPreviewPanZoom_PL(false);
+    resetPrvTransform();
 
     document.querySelectorAll('#dropdown-field0-pl .hoc-tooltip').forEach(r => r.classList.remove('is-previewing-row'));
 
