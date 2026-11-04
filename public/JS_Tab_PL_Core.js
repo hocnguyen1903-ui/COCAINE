@@ -307,6 +307,19 @@ function buildHeaderHTML_PL(sumHDPL, sumPL) {
 }
 
 /**
+ * Mở trực tiếp file Scan H hoặc G từ badge (Đưa ra ngoài phạm vi vòng lặp)
+ */
+window.openDirectFile_PL = function(fileId, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    if (!fileId) return;
+    const targetRow = event ? event.target.closest('.hoc-tooltip') : null;
+    viewScanFile_PL(fileId, null, targetRow);
+};
+
+/**
  * Hàm 3: Chuyên tạo chuỗi HTML cho 1 dòng dữ liệu (Row Template)
  */
 function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
@@ -316,7 +329,14 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
     const isSelected = (selectedRowDisplay_PL && i.display === selectedRowDisplay_PL) || 
                        (!selectedRowDisplay_PL && i.maHD.toUpperCase() === currentInputVal);
                        
+    // Giữ trạng thái preview highlight đồng bộ ngay cả khi re-render/filter dashboard
+    const isPreviewing = Boolean(typeof currentPreviewFileId_PL !== 'undefined' && 
+                                 currentPreviewFileId_PL && 
+                                 i.scanId && 
+                                 i.scanId.includes(currentPreviewFileId_PL));
+
     const selectedClass = isSelected ? "is-selected-row active" : "";
+    const previewClass = isPreviewing ? "is-previewing-row" : "";
     const plRowClass = i.isPL ? "is-pl-row" : "";
     const animationClass = (allowAnim && index < 8) ? "pl-item-appear" : "";
     const animationDelay = (allowAnim && index < 8) ? `style="animation-delay: ${index * 0.04}s"` : "";
@@ -340,26 +360,11 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
         giaTriHTML = `<span style="display: inline-block; width: 90px; text-align: right; color: white; font-weight: 400;">${xx}</span><span style="display: inline-block; width: 35px; text-align: center; color: #505966;">|</span><span style="display: inline-block; width: 90px; text-align: right; ${yyStyle} font-weight: 400;">${yy}</span>`;
     }
 
-/**
- * Mở trực tiếp file Scan H hoặc G khi click vào badge, truyền kèm tên file thực tế
- */
-window.openDirectFile_PL = function(fileId, event) {
-    if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
-    if (!fileId) return;
-    const targetRow = event ? event.target.closest('.hoc-tooltip') : null;
-    viewScanFile_PL(fileId, null, targetRow);
-};   
-
-// ========================================================================
+    // ========================================================================
     // LOGIC NHẬN DIỆN & TRÍCH XUẤT ĐẦY ĐỦ FILEID + TÊN FILE GỐC CHO H VÀ G
     // ========================================================================
     let fileIdH = "";
-    let fileNameH = "";
     let fileIdG = "";
-    let fileNameG = "";
 
     if (i.scanId && i.scanId.trim() !== "") {
         const fileEntries = i.scanId.split(";;").filter(f => f && f.includes("|"));
@@ -373,30 +378,24 @@ window.openDirectFile_PL = function(fileId, event) {
                           /\b(gia|giá)\b/i.test(fNameLower);
             
             if (isPDG) {
-                if (!fileIdG) {
-                    fileIdG = fId;
-                    fileNameG = fNameRaw;
-                }
+                if (!fileIdG) fileIdG = fId;
             } else {
                 if (i.isPL) {
                     const plPart = (i.maHD.split(" - ")[0] || "").toLowerCase();
                     if (fNameLower.includes(plPart)) {
                         fileIdH = fId;
-                        fileNameH = fNameRaw;
                     } else if (!fileIdH) {
                         fileIdH = fId;
-                        fileNameH = fNameRaw;
                     }
                 } else if (!fileIdH) {
                     fileIdH = fId;
-                    fileNameH = fNameRaw;
                 }
             }
         });
     }
 
-    const hasH = !!fileIdH;
-    const hasG = !!fileIdG;
+    const hasH = Boolean(fileIdH);
+    const hasG = Boolean(fileIdG);
 
     const hClass = hasH ? "file-badge-h-active" : "file-badge-dim";
     const gClass = hasG ? "file-badge-g-active" : "file-badge-dim";
@@ -422,13 +421,13 @@ window.openDirectFile_PL = function(fileId, event) {
     let noteParts = [i.dateH, cleanedPackage, i.searchM].filter(Boolean);
     let hoverText = noteParts.join(" -- ");
 
-    return `<div class="${isTransferredClass} ${animationClass} ${selectedClass} ${plRowClass} hoc-tooltip" 
+    return `<div class="${isTransferredClass} ${animationClass} ${selectedClass} ${previewClass} ${plRowClass} hoc-tooltip" 
                  ${animationDelay} 
                  data-display="${escapeStr(i.display)}" 
                  data-hovertext="${escapeStr(hoverText)}" 
                  onmousedown="if(event.button === 0) { selectField0_PL('${escapeStr(i.display)}'); }" 
-                 oncontextmenu="showContextMenu_PL(event, this, '${escapeStr(i.maHD)}', ${!!i.transferred})" 
-                 ontouchstart="handleTouchStart_Mobile(event, this, '${escapeStr(i.maHD)}', ${!!i.transferred})" 
+                 oncontextmenu="showContextMenu_PL(event, this, '${escapeStr(i.maHD)}', ${Boolean(i.transferred)})" 
+                 ontouchstart="handleTouchStart_Mobile(event, this, '${escapeStr(i.maHD)}', ${Boolean(i.transferred)})" 
                  ontouchend="handleTouchEnd_Mobile()" 
                  ontouchmove="handleTouchEnd_Mobile()">
                 <div style="display: flex; align-items: center; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px;">
@@ -436,7 +435,6 @@ window.openDirectFile_PL = function(fileId, event) {
                     <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${formattedMa}</span>
                 </div>
 
-                <!-- BIỂU TƯỢNG GỢI Ý UPLOAD FILE MỜ CHỚP NHÁY CHÍNH GIỮA KHI HOVER -->
                 <div class="row-upload-hint" onmousedown="if(event.button === 0) { event.stopPropagation(); openScanPanel_PL('${escapeStr(i.maHD)}'); }">
                     <i class="bi bi-cloud-arrow-up"></i>
                     <span>Up file here</span>
