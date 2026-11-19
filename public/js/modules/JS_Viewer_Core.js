@@ -1595,14 +1595,8 @@
             "color: #ffd740; font-weight: bold;"
           );
 
-          // GIAI ĐOẠN 4: ĐÓNG GÓI BẢN PDF SẠCH (ĐÃ CẮT TRANG TRẮNG & XOAY CHUẨN)
-          updateProcessProgress(86, "[4/4] ĐANG ĐÓNG GÓI FILE PDF SẠCH (CẮT TRANG TRẮNG & XOAY)...");
-          let cleanPdfBytes = preservedPdfData;
-          try {
-            cleanPdfBytes = await buildCleanPdf(preservedPdfData, manifest, skippedBlankPages);
-          } catch (eClean) {
-            console.warn("Lỗi đóng gói PDFLib, fallback sang file gốc:", eClean);
-          }
+          // GIAI ĐOẠN 4: LẬP CHỈ MỤC ĐỐI CHIẾU TRỰC TIẾP FILE PDF GỐC (KHÔNG LỆCH TRANG KHI MẤT CACHE)
+          updateProcessProgress(86, "[4/4] ĐANG CHUẨN HÓA DỮ LIỆU TRANG & GÓC XOAY...");
 
           const cleanPages = [];
           let cleanAppendixPage = -1;
@@ -1614,44 +1608,41 @@
 
           manifest.pages.forEach((p, idx) => {
             cleanPages.push({
-              pageNum: idx + 1,
-              pdfPageNum: idx + 1,
+              pageNum: idx + 1,           // Số thứ tự hiển thị liên tục (đã ẩn trang trắng)
+              pdfPageNum: p.pageNum,      // 👈 GIỮ NGUYÊN số trang thật trên file PDF gốc ở Drive
               width: p.width,
               height: p.height,
-              rotation: 0,
+              rotation: p.rotation || 0,  // 👈 GIỮ NGUYÊN góc xoay cần bù trừ cho trang phụ lục
               textItems: p.textItems
             });
           });
 
           manifest.pages = cleanPages;
           manifest.numPages = cleanPages.length;
-          manifest.appendixStartPage = (cleanAppendixPage !== -1) ? cleanAppendixPage : cleanPages.length;
+          manifest.appendixStartPage = (cleanAppendixPage !== -1) ? cleanAppendixPage : (cleanPages.length + 1);
+          manifest.mapsOriginalPdf = true; // Đánh dấu chuẩn mới
 
           updateProcessProgress(90, "[4/4] ĐẨY BẢN SỐ HÓA LÊN GOOGLE DRIVE...");
           let finalDriveFileId = fileId;
-          let finalSizeStr = (cleanPdfBytes.byteLength / (1024 * 1024)).toFixed(2) + " MB";
+          let finalSizeStr = (preservedPdfData.byteLength / (1024 * 1024)).toFixed(2) + " MB";
 
           const compressedPayload = await compressManifest(manifest);
           putSessionCache(finalDriveFileId, manifest);
 
           await Promise.all([
             saveDriveCacheAdaptive(finalDriveFileId, uploadFileName, compressedPayload),
-            saveLocalManifest(finalDriveFileId, manifest),
-            saveLocalPdfBinary(finalDriveFileId, cleanPdfBytes)
+            saveLocalManifest(finalDriveFileId, manifest)
           ]);
 
-          if (typeof window.markScanFileDigitized_PL === "function") {
-            window.markScanFileDigitized_PL(finalDriveFileId);
-          }
-
           updateProcessProgress(96, "[4/4] KHỞI TẠO BẢN XEM TRƯỚC...");
-          const cleanPdfDoc = await pdfjsLib.getDocument({ data: cleanPdfBytes.slice(0) }).promise;
-          if (cleanPdfDoc.numPages >= 1) {
-            const page1 = await cleanPdfDoc.getPage(1);
+          if (cleanPages.length >= 1) {
+            const firstPdfPageNum = cleanPages[0].pdfPageNum || 1;
+            const page1 = await pdf.getPage(firstPdfPageNum);
             const rawDpr = window.devicePixelRatio || 1;
             const sharpFactor = Math.max(rawDpr, 2.0);
             const effectiveScale = Math.min(cachedRenderScale * sharpFactor, 2.0);
-            const vp = page1.getViewport({ scale: effectiveScale });
+            const effectiveRot1 = (page1.rotate + (cleanPages[0].rotation || 0)) % 360;
+            const vp = page1.getViewport({ scale: effectiveScale, rotation: effectiveRot1 });
 
             const bCanvas = document.createElement("canvas");
             bCanvas.width = Math.floor(vp.width);
@@ -1661,18 +1652,18 @@
             bCtx.fillRect(0, 0, bCanvas.width, bCanvas.height);
             await page1.render({ canvasContext: bCtx, viewport: vp, intent: 'display' }).promise;
             page1.cleanup();
-            await savePageBitmap(finalDriveFileId, 1, cachedRenderScale, bCanvas);
+            await savePageBitmap(finalDriveFileId, firstPdfPageNum, cachedRenderScale, bCanvas);
             bCanvas.width = 0;
             bCanvas.height = 0;
           }
 
-          if (currentPdfDoc) {
+          if (currentPdfDoc && currentPdfDoc !== pdf) {
             try { currentPdfDoc.destroy(); } catch (e) {}
           }
-          currentPdfDoc = cleanPdfDoc;
+          currentPdfDoc = pdf;
 
           console.log(
-            `%c[4/4] ĐÓNG GÓI, LƯU DRIVE & CACHE 100% XONG: Dung lượng ${finalSizeStr} ⏱ Thời gian: ${getLapTime()}`,
+            `%c[4/4] LƯU DRIVE & CACHE 100% XONG: Dung lượng ${finalSizeStr} ⏱ Thời gian: ${getLapTime()}`,
             "color: #e040fb; font-weight: bold;"
           );
 
@@ -1685,7 +1676,14 @@
             schedulerToClose.terminate().catch(() => {});
           }
 
-          pdf.destroy();
+          if (typeof window.markScanFileDigitized_PL === "function") {
+            window.markScanFileDigitized_PL(finalDriveFileId);
+          }
+
+          if (myEpoch === currentSessionEpoch) {
+            currentManifest = manifest;
+            await renderSlicedDocument();
+          }
 
           // HIỂN THỊ BẢN PDF SẠCH ĐÃ SỐ HÓA LÊN MÀN HÌNH DOCK PREVIEW
           if (myEpoch === currentSessionEpoch) {
@@ -1833,7 +1831,7 @@
 
   let jumpScrollTimer = null;
 
-  function jumpToPageNumber(pageNum, isSmooth = true) {
+  function jumpToPageNumber(pageNum, isSmooth = true, scrollToBottomEdge = false) {
     if (!currentManifest || !currentManifest.pages.length) return;
     const vp = document.getElementById("viewport-container");
     const total = currentManifest.pages.length;
@@ -1852,7 +1850,8 @@
     }
 
     let destTop = Math.max(0, el.offsetTop);
-    if (targetIndex === total - 1) {
+    // Chỉ cuộn tới sát đáy cuối trang khi chủ động bấm chế độ Bottom
+    if (scrollToBottomEdge && targetIndex === total - 1) {
       destTop = Math.max(destTop, vp.scrollHeight - vp.clientHeight);
     }
 
@@ -1872,7 +1871,7 @@
 
       vp.addEventListener("scrollend", onArrive);
       clearTimeout(jumpScrollTimer);
-      jumpScrollTimer = setTimeout(onArrive, 450);
+      jumpScrollTimer = setTimeout(onArrive, 1200);
     }
 
     vp.scrollTo({ top: destTop, behavior: isSmooth ? "smooth" : "auto" });
@@ -1882,8 +1881,8 @@
   function getAppendixOffsetTop() {
     if (!currentManifest || !currentManifest.pages.length) return null;
     const total = currentManifest.pages.length;
-    const appendixPage = currentManifest.appendixStartPage || total;
-    if (appendixPage <= 1 || appendixPage >= total) return null;
+    const appendixPage = currentManifest.appendixStartPage || (total + 1);
+    if (appendixPage <= 1 || appendixPage > total) return null; // 👈 Đổi >= total thành > total
 
     const targetObj = currentManifest.pages[appendixPage - 1];
     const el = targetObj ? document.getElementById("page-wrapper-" + targetObj.pageNum) : null;
@@ -1908,13 +1907,13 @@
     if (!currentManifest || !currentManifest.pages.length) return;
     const vp = document.getElementById("viewport-container");
     const total = currentManifest.pages.length;
-    const appendixPage = currentManifest.appendixStartPage || total;
+    const appendixPage = currentManifest.appendixStartPage || (total + 1);
     const appTop = getAppendixOffsetTop();
 
     if (vp && appTop !== null && vp.scrollTop < appTop - 30) {
-      jumpToPageNumber(appendixPage, true);
+      jumpToPageNumber(appendixPage, true, false); // 👈 Nhảy tới ĐẦU trang PL01
     } else {
-      jumpToPageNumber(total, true);
+      jumpToPageNumber(total, true, true);         // 👈 Đã qua PL01 -> cuộn tới ĐÁY cuối cùng
     }
   }
 
@@ -1925,7 +1924,7 @@
     }
     const num = parseInt(pNum, 10) || 1;
     const total = currentManifest ? currentManifest.pages.length : 1;
-    const appendixPage = currentManifest ? (currentManifest.appendixStartPage || total) : total;
+    const appendixPage = currentManifest ? (currentManifest.appendixStartPage || (total + 1)) : (total + 1);
 
     const btnTop = document.getElementById("btn-scroll-top");
     const btnBottom = document.getElementById("btn-scroll-bottom");
@@ -1935,7 +1934,7 @@
         btnTop.classList.add("is-hidden");
       } else {
         btnTop.classList.remove("is-hidden");
-        if (appendixPage > 1 && appendixPage < total && num > appendixPage) {
+        if (appendixPage > 1 && appendixPage <= total && num > appendixPage) { // 👈 Đổi < thành <=
           btnTop.setAttribute("data-tip", "PL01");
         } else {
           btnTop.setAttribute("data-tip", "Top");
@@ -1948,7 +1947,7 @@
         btnBottom.classList.add("is-hidden");
       } else {
         btnBottom.classList.remove("is-hidden");
-        if (appendixPage < total && num < appendixPage) {
+        if (appendixPage <= total && num < appendixPage) { // 👈 Đổi < thành <=
           btnBottom.setAttribute("data-tip", "PL01");
         } else {
           btnBottom.setAttribute("data-tip", "Bottom");
@@ -2804,6 +2803,16 @@
         if (epoch !== currentSessionEpoch) {
           try { pdf.destroy(); } catch (e) {}
           throw new Error("ABORTED");
+        }
+        // Tự động phát hiện & sửa các file JSON số hóa cũ bị lệch trang trắng so với PDF gốc
+        if (currentManifest && !currentManifest.mapsOriginalPdf && !currentManifest._repairing && pdf.numPages !== currentManifest.numPages) {
+          currentManifest._repairing = true;
+          delete SESSION_MANIFEST_CACHE[fileId];
+          try { pdf.destroy(); } catch (e) {}
+          setTimeout(() => {
+            if (epoch === currentSessionEpoch) processAndOptimizeFileJIT(fileId);
+          }, 50);
+          throw new Error("REPAIR_OLD_MANIFEST");
         }
         currentPdfDoc = pdf;
         return pdf;
