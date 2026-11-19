@@ -1,0 +1,418 @@
+/* ==========================================================================
+   MODULE: BCONS NATIVE DOCUMENT VIEWER (SCOPED FOR COCAINE DOCK PREVIEW)
+   ========================================================================== */
+
+/* 1. KHUNG VIEWPORT ẢO HÓA & TRANG PDF (ĐỒNG BỘ VIỀN TRÁI = TRÊN = PHẢI = 6PX) */
+#pl-dock-preview-panel #viewport-container {
+  flex: 1;
+  overflow: auto;
+  overflow-anchor: none;
+  --doc-scale: 1;
+  position: relative;
+  cursor: grab;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 65px 0; /* XÓA BỎ VIỀN 6PX: Trở về 0px đỉnh và 0px trái */
+  gap: 8px;
+  background: #021426;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+#pl-dock-preview-panel #viewport-container.grabbing {
+  cursor: grabbing !important;
+}
+
+#pl-dock-preview-panel .page-wrapper {
+  position: relative;
+  background: #ffffff;
+  border: none;
+  margin: 0 auto; /* Tự động căn giữa trang giấy khi Zoom < 100% và không tràn âm khi Zoom > 100% */
+  flex-shrink: 0;
+  overflow: hidden;
+  contain: layout style;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* ĐỒNG BỘ THANH CUỘN LUXURY VÀNG GOLD 6PX CHO KHUNG PREVIEW */
+#pl-dock-preview-panel #viewport-container::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+  display: block !important;
+}
+
+#pl-dock-preview-panel #viewport-container::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+#pl-dock-preview-panel #viewport-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 186, 8, 0.9) !important;
+  border-radius: 8px !important;
+}
+
+#pl-dock-preview-panel #viewport-container::-webkit-scrollbar-thumb:hover {
+  background: #FFBA08 !important;
+}
+
+#pl-dock-preview-panel #viewport-container::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+
+#pl-dock-preview-panel .page-img {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  image-rendering: auto !important;
+}
+
+/* 2. LỚP CHỮ TÀNG HÌNH (SMART COPY & SELECTION) */
+#pl-dock-preview-panel .text-layer {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+#pl-dock-preview-panel .text-overlay-item {
+  position: absolute;
+  color: transparent;
+  cursor: text;
+  white-space: nowrap;
+  line-height: 1;
+  transform-origin: left top;
+  pointer-events: auto;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  overflow: hidden;
+}
+
+#pl-dock-preview-panel .text-space {
+  display: inline-block;
+  width: 0 !important;
+  max-width: 0 !important;
+  height: 0 !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  overflow: hidden !important;
+  vertical-align: top;
+}
+
+#pl-dock-preview-panel .text-overlay-item::selection,
+#pl-dock-preview-panel .text-overlay-item::-moz-selection {
+  background: rgba(0, 188, 212, 0.35);
+  color: transparent;
+}
+
+/* 3. Ô HIGHLIGHT TÌM KIẾM TỌA ĐỘ AI */
+#pl-dock-preview-panel .ai-highlight-box {
+  position: absolute;
+  background: rgba(255, 235, 59, 0.28);
+  border: 1px solid rgba(255, 186, 8, 0.85);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#pl-dock-preview-panel .ai-highlight-box.wrap-start {
+  border-right: none !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+#pl-dock-preview-panel .ai-highlight-box.wrap-end {
+  border-left: none !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
+
+#pl-dock-preview-panel .ai-highlight-box.active-match {
+  background: rgba(255, 87, 34, 0.38) !important;
+  border: 1.5px solid #FF3D00 !important;
+  z-index: 20;
+}
+
+/* 4. CỤM TÌM KIẾM TRÊN HEADER DOCK (MỞ RỘNG RỘNG RÃI & KHÔNG KHUẤT CHỮ) */
+/* HỘP TÌM KIẾM: ĐỒNG BỘ CHUẨN Ô INPUT CỦA DASHBOARD (NỀN ĐEN CHÌM, BÓNG INSET, VIỀN MỜ) */
+#pl-dock-preview-panel .search-box-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.3) !important; /* NỀN CHÌM ĐỒNG BỘ INPUT DASHBOARD */
+  border: 1px solid rgba(255, 255, 255, 0.1) !important; /* VIỀN MỜ TRẮNG ĐỒNG BỘ */
+  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05) !important; /* BÓNG CHÌM ĐỒNG BỘ */
+  padding: 0 10px;
+  border-radius: 20px; /* Bo tròn thanh lịch giống input location */
+  height: 32px;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+}
+
+#pl-dock-preview-panel .search-box-wrap:focus-within {
+  border-color: #FFBA08 !important;
+  background: rgba(0, 0, 0, 0.5) !important;
+  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.8), 0 0 12px rgba(255, 186, 8, 0.2) !important;
+}
+
+#pl-dock-preview-panel .search-input {
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  font-size: 12px !important;
+  font-family: inherit !important;
+  font-weight: 500 !important;
+  width: 160px !important; /* Mở rộng chiều ngang từ 95px lên 160px */
+  padding: 2px 4px !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  height: 100% !important;
+  line-height: 1.3 !important; /* Giữ dấu tiếng Việt và đuôi g, y nguyên vẹn */
+  box-sizing: border-box !important;
+}
+
+#pl-dock-preview-panel .search-input::placeholder {
+  color: rgba(255, 255, 255, 0.45) !important;
+  font-style: normal !important;
+  font-size: 11.5px !important;
+}
+
+#pl-dock-preview-panel .search-counter {
+  font-size: 10.5px;
+  color: #FFBA08;
+  font-weight: 700;
+  min-width: 32px;
+  text-align: center;
+  user-select: none;
+}
+
+#pl-dock-preview-panel .nav-arrow-btn {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  padding: 3px 5px;
+  font-size: 11px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+#pl-dock-preview-panel .nav-arrow-btn:hover:not(:disabled) {
+  background: rgba(255, 186, 8, 0.25);
+  color: #FFBA08;
+}
+
+#pl-dock-preview-panel .nav-arrow-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+#pl-dock-preview-panel .prv-btn {
+  border: 1px solid rgba(255, 186, 8, 0.4);
+  background: #031c35;
+  color: #FFBA08;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  line-height: 1;
+  padding: 5px 9px;
+  transition: background 0.2s, color 0.2s;
+  user-select: none;
+}
+
+#pl-dock-preview-panel .prv-btn:hover {
+  background: #FFBA08;
+  color: #031c35;
+}
+
+/* 5. THANH ĐIỀU KHIỂN NỔI (CAPSULE FLOATING BAR) */
+#pl-dock-preview-panel .floating-control-bar {
+  position: absolute;
+  bottom: 14px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  width: -moz-fit-content;
+  height: 36px;
+  background: rgba(3, 28, 53, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e3e3e3;
+  padding: 0 12px;
+  border-radius: 25px;
+  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 60;
+  user-select: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5) !important;
+}
+
+#pl-dock-preview-panel .floating-control-bar span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #c4c7c5;
+}
+
+#pl-dock-preview-panel .capsule-divider {
+  width: 1px;
+  height: 15px;
+  background: rgba(255, 255, 255, 0.16);
+  margin: 0 3px;
+}
+
+#pl-dock-preview-panel .capsule-btn {
+  background: transparent;
+  border: none;
+  color: #e3e3e3;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.15s, color 0.15s, opacity 0.2s, width 0.2s, margin 0.2s;
+}
+
+#pl-dock-preview-panel .capsule-btn.is-hidden {
+  width: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  margin: 0 -2px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+#pl-dock-preview-panel .capsule-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+#pl-dock-preview-panel .page-jump-input {
+  width: 28px;
+  height: 22px;
+  line-height: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+  color: #ffffff;
+  font-weight: 600;
+  text-align: center;
+  font-size: 11px;
+  outline: none;
+  padding: 0;
+  margin: 0 3px;
+  box-sizing: border-box;
+}
+
+#pl-dock-preview-panel .page-jump-input:focus {
+  border-color: #FFBA08;
+  color: #FFBA08;
+}
+
+/* 6. THANH TIẾN TRÌNH SỐ HÓA & LOADING OVERLAY */
+#pl-dock-preview-panel #proc-progress-box {
+  background: #031c35;
+  border: 1.5px solid #FFBA08;
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+#pl-dock-preview-panel .proc-bar-track {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#pl-dock-preview-panel .proc-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: #FFBA08;
+  transition: width 0.25s ease;
+}
+
+#pl-dock-preview-panel .proc-bar-fill.success {
+  background: #00e676 !important;
+}
+
+#pl-dock-preview-panel .proc-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+}
+
+#pl-dock-preview-panel .proc-warning {
+  font-size: 8.5px;
+  color: #ff9100;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#pl-dock-preview-panel .viewer-loader-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(3, 28, 53, 0.85);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  border-radius: 0 0 10px 10px;
+  animation: luxuryBgPulse 3s ease-in-out infinite;
+}
+
+/* 7. TOOLTIP NỘI BỘ DOCK PREVIEW */
+#pl-dock-preview-panel [data-tip] {
+  position: relative;
+}
+
+#pl-dock-preview-panel [data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 135%;
+  background: #011222;
+  color: #FFBA08;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 9.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  display: none;
+  z-index: 1000;
+  border: 1px solid rgba(255, 186, 8, 0.45);
+}
+
+#pl-dock-preview-panel [data-tip]:hover::after {
+  display: block;
+}
