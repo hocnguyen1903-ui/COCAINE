@@ -145,6 +145,12 @@ function getMasterPanelWidth_PL() {
  * Đồng bộ vị trí & quãng đường di chuyển bằng GPU translate3d (Không gây Reflow CPU)
  */
 function syncPrvSplitLayout_PL() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (window.BconsViewer && typeof window.BconsViewer.refreshFitWidth === "function") {
+            window.BconsViewer.refreshFitWidth();
+        }
+        return;
+    }
     const tabPL = document.getElementById("tab-plhd");
     const panel = document.getElementById("pl-dock-preview-panel");
     const formContainer = tabPL ? tabPL.querySelector(".form-container") : null;

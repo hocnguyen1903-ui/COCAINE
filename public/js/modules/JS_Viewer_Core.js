@@ -152,8 +152,9 @@
     return dbPromise;
   }
 
-  function bitmapKey(fileId, pdfPage, scale) {
-    return fileId + "|" + pdfPage + "|" + Math.round(Number(scale) * 100);
+  function bitmapKey(fileId, pdfPage, scale, fitScale) {
+    const f = Math.round(Number(fitScale || baseFitScale || 1) * 100);
+    return fileId + "|" + pdfPage + "|" + Math.round(Number(scale) * 100) + "|" + f;
   }
 
   function idbGet(storeName, key) {
@@ -589,10 +590,68 @@
     }
 
     const totalPages = currentManifest.numPages || currentManifest.pages.length;
-    const fallbackAppendixStart = Math.max(1, totalPages - 6);
-    const appendixStart = currentManifest.appendixStartPage || fallbackAppendixStart;
+      const fallbackAppendixStart = Math.max(1, totalPages - 6);
+      const appendixStart = currentManifest.appendixStartPage || fallbackAppendixStart;
 
-    currentManifest.pages.forEach(function(p) {
+      // HÀM KIỂM TRA RANH GIỚI CỘT BẢNG (CHẶN NỐI TỪ XUYÊN VÁCH NGĂN CỘT)
+      function isCrossColumnBoundary(items, leftIt, rightIt, isAppendix) {
+        const leftEnd = leftIt[1] + leftIt[3];
+        const rightStart = rightIt[1];
+        const gap = rightStart - leftEnd;
+        const avgH = Math.max(6, (leftIt[4] + rightIt[4]) / 2);
+
+        // 1. Ngưỡng trần cứng: Thu hẹp từ 150 xuống mức hợp lý
+        const hardMaxGap = isAppendix ? Math.max(18, avgH * 1.9) : 65;
+        if (gap > hardMaxGap) return true;
+
+        // 2. Dấu cách chuẩn siêu hẹp trong cùng câu -> Cho qua ngay
+        if (gap <= Math.max(3.5, avgH * 0.42)) return false;
+
+        // 3. Vùng nghi ngờ: Quét Rãnh dọc cục bộ (±120pt theo Y để an toàn nếu giấy scan hơi nghiêng)
+        const midX = (leftEnd + rightStart) / 2;
+        const yCenter = (leftIt[2] + rightIt[2]) / 2;
+
+        let crossingWords = 0;
+        let alignedRightColCount = 0;
+        const distinctY = new Set();
+
+        for (let idx = 0; idx < items.length; idx++) {
+          const t = items[idx];
+          if (!t[0] || !t[0].trim()) continue;
+
+          const yDiff = Math.abs(t[2] - yCenter);
+          if (yDiff > 5 && yDiff <= 120) {
+            distinctY.add(Math.round(t[2] / 6));
+
+            // Có chữ nào trên dòng lân cận vắt ngang qua khe giữa 2 từ không?
+            if (t[1] < midX - 1.5 && (t[1] + t[3]) > midX + 1.5) {
+              crossingWords++;
+            }
+            // Có chữ nào trên dòng lân cận căn thẳng hàng dọc với mép trái của rightIt không?
+            if (Math.abs(t[1] - rightStart) <= 3.5) {
+              alignedRightColCount++;
+            }
+          }
+        }
+
+        // Văn bản hợp đồng chính (căn đều 2 lề): Chỉ chặn nếu thực sự là bảng biểu thẳng cột rõ ràng
+        if (!isAppendix) {
+          return (distinctY.size >= 2 && crossingWords === 0 && alignedRightColCount >= 2);
+        }
+
+        // Trang Phụ lục (bảng biểu): Có rãnh dọc trống hoặc thẳng hàng mép cột bên phải -> Chặn nối xuyên cột
+        if (distinctY.size >= 2) {
+          if (crossingWords === 0 && (alignedRightColCount >= 1 || gap > avgH * 0.85)) return true;
+          if (crossingWords <= 1 && alignedRightColCount >= 2 && gap > avgH * 0.65) return true;
+        }
+
+        // Dự phòng cho bảng chỉ có 1-2 dòng trên Phụ lục
+        if (gap > Math.max(12, avgH * 1.25)) return true;
+
+        return false;
+      }
+
+      currentManifest.pages.forEach(function(p) {
       if (!p.textItems || p.textItems.length === 0) return;
 
       const isAppendixPage = (p.pageNum >= appendixStart) || (p.textItems.length > 250);
@@ -719,6 +778,7 @@
             const isLastSearchToken = (k === numTokens - 1);
             const prevItem = matchedList[matchedList.length - 1].it;
 
+            // 1. Quét tìm trên cùng một dòng ngang (CHỐNG NHẢY XUYÊN CỘT BẢNG)
             let tempIdx = currentItemIdx;
             const maxStep = 3;
 
@@ -740,7 +800,7 @@
                 const yDiff = Math.abs(it[2] - prevItem[2]);
                 const gap = it[1] - (prevItem[1] + prevItem[3]);
 
-                if (gap >= -5 && gap <= 150 && yDiff <= 6) {
+                if (gap >= -5 && yDiff <= 6 && !isCrossColumnBoundary(p.textItems, prevItem, it, isAppendixPage)) {
                   foundNext = true;
                   currentItemIdx = tempIdx;
                   matchedList.push({ it: it, clean: clean, sR: 0, isWrap: false });
@@ -751,15 +811,19 @@
                     fuzzyUsed++;
                   }
                   break;
+                } else {
+                  // Đã chạm vách ngăn cột bên phải -> Dừng tìm ngang để nhường cho logic xuống dòng
+                  break;
                 }
               } else {
                 break;
               }
             }
 
+            // 2. NGOẠI LỆ XUỐNG DÒNG (GIỮ NGUYÊN LOGIC SOFT OCR + CHẶN VÁCH NGĂN CỘT)
             if (!foundNext && lineBreakCount < 2 && isAppendixPage) {
               tempIdx = currentItemIdx;
-              const maxLookahead = Math.min(p.textItems.length - 1, currentItemIdx + 25);
+              const maxLookahead = Math.min(p.textItems.length - 1, currentItemIdx + 35);
 
               while (++tempIdx <= maxLookahead) {
                 const it = p.textItems[tempIdx];
@@ -780,7 +844,7 @@
                     if (!midClean) continue;
 
                     const gapRight = midIt[1] - (prevItem[1] + prevItem[3]);
-                    if (Math.abs(midIt[2] - prevItem[2]) <= 4 && gapRight >= -3 && gapRight <= 8.5) {
+                    if (Math.abs(midIt[2] - prevItem[2]) <= 4 && gapRight >= -3 && gapRight <= 8.5 && !isCrossColumnBoundary(p.textItems, prevItem, midIt, isAppendixPage)) {
                       isLastWordOfLine1 = false;
                       break;
                     }
@@ -797,7 +861,7 @@
                     if (isSttFormat && isLeftMargin) continue;
 
                     const gapLeft = it[1] - (pIt[1] + pIt[3]);
-                    if (Math.abs(pIt[2] - it[2]) <= 4 && gapLeft >= -5 && gapLeft <= 15) {
+                    if (Math.abs(pIt[2] - it[2]) <= 4 && gapLeft >= -5 && gapLeft <= 15 && !isCrossColumnBoundary(p.textItems, pIt, it, isAppendixPage)) {
                       isFirstWordOfLine2 = false;
                       break;
                     }
@@ -870,17 +934,17 @@
       }
 
       if (isCodeMode) {
-        const targetCode = cleanCodeToken(rawQuery);
-        for (let i = 0; i < p.textItems.length - 1; i++) {
-          const it1 = p.textItems[i];
-          const it2 = p.textItems[i + 1];
-          const c1 = cleanCodeToken(it1[0]);
-          const c2 = cleanCodeToken(it2[0]);
+          const targetCode = cleanCodeToken(rawQuery);
+          for (let i = 0; i < p.textItems.length - 1; i++) {
+            const it1 = p.textItems[i];
+            const it2 = p.textItems[i + 1];
+            const c1 = cleanCodeToken(it1[0]);
+            const c2 = cleanCodeToken(it2[0]);
 
-          const gap = it2[1] - (it1[1] + it1[3]);
-          const yDiff = Math.abs(it2[2] - it1[2]);
+            const gap = it2[1] - (it1[1] + it1[3]);
+            const yDiff = Math.abs(it2[2] - it1[2]);
 
-          if (gap >= -3 && gap <= 14 && yDiff <= 5 && (c1 + c2 === targetCode)) {
+            if (gap >= -3 && gap <= 14 && yDiff <= 5 && (c1 + c2 === targetCode) && !isCrossColumnBoundary(p.textItems, it1, it2, isAppendixPage)) {
             let startX = it1[1];
             if (it1[0].startsWith("(") || it1[0].startsWith("[")) startX += (it1[3] * 0.18);
             let endX = it2[1] + it2[3];
@@ -1332,8 +1396,6 @@
   function round1(num) { 
     return Math.round(num * 10) / 10; 
   }
-
-  let pdfLibLoadPromise = null;
 
   async function scanAppendixWithVision(pdf, ctx, canvas, skippedBlankPages) {
     const SCAN_AI_SCALE = 2.85;
@@ -1901,7 +1963,7 @@
     if (!currentManifest || !currentManifest.pages.length) return;
     const vp = document.getElementById("viewport-container");
     const total = currentManifest.pages.length;
-    const appendixPage = currentManifest.appendixStartPage || total;
+    const appendixPage = currentManifest.appendixStartPage || (total + 1);
     const appTop = getAppendixOffsetTop();
 
     if (vp && appTop !== null && vp.scrollTop > appTop + 30) {
@@ -2960,17 +3022,27 @@
           return;
         }
 
-        const rawDpr = window.devicePixelRatio || 1;
-        const sharpMultiplier = Math.max(rawDpr, 2.0);
-        let effectiveScale = renderScale * sharpMultiplier;
-
-        if (effectiveScale > 3.0) {
-          effectiveScale = Math.max(renderScale * 1.15, 3.0);
-        }
-
         const wrapperEl = canvas.closest(".page-wrapper");
         const extraRot = parseInt((wrapperEl ? wrapperEl.dataset.rotation : "0") || "0", 10);
         const effectiveRot = (page.rotate + extraRot) % 360;
+
+        const pageFit = parseFloat(wrapperEl?.dataset.baseFit) || baseFitScale || 1.0;
+        const panelEl = document.getElementById("pl-dock-preview-panel");
+        const panelZoom = parseFloat(window.getComputedStyle(panelEl || canvas).zoom) || 1.0;
+        const rawDpr = window.devicePixelRatio || 1;
+
+        // Tính đúng tỷ lệ hiển thị thực trên màn hình rồi nhân siêu lấy mẫu để luôn sắc nét
+        const displayScale = renderScale * pageFit * panelZoom;
+        const sharpBoost = Math.max(rawDpr * 1.35, 1.85);
+        let effectiveScale = displayScale * sharpBoost;
+
+        // Chặn trần an toàn theo pixel tối đa của GPU (4800px cạnh dài) thay vì kẹp cứng 3.0
+        const vp1 = page.getViewport({ scale: 1.0, rotation: effectiveRot });
+        const maxPageDim = Math.max(vp1.width, vp1.height) || 842;
+        const MAX_CANVAS_PX = 4800;
+        if (maxPageDim * effectiveScale > MAX_CANVAS_PX) {
+          effectiveScale = MAX_CANVAS_PX / maxPageDim;
+        }
 
         const viewport = page.getViewport({ scale: effectiveScale, rotation: effectiveRot });
         const newW = Math.max(1, Math.floor(viewport.width));
@@ -3051,13 +3123,21 @@
 
   function updateFullscreenIconState() {
     const btn = document.getElementById("btn-fullscreen");
-    if (!btn) return;
-    const icon = btn.querySelector("i");
     const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    if (icon) {
-      icon.className = isFull ? "bi bi-fullscreen-exit" : "bi bi-fullscreen";
+    if (btn) {
+      const icon = btn.querySelector("i");
+      if (icon) icon.className = isFull ? "bi bi-fullscreen-exit" : "bi bi-fullscreen";
+      btn.setAttribute("data-tip", isFull ? "Exit full screen (Esc)" : "Full screen");
     }
-    btn.setAttribute("data-tip", isFull ? "Exit full screen (Esc)" : "Full screen");
+
+    // Chờ 1 nhịp layout ổn định rồi vẽ lại nét căng theo kích thước mới
+    setTimeout(() => {
+      if (!isFull && typeof syncPrvSplitLayout_PL === "function") {
+        syncPrvSplitLayout_PL();
+      } else if (window.BconsViewer && typeof window.BconsViewer.refreshFitWidth === "function") {
+        window.BconsViewer.refreshFitWidth();
+      }
+    }, 60);
   }
 
   document.addEventListener("fullscreenchange", updateFullscreenIconState);
@@ -3131,6 +3211,7 @@ window.BconsViewer = {
       if (!currentManifest || !currentManifest.pages.length) return;
       const container = document.getElementById("viewport-container");
       if (!container) return;
+      const oldFit = baseFitScale;
       const exactFitW = getContainerFitWidth(container);
       const firstPageW = currentManifest.pages[0].width || 595;
       baseFitScale = exactFitW / Math.max(1, firstPageW);
@@ -3143,6 +3224,20 @@ window.BconsViewer = {
           w.style.setProperty("--doc-scale", String(currentScale * pf));
         }
       });
+
+      // Nếu kích thước khung hoặc tỷ lệ zoom (0.8 <-> 1.0) thay đổi, hủy render cũ và vẽ lại siêu nét
+      const panelEl = document.getElementById("pl-dock-preview-panel");
+      const curZoom = parseFloat(window.getComputedStyle(panelEl || container).zoom) || 1.0;
+      const zoomChanged = (window.BconsViewer._lastZoom !== undefined && window.BconsViewer._lastZoom !== curZoom);
+      window.BconsViewer._lastZoom = curZoom;
+
+      if (Math.abs(baseFitScale - oldFit) > 0.02 || zoomChanged) {
+        cancelAllPageRenders();
+        container.querySelectorAll("canvas.page-img").forEach(c => {
+          delete c.dataset.renderedScale;
+        });
+        renderVisiblePagesOnly();
+      }
     },
     close: function() {
       currentSessionEpoch++;
