@@ -347,14 +347,46 @@
     } catch (e) {}
   }
 
-  function showLoading(msg) {
+  let softProgressTimer = null;
+  let currentLoaderPct = 0;
+
+  function updateLoaderProgress(percent) {
+    const fill = document.getElementById("viewer-progress-fill");
+    const p = Math.max(0, Math.min(100, Number(percent) || 0));
+    currentLoaderPct = p;
+    if (fill) fill.style.width = p.toFixed(2) + "%"; // 👈 Dùng số thập phân cho thanh trôi mịn
+  }
+
+  function stopSoftProgress() {
+    if (softProgressTimer) {
+      clearInterval(softProgressTimer);
+      softProgressTimer = null;
+    }
+  }
+
+  // Đường cong tiệm cận: chạy êm lúc đầu, chậm dần về trần capPct nhưng KHÔNG BAO GIỜ đứng chết
+  function startSoftProgress(fromPct, capPct = 35, factor = 0.035) {
+    stopSoftProgress();
+    let cur = Math.max(currentLoaderPct, fromPct);
+    updateLoaderProgress(cur);
+    softProgressTimer = setInterval(() => {
+      cur += (capPct - cur) * factor;
+      updateLoaderProgress(cur);
+      if (capPct - cur < 0.05) stopSoftProgress();
+    }, 60);
+  }
+
+  function showLoading(msg, initialPercent = 0) {
+    stopSoftProgress();
     const txt = document.getElementById("loading-text");
     const ov = document.getElementById("loading-overlay");
     if (txt) txt.textContent = msg;
+    if (initialPercent !== null) updateLoaderProgress(initialPercent);
     if (ov) ov.style.display = "flex";
   }
 
   function hideLoading() {
+    stopSoftProgress();
     const ov = document.getElementById("loading-overlay");
     if (ov) ov.style.display = "none";
     stopBackgroundKeepAlive();
@@ -372,6 +404,7 @@
   }
 
   function updateProcessProgress(percent, stageText, isSuccess = false) {
+    stopSoftProgress();
     const box = document.getElementById("proc-progress-box");
     const fill = document.getElementById("proc-bar-fill");
     const txtStage = document.getElementById("proc-stage-text");
@@ -381,6 +414,7 @@
     box.style.display = "flex";
 
     const p = Math.max(0, Math.min(100, Math.round(percent)));
+    updateLoaderProgress(Math.max(currentLoaderPct, p));
     fill.style.width = p + "%";
     if (txtPercent) txtPercent.textContent = p + "%";
     if (txtStage) txtStage.textContent = stageText;
@@ -1013,17 +1047,50 @@
     driveTokenExpiresAt = 0;
   }
 
-  async function fetchDriveMedia(fileId, token) {
+  async function fetchDriveMedia(fileId, token, onProgress) {
     const slashes = String.fromCharCode(47, 47);
     const mediaUrl = "https:" + slashes + "www.googleapis.com/drive/v3/files/" + fileId + "?alt=media&supportsAllDrives=true";
-    return fetch(mediaUrl, {
+    const res = await fetch(mediaUrl, {
       method: "GET",
       headers: { "Authorization": "Bearer " + token },
       signal: activeFetchAbortController ? activeFetchAbortController.signal : undefined
     });
+
+    if (!res.ok || !res.body || typeof onProgress !== "function") {
+      return res;
+    }
+
+    const totalHeader = res.headers.get("Content-Length");
+    const totalBytes = totalHeader ? parseInt(totalHeader, 10) : 0;
+    if (!totalBytes) return res;
+
+    const reader = res.body.getReader();
+    const chunks = [];
+    let loadedBytes = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loadedBytes += value.byteLength;
+      onProgress(loadedBytes, totalBytes);
+    }
+
+    const merged = new Uint8Array(loadedBytes);
+    let offset = 0;
+    for (let i = 0; i < chunks.length; i++) {
+      merged.set(chunks[i], offset);
+      offset += chunks[i].byteLength;
+    }
+
+    return new Response(merged.buffer, {
+      status: res.status,
+      statusText: res.statusText,
+      headers: res.headers
+    });
   }
 
-  async function fetchPdfByByteRanges(fileId) {
+  async function fetchPdfByByteRanges(fileId, onProgress) {
     const token = await getDriveTokenAsync();
     const signal = activeFetchAbortController ? activeFetchAbortController.signal : undefined;
     const slashes = String.fromCharCode(47, 47);
@@ -1043,7 +1110,6 @@
     for (let start = 0; start < size; start += SLICE) {
       if (signal && signal.aborted) throw new Error("ABORTED_BY_USER");
       const end = Math.min(size, start + SLICE) - 1;
-      showLoading("LOADING DOCUMENT");
       const res = await fetch("https:" + slashes + "www.googleapis.com/drive/v3/files/" + fileId + "?alt=media&supportsAllDrives=true", {
         headers: {
           Authorization: "Bearer " + token,
@@ -1053,8 +1119,12 @@
       });
       if (!(res.status === 206 || res.status === 200)) throw new Error("HTTP " + res.status);
       const buf = await res.arrayBuffer();
-      if (res.status === 200 && buf.byteLength > (end - start + 1)) return buf;
+      if (res.status === 200 && buf.byteLength > (end - start + 1)) {
+        if (typeof onProgress === "function") onProgress(size, size);
+        return buf;
+      }
       chunks.push(new Uint8Array(buf));
+      if (typeof onProgress === "function") onProgress(end + 1, size);
     }
 
     const out = new Uint8Array(size);
@@ -1066,20 +1136,22 @@
     return out.buffer;
   }
 
-  async function fetchPdfDirectOrFallback(fileId) {
+  async function fetchPdfDirectOrFallback(fileId, onProgress) {
     try {
       const localBuf = await getLocalPdfBinary(fileId);
-      if (localBuf) return localBuf;
+      if (localBuf) {
+        if (typeof onProgress === "function") onProgress(1, 1);
+        return localBuf;
+      }
     } catch (e) {}
 
     try {
-      showLoading("LOADING DOCUMENT");
       let token = await getDriveTokenAsync();
-      let res = await fetchDriveMedia(fileId, token);
+      let res = await fetchDriveMedia(fileId, token, onProgress);
       if (res.status === 401 || res.status === 403) {
         invalidateDriveToken();
         token = await getDriveTokenAsync();
-        res = await fetchDriveMedia(fileId, token);
+        res = await fetchDriveMedia(fileId, token, onProgress);
       }
       if (!res.ok) throw new Error("HTTP " + res.status);
       const buf = await res.arrayBuffer();
@@ -1091,7 +1163,7 @@
       }
       console.warn("CDN lỗi, tải theo dải byte:", err);
       try {
-        const ranged = await fetchPdfByByteRanges(fileId);
+        const ranged = await fetchPdfByByteRanges(fileId, onProgress);
         saveLocalPdfBinary(fileId, ranged).catch(() => {});
         return ranged;
       } catch (rangeErr) {
@@ -1099,19 +1171,19 @@
           throw new Error("ABORTED_BY_USER");
         }
         console.warn("Chuyển làn dự phòng Apps Script:", rangeErr);
-        const fallbackBuf = await fetchPdfBase64Adaptive(fileId);
+        const fallbackBuf = await fetchPdfBase64Adaptive(fileId, onProgress);
         saveLocalPdfBinary(fileId, fallbackBuf).catch(() => {});
         return fallbackBuf;
       }
     }
   }
 
-  function fetchPdfBase64Adaptive(fileId) {
-    showLoading("LOADING DOCUMENT");
+  function fetchPdfBase64Adaptive(fileId, onProgress) {
     if (currentFileSizeMB <= LARGE_FILE_THRESHOLD_MB) {
       return new Promise(function(resolve, reject) {
         googleScriptRun
           .withSuccessHandler(function(b64) {
+            if (typeof onProgress === "function") onProgress(1, 1);
             const raw = atob(b64);
             const bytes = new Uint8Array(raw.length);
             for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
@@ -1127,6 +1199,7 @@
         googleScriptRun
           .withSuccessHandler(function(res) {
             fullB64 += res.chunk;
+            if (typeof onProgress === "function") onProgress(idx + 1, res.totalChunks);
             if (idx + 1 < res.totalChunks) {
               loadChunk(idx + 1);
             } else {
@@ -1261,71 +1334,6 @@
   }
 
   let pdfLibLoadPromise = null;
-
-  async function ensurePdfLibLoaded() {
-    if (window.PDFLib) return window.PDFLib;
-    if (pdfLibLoadPromise) return pdfLibLoadPromise;
-
-    pdfLibLoadPromise = new Promise(function(resolve, reject) {
-      const slashes = String.fromCharCode(47, 47);
-      const s = document.createElement("script");
-      s.src = "https:" + slashes + "cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
-      s.onload = function() {
-        if (window.PDFLib) resolve(window.PDFLib);
-        else reject(new Error("Không tìm thấy window.PDFLib."));
-      };
-      s.onerror = function() {
-        const s2 = document.createElement("script");
-        s2.src = "https:" + slashes + "cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js";
-        s2.onload = function() {
-          if (window.PDFLib) resolve(window.PDFLib);
-          else reject(new Error("Không tìm thấy window.PDFLib sau khi thử CDN phụ."));
-        };
-        s2.onerror = function() {
-          pdfLibLoadPromise = null;
-          reject(new Error("Không thể tải thư viện PDF-LIB từ cả 2 CDN."));
-        };
-        document.head.appendChild(s2);
-      };
-      document.head.appendChild(s);
-    });
-
-    return pdfLibLoadPromise;
-  }
-
-  async function buildCleanPdf(rawPdfData, manifest, skippedBlankPages) {
-    await ensurePdfLibLoaded();
-
-    const { PDFDocument, degrees } = window.PDFLib;
-    const srcDoc = await PDFDocument.load(rawPdfData);
-    const cleanDoc = await PDFDocument.create();
-
-    const validIndices = [];
-    for (let pNum = 1; pNum <= srcDoc.getPageCount(); pNum++) {
-      if (!skippedBlankPages.has(pNum)) {
-        validIndices.push(pNum - 1);
-      }
-    }
-
-    if (validIndices.length === 0) {
-      return rawPdfData;
-    }
-
-    const copiedPages = await cleanDoc.copyPages(srcDoc, validIndices);
-    copiedPages.forEach((page, idx) => {
-      const originalPageNum = validIndices[idx] + 1;
-      const targetPData = manifest.pages.find(p => p.pageNum === originalPageNum);
-      const extraRot = targetPData ? (targetPData.rotation || 0) : 0;
-      
-      if (extraRot !== 0) {
-        const currentAngle = page.getRotation().angle || 0;
-        page.setRotation(degrees((currentAngle + extraRot) % 360));
-      }
-      cleanDoc.addPage(page);
-    });
-
-    return await cleanDoc.save();
-  }
 
   async function scanAppendixWithVision(pdf, ctx, canvas, skippedBlankPages) {
     const SCAN_AI_SCALE = 2.85;
@@ -1685,12 +1693,6 @@
             await renderSlicedDocument();
           }
 
-          // HIỂN THỊ BẢN PDF SẠCH ĐÃ SỐ HÓA LÊN MÀN HÌNH DOCK PREVIEW
-          if (myEpoch === currentSessionEpoch) {
-            currentManifest = manifest;
-            await renderSlicedDocument();
-          }
-
           // =====================================================================
           // BẢNG BÁO CÁO NGHIỆM THU TỔNG KẾT TỰ ĐỘNG IN RA CONSOLE
           // =====================================================================
@@ -1736,6 +1738,7 @@
       // HIỂN THỊ MÀN HÌNH BÁO LỖI TRỰC QUAN TRONG VIEWPORT (KHÔNG ĐỂ MÀN HÌNH XANH ĐEN RỖNG)
       const vp = document.getElementById("viewport-container");
       if (vp) {
+        vp.style.visibility = "visible";
         vp.innerHTML = `
           <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; text-align: center; padding: 30px; box-sizing: border-box;">
             <i class="bi bi-file-earmark-x" style="font-size: 55px; color: #ff4d4d; margin-bottom: 15px; opacity: 0.85;"></i>
@@ -1777,7 +1780,12 @@
           putSessionCache(fileId, currentManifest);
           saveLocalManifest(fileId, currentManifest);
 
-          await renderSlicedDocument();
+          try {
+            await ensurePdfPreloaded(fileId, 95); // 👈 Đổi (fileId, 15, 95) thành (fileId, 95)
+            await renderSlicedDocument();
+          } catch (e) {
+            if (e.message !== "ABORTED" && e.message !== "REPAIR_OLD_MANIFEST") hideLoading();
+          }
           return;
         }
 
@@ -2147,6 +2155,57 @@
   }, { passive: false });
   }
 
+  async function ensurePdfPreloaded(fileId, endPct = 95) {
+    if (currentPdfDoc) {
+      stopSoftProgress();
+      updateLoaderProgress(98);
+      return currentPdfDoc;
+    }
+    const epoch = currentSessionEpoch;
+
+    const localBuf = await getLocalPdfBinary(fileId);
+    let pdfData = localBuf;
+
+    if (!pdfData) {
+      let streamStartPct = null;
+      pdfData = await fetchPdfDirectOrFallback(fileId, (loaded, total) => {
+        if (epoch !== currentSessionEpoch) return;
+        stopSoftProgress(); // Ngắt chạy mềm đúng mili-giây byte thật đầu tiên về
+        if (streamStartPct === null) {
+          streamStartPct = currentLoaderPct; // Chốt làm điểm nối tiếp mượt mà
+        }
+        const ratio = total > 0 ? Math.min(1, loaded / total) : 0;
+        const pct = streamStartPct + ratio * (endPct - streamStartPct);
+        if (pct > currentLoaderPct) {
+          updateLoaderProgress(pct);
+        }
+      });
+    }
+
+    stopSoftProgress();
+    if (epoch !== currentSessionEpoch) throw new Error("ABORTED");
+
+    updateLoaderProgress(96);
+    const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+    if (epoch !== currentSessionEpoch) {
+      try { pdf.destroy(); } catch (e) {}
+      throw new Error("ABORTED");
+    }
+
+    if (currentManifest && !currentManifest.mapsOriginalPdf && !currentManifest._repairing && pdf.numPages !== currentManifest.numPages) {
+      currentManifest._repairing = true;
+      delete SESSION_MANIFEST_CACHE[fileId];
+      try { pdf.destroy(); } catch (e) {}
+      setTimeout(() => {
+        if (epoch === currentSessionEpoch) processAndOptimizeFileJIT(fileId);
+      }, 50);
+      throw new Error("REPAIR_OLD_MANIFEST");
+    }
+
+    currentPdfDoc = pdf;
+    return pdf;
+  }
+
   async function loadFile(fileId, fileName, sizeMB, isProcessed, jsonId) {
     if (currentFileId === fileId && currentManifest) return;
 
@@ -2156,6 +2215,7 @@
     setupSmartClipboardCopy();
 
     currentSessionEpoch++;
+    const myEpoch = currentSessionEpoch;
 
     if (activeFetchAbortController) {
       activeFetchAbortController.abort();
@@ -2175,6 +2235,7 @@
       currentPdfDoc = null;
     }
 
+    currentManifest = null;
     currentFileId = fileId;
     currentFileName = fileName || "Document.pdf";
     currentFileSizeMB = (sizeMB !== undefined) ? sizeMB : 0;
@@ -2187,32 +2248,70 @@
     const inp = document.getElementById("jump-page-input");
     if (inp) inp.value = "1";
 
-    const ramCached = getSessionCache(fileId);
-    if (ramCached) {
-      currentManifest = ramCached;
-      if (typeof window.markScanFileDigitized_PL === "function") window.markScanFileDigitized_PL(fileId);
-      renderSlicedDocument();
+    // Xóa sạch khung giấy cũ và ẩn viewport trong suốt quá trình nạp (tránh lộ trang trắng bên dưới)
+    const vp = document.getElementById("viewport-container");
+    if (vp) {
+      vp.style.visibility = "hidden";
+      vp.innerHTML = "";
+    }
+    const pageInd = document.getElementById("page-indicator");
+    if (pageInd) pageInd.style.display = "none";
+
+    const isDirectDoc = isPlOrPdgFile(currentFileName);
+
+    // 1. Kiểm tra cache Manifest (RAM -> IndexedDB)
+    let cachedManifest = getSessionCache(fileId);
+    if (!cachedManifest) {
+      cachedManifest = await getLocalManifest(fileId);
+      if (myEpoch !== currentSessionEpoch) return;
+      if (cachedManifest) putSessionCache(fileId, cachedManifest);
+    }
+
+    if (cachedManifest) {
+      currentManifest = cachedManifest;
+      if (!isDirectDoc && typeof window.markScanFileDigitized_PL === "function") {
+        window.markScanFileDigitized_PL(fileId);
+      }
+
+      const hasBin = await getLocalPdfBinary(fileId);
+      if (myEpoch !== currentSessionEpoch) return;
+
+      if (!hasBin) {
+        showLoading("LOADING DOCUMENT", 5);
+      }
+
+      try {
+        await ensurePdfPreloaded(fileId, 95);
+        await renderSlicedDocument();
+      } catch (e) {
+        if (e.message !== "ABORTED" && e.message !== "REPAIR_OLD_MANIFEST") {
+          hideLoading();
+          if (vp) {
+            vp.style.visibility = "visible";
+            vp.innerHTML = `
+              <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; text-align: center; padding: 30px; box-sizing: border-box;">
+                <i class="bi bi-file-earmark-x" style="font-size: 55px; color: #ff4d4d; margin-bottom: 15px;"></i>
+                <h4 style="color: #ff4d4d; font-size: 15px; font-weight: bold; margin: 0 0 10px 0;">KHÔNG THỂ MỞ TỆP TIN</h4>
+                <p style="color: #95A1AF; font-size: 12px; margin: 0;">${e.message || "Lỗi tải tệp"}</p>
+              </div>
+            `;
+          }
+        }
+      }
       return;
     }
 
-    const cached = await getLocalManifest(fileId);
-    if (cached) {
-      putSessionCache(fileId, cached);
-      currentManifest = cached;
-      if (typeof window.markScanFileDigitized_PL === "function") window.markScanFileDigitized_PL(fileId);
-      renderSlicedDocument();
-      return;
-    }
-
-    showLoading("LOADING DOCUMENT");
+    // 2. Chưa có cache Manifest ở máy -> bật Loading với thanh tiến độ %
+    showLoading("LOADING DOCUMENT", 0);
 
     // 🚀 TẠM THỜI VÔ HIỆU HÓA SỐ HÓA ĐỐI VỚI FILE PL VÀ PDG (CHỈ MỞ XEM TRỰC TIẾP)
-    if (isPlOrPdgFile(currentFileName)) {
+    if (isDirectDoc) {
       await loadPdfDirectWithoutOcr(fileId);
       return;
     }
 
-    // Các file HĐ gốc vẫn chạy quy trình kiểm tra cache và số hóa bình thường
+    // Các file HĐ gốc chưa có cache máy -> kiểm tra cache JSON trên Drive (hoặc số hóa mới)
+    startSoftProgress(0, 35, 0.035);
     checkDriveCacheWithRetry(fileId, currentFileName, 1);
   }
 
@@ -2251,10 +2350,20 @@
         return;
       }
 
-      // Tải nhị phân PDF từ Drive hoặc file cục bộ
+      startSoftProgress(0, 25, 0.035);
+      let streamStartPct = null;
       const rawPdfData = localFileObj 
         ? await localFileObj.arrayBuffer()
-        : await fetchPdfDirectOrFallback(fileId);
+        : await fetchPdfDirectOrFallback(fileId, (loaded, total) => {
+            if (myEpoch !== currentSessionEpoch) return;
+            stopSoftProgress();
+            if (streamStartPct === null) streamStartPct = currentLoaderPct;
+            const ratio = total > 0 ? Math.min(1, loaded / total) : 0;
+            const pct = streamStartPct + ratio * (95 - streamStartPct);
+            if (pct > currentLoaderPct) updateLoaderProgress(pct);
+          });
+      stopSoftProgress();
+      updateLoaderProgress(96);
 
       if (myEpoch !== currentSessionEpoch) return;
 
@@ -2317,6 +2426,7 @@
       if (myEpoch === currentSessionEpoch) {
         const vp = document.getElementById("viewport-container");
         if (vp) {
+          vp.style.visibility = "visible";
           vp.innerHTML = `
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; text-align: center; padding: 30px; box-sizing: border-box;">
               <i class="bi bi-file-earmark-x" style="font-size: 55px; color: #ff4d4d; margin-bottom: 15px;"></i>
@@ -2530,6 +2640,18 @@
       }
     }
 
+    // Vẽ sẵn luôn trang kế tiếp nếu lộ trong màn hình
+    const nextWrapper = firstWrapper ? firstWrapper.nextElementSibling : null;
+    if (nextWrapper && nextWrapper.classList.contains("page-wrapper")) {
+      const nextCanvas = nextWrapper.querySelector("canvas.page-img");
+      const nextPdfPage = parseInt(nextWrapper.dataset.pdfPage || nextWrapper.dataset.page, 10);
+      if (nextCanvas && !nextCanvas.dataset.renderedScale) {
+        await renderPageToCanvas(nextCanvas, nextPdfPage);
+      }
+    }
+
+    updateLoaderProgress(100);
+    container.style.visibility = "visible"; // 👈 BẮT BUỘC PHẢI CÓ DÒNG NÀY
     hideLoading();
     jumpToPageNumber(initialPage, false);
 
@@ -2729,9 +2851,12 @@
       return;
     }
 
-    showLoading("EXPORTING DOCUMENT");
+    showLoading("EXPORTING DOCUMENT", 0);
     try {
-      const pdfData = await fetchPdfDirectOrFallback(currentFileId);
+      const pdfData = await fetchPdfDirectOrFallback(currentFileId, (loaded, total) => {
+        if (total > 0) updateLoaderProgress((loaded / total) * 100);
+      });
+      updateLoaderProgress(100);
       if (!pdfData || pdfData.byteLength === 0) {
         throw new Error("Không thể trích xuất dữ liệu nhị phân của file gốc.");
       }
@@ -2983,7 +3108,12 @@
   window.downloadPdfFromJson = downloadPdfFromJson;
   window.copyShareLink = copyShareLink;
 
-  window.BconsViewer = {
+window.BconsViewer = {
+    warmToken: function() {
+      if (!cachedDriveToken || Date.now() >= driveTokenExpiresAt) {
+        getDriveTokenAsync().catch(() => {});
+      }
+    },
     loadFile: function(fileId, fileName, sizeMB) {
       loadFile(fileId, fileName, sizeMB);
     },
@@ -3015,6 +3145,13 @@
       });
     },
     close: function() {
+      currentSessionEpoch++;
+      if (activeFetchAbortController) {
+        activeFetchAbortController.abort();
+        activeFetchAbortController = null;
+      }
+      hideLoading();
+      setAntiExitGuard(false);
       cancelAllPageRenders();
       if (pageObserver) {
         pageObserver.disconnect();
@@ -3027,7 +3164,12 @@
       currentManifest = null;
       currentFileId = null;
       const vp = document.getElementById("viewport-container");
-      if (vp) vp.innerHTML = "";
+      if (vp) {
+        vp.innerHTML = "";
+        vp.style.visibility = "visible";
+      }
+      const pageInd = document.getElementById("page-indicator");
+      if (pageInd) pageInd.style.display = "none";
       clearSearchState();
       stopBackgroundKeepAlive();
     }

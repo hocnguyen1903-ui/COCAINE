@@ -1063,11 +1063,15 @@
                 <button class="capsule-btn" onclick="zoomChange(0.15)" data-tip="Zoom In"><i class="bi bi-plus-lg" style="font-size: 13px;"></i></button>
             </div>
 
-            <!-- OVERLAY LOADING (ĐỒNG BỘ LUXURY LOADER NHƯ MINDMAP) -->
+            <!-- OVERLAY LOADING (ĐỒNG BỘ LUXURY LOADER + THANH TIẾN ĐỘ) -->
             <div id="loading-overlay" class="viewer-loader-overlay">
                 <div class="loader-content" style="margin-top: 0;">
                     <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">
-                    <div class="shimmer-bar"></div>
+                    <div class="viewer-progress-wrap">
+                        <div class="viewer-progress-track">
+                            <div id="viewer-progress-fill" class="viewer-progress-fill"></div>
+                        </div>
+                    </div>
                     <p id="loading-text" class="loader-text">LOADING DOCUMENT</p>
                 </div>
             </div>

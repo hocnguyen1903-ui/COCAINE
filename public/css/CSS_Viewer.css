@@ -389,6 +389,30 @@
   animation: luxuryBgPulse 3s ease-in-out infinite;
 }
 
+#pl-dock-preview-panel .viewer-progress-wrap {
+  position: relative;
+  width: 220px;
+  height: 2px;
+}
+
+#pl-dock-preview-panel .viewer-progress-track {
+  width: 220px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+#pl-dock-preview-panel .viewer-progress-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255, 186, 8, 0.5), #FFBA08);
+  border-radius: 10px;
+  box-shadow: 0 0 8px rgba(255, 186, 8, 0.45);
+  transition: width 0.25s linear;
+}
+
 /* 7. TOOLTIP NỘI BỘ DOCK PREVIEW */
 #pl-dock-preview-panel [data-tip] {
   position: relative;

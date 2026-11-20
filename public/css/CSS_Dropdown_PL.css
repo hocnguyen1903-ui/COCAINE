@@ -315,10 +315,9 @@
     cursor: default;
 }
 .file-status-group .file-icon.dim::after {
-    background: transparent;
-    border: 2.5px solid rgba(148, 169, 190, 0.1);
+    background: rgba(148, 169, 190, 0.1);
+    border: none;
 }
-
 /* ==========================================================================
    GỢI Ý UPLOAD FILE: ĐỒNG BỘ HOÀN HẢO NHỊP THỞ 1.4s & CHUYỂN PHA MƯỢT MÀ
    ========================================================================== */

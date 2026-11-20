@@ -44,6 +44,16 @@ async function openTab(tabId, triggerIntro = true) {
         closePreviewModal_PL(true);
     }
 
+    // 🚀 XIN SẴN DRIVE TOKEN NGẦM KHI MỞ TAB PL (TRỊ KHỰNG 0% / 15%)
+    if (tabId === 'tab-plhd') {
+        const warmDelay = isInitialLoad ? 2000 : 450;
+        setTimeout(() => {
+            if (localStorage.getItem('bcons_session_token') && window.BconsViewer && typeof window.BconsViewer.warmToken === 'function') {
+                window.BconsViewer.warmToken();
+            }
+        }, warmDelay);
+    }
+
     // 🚀 KHỞI TẠO ĐỒNG BỘ TỨC THÌ CHO TAB DRAWING
     if (tabId === 'tab-drawing') {
         const projInput = document.getElementById("drawing-project-search");
@@ -54,7 +64,7 @@ async function openTab(tabId, triggerIntro = true) {
 
         // Kích hoạt cập nhật ngầm danh sách dự án
         if (typeof fetchActiveProjectsForDrawing === 'function') {
-        fetchActiveProjectsForDrawing();
+            fetchActiveProjectsForDrawing();
         }
 
         setTimeout(async () => {
