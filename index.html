@@ -652,13 +652,13 @@
                         <i class="bi bi-buildings" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #FFBA08; font-size: 13px; z-index: 10;"></i>
                         <input type="text" id="drawing-project-search" placeholder="Project" 
        oninput="filterProject_Drawing(this)" 
-       onclick="filterProject_Drawing(this)"
+       onclick="this.select(); filterProject_Drawing(this)"
        onkeydown="if(event.key==='Enter') selectFirstProject_Drawing()">
                         <div id="drawing-project-drop" class="smooth-dropdown"></div>
                     </div>
                     <div class="dropdown-container" style="flex: 1.3; position: relative;">
                         <i id="drawing-search-icon" class="bi bi-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #00fbff; font-size: 13px; z-index: 10; transition: all 0.3s;"></i>
-                        <input type="text" id="drawing-category-search" placeholder="Search item" onkeydown="if(event.key==='Enter') executeCategorySearch(this.value)">
+                        <input type="text" id="drawing-category-search" placeholder="Search item" onkeydown="if(event.key==='Enter') executeCategorySearch(this.value)" onclick="this.select()">
                     </div>
                     <button id="btn-sync-drawing" class="btn-sync-box" onclick="syncManual()" title="Làm mới dữ liệu"><i class="bi bi-arrow-repeat"></i></button>
                 </div>
@@ -1005,14 +1005,19 @@
                 <span id="preview-file-name">File Preview</span>
             </div>
 
-            <!-- CỤM TÌM KIẾM AI (ĐÃ GỠ BỎ TOÀN BỘ TOOLTIP NOTE) -->
+            <!-- CỤM TÌM KIẾM AI (LOGO THƯƠNG HIỆU + ENTER ĐỂ TÌM) -->
             <div class="search-box-wrap" style="position: static; transform: none;">
-                <i class="bi bi-search" style="color: #FFBA08; font-size: 12px;"></i>
-                <input type="text" id="ai-search-input" class="search-input" placeholder="Search..." onkeydown="handleSearchKey(event)">
+                <!-- Logo bấm đúp (double click) mới chạy số hóa lại -->
+                <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="search-brand-icon" alt="" 
+                     ondblclick="forceRedigitizeCurrentFile()" 
+                     style="cursor: pointer; pointer-events: auto; margin-right: 6px; transition: all 0.2s ease;" 
+                     onmouseover="this.style.transform='scale(1.1)'; this.style.filter='drop-shadow(0 0 8px rgba(255, 186, 8, 0.6))';" 
+                     onmouseout="this.style.transform='scale(1)'; this.style.filter='none';">
+                
+                <input type="text" id="ai-search-input" class="search-input" placeholder="Search..." onkeydown="handleSearchKey(event)" onclick="this.select()">
                 <span id="search-counter" class="search-counter">0/0</span>
                 <button id="btn-prev" class="nav-arrow-btn" onclick="navigateMatch(-1)" disabled><i class="bi bi-chevron-up"></i></button>
                 <button id="btn-next" class="nav-arrow-btn" onclick="navigateMatch(1)" disabled><i class="bi bi-chevron-down"></i></button>
-                <button class="prv-btn" onclick="handleSearchSubmit()">FIND</button>
             </div>
 
             <!-- CHỈ GIỮ LẠI NÚT ĐÓNG (X) TRÊN HEADER -->

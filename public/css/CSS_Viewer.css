@@ -135,25 +135,72 @@
 }
 
 /* 4. CỤM TÌM KIẾM TRÊN HEADER DOCK (MỞ RỘNG RỘNG RÃI & KHÔNG KHUẤT CHỮ) */
-/* HỘP TÌM KIẾM: ĐỒNG BỘ CHUẨN Ô INPUT CỦA DASHBOARD (NỀN ĐEN CHÌM, BÓNG INSET, VIỀN MỜ) */
 #pl-dock-preview-panel .search-box-wrap {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(0, 0, 0, 0.3) !important; /* NỀN CHÌM ĐỒNG BỘ INPUT DASHBOARD */
-  border: 1px solid rgba(255, 255, 255, 0.1) !important; /* VIỀN MỜ TRẮNG ĐỒNG BỘ */
-  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05) !important; /* BÓNG CHÌM ĐỒNG BỘ */
-  padding: 0 10px;
-  border-radius: 20px; /* Bo tròn thanh lịch giống input location */
+  gap: 3.5px; /* 👈 Giảm khoảng cách chung giữa các phần tử từ 6px xuống 3.5px */
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  padding: 0 6px 0 10px;
+  border-radius: 20px;
   height: 32px;
   box-sizing: border-box;
   transition: all 0.3s ease;
+}
+
+#pl-dock-preview-panel .search-brand-icon {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  flex-shrink: 0;
+  opacity: 0.85;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#pl-dock-preview-panel .search-box-wrap:focus-within .search-brand-icon {
+  opacity: 1;
+  transform: scale(1.06);
 }
 
 #pl-dock-preview-panel .search-box-wrap:focus-within {
   border-color: #FFBA08 !important;
   background: rgba(0, 0, 0, 0.5) !important;
   box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.8), 0 0 12px rgba(255, 186, 8, 0.2) !important;
+}
+
+#pl-dock-preview-panel .search-box-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0 !important; /* 👈 Bỏ gap tự động để kiểm soát khoảng cách chính xác từng pixel */
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  padding: 0 6px 0 10px;
+  border-radius: 20px;
+  height: 32px;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+}
+
+#pl-dock-preview-panel .search-brand-icon {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  flex-shrink: 0;
+  opacity: 0.85;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  margin-right: 6px; /* 👈 Khoảng cách từ Favicon đến ô nhập */
+  transition: opacity 0.2s ease;
+}
+
+#pl-dock-preview-panel .search-box-wrap:focus-within .search-brand-icon {
+  opacity: 1;
 }
 
 #pl-dock-preview-panel .search-input {
@@ -164,13 +211,14 @@
   font-size: 12px !important;
   font-family: inherit !important;
   font-weight: 500 !important;
-  width: 160px !important; /* Mở rộng chiều ngang từ 95px lên 160px */
-  padding: 2px 4px !important;
-  margin: 0 !important;
+  width: 200px !important;
+  padding: 2px 0 !important;
+  margin: 0 8px 0 0 !important; /* 👈 Khoảng cách từ ô nhập đến số 0/0 */
   box-shadow: none !important;
   height: 100% !important;
-  line-height: 1.3 !important; /* Giữ dấu tiếng Việt và đuôi g, y nguyên vẹn */
+  line-height: 1.3 !important;
   box-sizing: border-box !important;
+  transform: none !important;
 }
 
 #pl-dock-preview-panel .search-input::placeholder {
@@ -179,27 +227,57 @@
   font-size: 11.5px !important;
 }
 
+#pl-dock-preview-panel .search-input:focus {
+  transform: none !important;
+}
+
+/* SỐ ĐẾM 0/0 */
 #pl-dock-preview-panel .search-counter {
   font-size: 10.5px;
   color: #FFBA08;
   font-weight: 700;
-  min-width: 32px;
-  text-align: center;
+  min-width: 28px;
+  text-align: right;
   user-select: none;
+  opacity: 0.65;
+  margin-right: 14px;  /* 👈 TĂNG TỪ 10px LÊN 14px (14px + 8px tâm = 22px) */
+  transition: opacity 0.2s ease;
 }
 
+#pl-dock-preview-panel .search-box-wrap:focus-within .search-counter {
+  opacity: 1;
+}
+
+/* 2 NÚT MŨI TÊN ^ VÀ v */
 #pl-dock-preview-panel .nav-arrow-btn {
   background: transparent;
   border: none;
   color: #ffffff;
   cursor: pointer;
-  padding: 3px 5px;
+  width: 16px;         /* 👈 Cố định độ rộng 16px để icon luôn nằm chính giữa tâm (8px) */
+  height: 22px;
+  padding: 0;
   font-size: 11px;
   border-radius: 3px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   line-height: 1;
   transition: background 0.15s, color 0.15s;
+}
+
+#pl-dock-preview-panel #btn-prev {
+  margin-right: 6px;   /* 👈 TĂNG TỪ 2px LÊN 6px (8px + 6px + 8px = 22px) */
+}
+
+#pl-dock-preview-panel .nav-arrow-btn:hover:not(:disabled) {
+  background: rgba(255, 186, 8, 0.25);
+  color: #FFBA08;
+}
+
+#pl-dock-preview-panel .nav-arrow-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
 }
 
 #pl-dock-preview-panel .nav-arrow-btn:hover:not(:disabled) {
@@ -439,4 +517,20 @@
 
 #pl-dock-preview-panel [data-tip]:hover::after {
   display: block;
+}
+
+/* CHẾ ĐỘ TOÀN MÀN HÌNH SẮC NÉT 1:1 */
+#pl-dock-preview-panel:fullscreen,
+#pl-dock-preview-panel:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  border-radius: 0 !important;
+  transform: none !important;
+  zoom: 1 !important;
 }

@@ -82,8 +82,6 @@
   let driveTokenExpiresAt = 0;
   let currentTargetFolderId = "1qK7-AXau_htyfxhmllXLCp2w0dkb6d40";
 
-  let globalTesseractScheduler = null;
-  let tesseractPreloadPromise = null;
   let currentPdfDoc = null;
   let pdfLoadPromise = null;
 
@@ -525,6 +523,12 @@
     if (!strToken || !queryToken) return false;
     if (strToken === queryToken) return true;
 
+    // 1. BẮT BUỘC chữ cái đầu tiên phải khớp chính xác (chặn công <-> móng, bàn <-> sàn...)
+    if (strToken[0] !== queryToken[0]) return false;
+
+    // 2. Không chạy mờ với từ quá ngắn (< 4 ký tự như tru, ga, cot...)
+    if (strToken.length < 4 || queryToken.length < 4) return false;
+
     const digitsA = strToken.replace(/[^0-9]/g, "");
     const digitsB = queryToken.replace(/[^0-9]/g, "");
     if (digitsA !== digitsB) return false;
@@ -749,9 +753,6 @@
             } else if (firstClean.endsWith(qTokens[0]) && /[0-9]/.test(firstClean)) {
               isFirstMatch = true;
               firstStartRatio = firstClean.indexOf(qTokens[0]) / firstClean.length;
-            } else if (isSoftOcrTokenMatch(firstClean, qTokens[0])) {
-              isFirstMatch = true;
-              firstIsFuzzy = true;
             }
           } else {
             if (isFuzzyTokenMatch(firstClean, qTokens[0])) {
@@ -794,7 +795,7 @@
                 isStrictOrPrefix = isLastSearchToken ? isFuzzyPrefixMatch(clean, qTokens[k]) : isFuzzyTokenMatch(clean, qTokens[k]);
               }
 
-              const isSoft = !isStrictOrPrefix && (fuzzyUsed < maxFuzzy) && isSoftOcrTokenMatch(clean, qTokens[k]);
+              const isSoft = !isAppendixPage && !isStrictOrPrefix && (fuzzyUsed < maxFuzzy) && isSoftOcrTokenMatch(clean, qTokens[k]);
 
               if (isStrictOrPrefix || isSoft) {
                 const yDiff = Math.abs(it[2] - prevItem[2]);
@@ -831,7 +832,7 @@
                 if (!clean) continue;
 
                 const isStrictOrPrefix = isLastSearchToken ? isPrefixTokenMatch(clean, qTokens[k]) : isStrictTokenMatch(clean, qTokens[k]);
-                const isSoft = !isStrictOrPrefix && (fuzzyUsed < maxFuzzy) && isSoftOcrTokenMatch(clean, qTokens[k]);
+                const isSoft = !isAppendixPage && !isStrictOrPrefix && (fuzzyUsed < maxFuzzy) && isSoftOcrTokenMatch(clean, qTokens[k]);
 
                 if (isStrictOrPrefix || isSoft) {
                   const yDrop = prevItem[2] - it[2];
@@ -867,18 +868,38 @@
                     }
                   }
 
-                  if (yDrop >= 3 && yDrop <= 45 && isWrapLeft && isLastWordOfLine1 && isFirstWordOfLine2) {
-                    foundNext = true;
-                    lineBreakCount++;
-                    currentItemIdx = tempIdx;
-                    matchedList.push({ it: it, clean: clean, sR: 0, isWrap: true });
-                    if (!isSoft) {
-                      strictCount++;
-                      if (clean.length > maxStrictLen) maxStrictLen = clean.length;
-                    } else {
-                      fuzzyUsed++;
+                  // TỐI ƯU 1: Siết chặt khoảng cách nhảy dòng tối đa trong trang Bảng biểu (Phụ lục)
+                  const maxYDrop = isAppendixPage ? 22 : 45;
+
+                  if (yDrop >= 3 && yDrop <= maxYDrop && isWrapLeft && isLastWordOfLine1 && isFirstWordOfLine2) {
+                    
+                    // TỐI ƯU 2: KIỂM TRA CHỐNG NHẢY CÓC (ANTI-SKIPPING)
+                    let hasInterveningLine = false;
+                    for (let interIdx = currentItemIdx + 1; interIdx < tempIdx; interIdx++) {
+                      const interIt = p.textItems[interIdx];
+                      if (!interIt[0] || !interIt[0].trim()) continue;
+                      
+                      // Nếu có một từ nằm chen ngang ở giữa khoảng không của 2 hàng -> Bị nhảy cóc
+                      // Trục Y của PDF đi từ dưới lên, nên hàng trên (prevItem) có tọa độ Y LỚN HƠN hàng dưới (it)
+                      if (interIt[2] < prevItem[2] - 5 && interIt[2] > it[2] + 5) {
+                        hasInterveningLine = true;
+                        break;
+                      }
                     }
-                    break;
+
+                    if (!hasInterveningLine) {
+                      foundNext = true;
+                      lineBreakCount++;
+                      currentItemIdx = tempIdx;
+                      matchedList.push({ it: it, clean: clean, sR: 0, isWrap: true });
+                      if (!isSoft) {
+                        strictCount++;
+                        if (clean.length > maxStrictLen) maxStrictLen = clean.length;
+                      } else {
+                        fuzzyUsed++;
+                      }
+                      break;
+                    }
                   }
                 }
               }
@@ -1313,49 +1334,6 @@
     });
   }
 
-  function initTesseractPoolAsync(workerCount) {
-    if (globalTesseractScheduler) {
-      return Promise.resolve(globalTesseractScheduler);
-    }
-    if (tesseractPreloadPromise) {
-      return tesseractPreloadPromise;
-    }
-
-    tesseractPreloadPromise = new Promise(async function(resolve) {
-      try {
-        if (!window.Tesseract) {
-          await new Promise(function(res, rej) {
-            const s = document.createElement("script");
-            s.src = "https:" + String.fromCharCode(47, 47) + "cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
-            s.onload = res;
-            s.onerror = rej;
-            document.head.appendChild(s);
-          });
-        }
-
-        const scheduler = Tesseract.createScheduler();
-        const promises = Array.from({ length: workerCount }, async function() {
-          const worker = await Tesseract.createWorker("vie");
-          await worker.setParameters({ 
-            tessedit_pageseg_mode: Tesseract.PSM.AUTO,
-            user_defined_dpi: "100"
-          });
-          scheduler.addWorker(worker);
-        });
-
-        await Promise.all(promises);
-        globalTesseractScheduler = scheduler;
-        resolve(scheduler);
-      } catch (e) {
-        console.error("Lỗi Preload Tesseract:", e);
-        tesseractPreloadPromise = null;
-        resolve(null);
-      }
-    });
-
-    return tesseractPreloadPromise;
-  }
-
   function isScannedPageBlank(srcCanvas) {
     const w = srcCanvas.width;
     const h = srcCanvas.height;
@@ -1494,100 +1472,6 @@
     return { appendixStartPage, appendixPages };
   }
 
-  async function ocrContractBody(pdf, ctx, canvas, contractEndPage, preScannedPages, skippedBlankPages, poolPromise, maxWorkers) {
-    const TESSERACT_OCR_SCALE = 1.05; 
-    const scheduler = await poolPromise;
-    const bodyPages = [];
-    const ocrWorkerPromises = [];
-
-    let ocrCandidateCount = 0;
-    for (let p = 1; p <= contractEndPage; p++) {
-      if (preScannedPages.has(p)) continue;
-      const isSkip = (p <= 3) || ((p >= Math.max(4, contractEndPage - 5)) && (p < contractEndPage));
-      if (!isSkip) ocrCandidateCount++;
-    }
-
-    let ocrCompletedCount = 0;
-
-    for (let pageNum = 1; pageNum <= contractEndPage; pageNum++) {
-      if (preScannedPages.has(pageNum)) continue;
-
-      const isFirst3Pages = pageNum <= 3;
-      const is5PagesBeforeLast = (pageNum >= Math.max(4, contractEndPage - 5)) && (pageNum < contractEndPage);
-      const isSkippedOcr = isFirst3Pages || is5PagesBeforeLast;
-
-      const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale: TESSERACT_OCR_SCALE });
-
-      const targetCanvas = isSkippedOcr ? canvas : document.createElement("canvas");
-      targetCanvas.width = viewport.width;
-      targetCanvas.height = viewport.height;
-      const targetCtx = targetCanvas.getContext("2d", { willReadFrequently: true });
-
-      if (!isSkippedOcr) {
-        targetCtx.filter = "grayscale(100%) contrast(160%) brightness(105%)";
-      }
-
-      await page.render({ canvasContext: targetCtx, viewport: viewport, intent: 'print' }).promise;
-      page.cleanup();
-      if (!isSkippedOcr) targetCtx.filter = "none";
-
-      if (isScannedPageBlank(targetCanvas)) {
-        skippedBlankPages.add(pageNum);
-        if (!isSkippedOcr) {
-          targetCanvas.width = 0;
-          targetCanvas.height = 0;
-        }
-        continue;
-      }
-
-      const pageData = {
-        pageNum: pageNum,
-        pdfPageNum: pageNum,
-        width: round1(viewport.width / TESSERACT_OCR_SCALE),
-        height: round1(viewport.height / TESSERACT_OCR_SCALE),
-        textItems: []
-      };
-      bodyPages.push(pageData);
-
-      if (!isSkippedOcr && scheduler) {
-        const taskPromise = scheduler.addJob("recognize", targetCanvas).then(function(res) {
-          targetCanvas.width = 0;
-          targetCanvas.height = 0;
-          ocrCompletedCount++;
-
-          const ocrPercent = 45 + Math.round((ocrCompletedCount / Math.max(1, ocrCandidateCount)) * 40);
-          updateProcessProgress(ocrPercent, `[3/4] TESSERACT ĐỌC THÂN HĐ: TRANG ${ocrCompletedCount}/${ocrCandidateCount}...`);
-
-          if (res && res.data && res.data.words) {
-            pageData.textItems = res.data.words
-              .filter(function(w) {
-                const txt = w.text ? w.text.trim() : "";
-                return txt.length > 0 && !/^[|\[\]\-_=~+*<>:;.\\\/]+$/.test(txt);
-              })
-              .map(function(w) {
-                const b = w.bbox;
-                return [
-                  w.text.trim(),
-                  round1(b.x0 / TESSERACT_OCR_SCALE),
-                  round1(pageData.height - (b.y1 / TESSERACT_OCR_SCALE)),
-                  round1((b.x1 - b.x0) / TESSERACT_OCR_SCALE),
-                  round1((b.y1 - b.y0) / TESSERACT_OCR_SCALE)
-                ];
-              });
-          }
-        });
-        ocrWorkerPromises.push(taskPromise);
-      }
-    }
-
-    if (ocrWorkerPromises.length > 0) {
-      await Promise.all(ocrWorkerPromises);
-    }
-
-    return bodyPages;
-  }
-
   function processAndOptimizeFileJIT(fileId, localFileObj = null) {
     const isLocalUpload = (localFileObj !== null);
     const uploadFileName = currentFileName;
@@ -1611,9 +1495,6 @@
     console.log(`%c======================================================`, "color: #FFBA08; font-weight: bold;");
 
     updateProcessProgress(5, "[1/4] KHỞI TẠO TÀI LIỆU...");
-
-    const maxWorkers = Math.min(2, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
-    const poolPromise = initTesseractPoolAsync(maxWorkers);
 
     const dataSourcePromise = isLocalUpload
       ? localFileObj.arrayBuffer() 
@@ -1651,19 +1532,58 @@
             "color: #69f0ae; font-weight: bold;"
           );
 
-          // GIAI ĐOẠN 3: Đọc chữ thân hợp đồng bằng Tesseract
-          updateProcessProgress(45, "[3/4] BẮT ĐẦU ĐỌC CHỮ THÂN HỢP ĐỒNG...");
-          const contractEndPage = appendixStartPage - 1;
-          const preScannedPages = new Set(appendixPages.map(p => p.pageNum));
-          const bodyPages = await ocrContractBody(pdf, ctx, canvas, contractEndPage, preScannedPages, skippedBlankPages, poolPromise, maxWorkers);
-          manifest.pages.push(...bodyPages);
+          // GIAI ĐOẠN 3: Xử lý nhanh Thân Hợp Đồng (Bỏ qua OCR cục bộ)
+updateProcessProgress(45, "[3/4] XỬ LÝ NHANH THÂN HỢP ĐỒNG...");
+const contractEndPage = appendixStartPage - 1;
+const preScannedPages = new Set(appendixPages.map(p => p.pageNum));
+const bodyPages = [];
 
-          manifest.pages.sort((a, b) => a.pageNum - b.pageNum);
+for (let pageNum = 1; pageNum <= contractEndPage; pageNum++) {
+  if (preScannedPages.has(pageNum)) continue;
 
-          console.log(
-            `%c[3/4] TESSERACT OCR XONG: Đã đọc xong thân HĐ (${bodyPages.length} trang) ⏱ Thời gian: ${getLapTime()}`,
-            "color: #ffd740; font-weight: bold;"
-          );
+  const page = await pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 1.0 });
+
+  // Trích xuất text nhúng sẵn trong file (Rất nhanh, hỗ trợ file PDF xuất từ Word)
+  let textItems = [];
+  try {
+    const tc = await page.getTextContent();
+    if (tc && tc.items) {
+      textItems = tc.items.map(it => [
+        (it.str || "").trim(),
+        round1(it.transform[4]),
+        round1(it.transform[5]),
+        round1(it.width),
+        round1(it.height)
+      ]).filter(it => it[0].length > 0);
+    }
+  } catch (tcErr) {}
+
+  bodyPages.push({
+    pageNum: pageNum,
+    pdfPageNum: pageNum,
+    width: round1(viewport.width),
+    height: round1(viewport.height),
+    rotation: 0,
+    textItems: textItems
+  });
+  
+  page.cleanup();
+  
+  // Cập nhật thanh tiến trình chạy ảo cho mượt
+  if (pageNum % 5 === 0) {
+    const pct = 45 + Math.round((pageNum / Math.max(1, contractEndPage)) * 40);
+    updateProcessProgress(pct, `[3/4] TRÍCH XUẤT NHANH THÂN HỢP ĐỒNG: TRANG ${pageNum}/${contractEndPage}...`);
+  }
+}
+
+manifest.pages.push(...bodyPages);
+manifest.pages.sort((a, b) => a.pageNum - b.pageNum);
+
+console.log(
+  `%c[3/4] XỬ LÝ NHANH XONG: Đã trích xuất gốc thân HĐ (${bodyPages.length} trang) ⏱ Thời gian: ${getLapTime()}`,
+  "color: #ffd740; font-weight: bold;"
+);
 
           // GIAI ĐOẠN 4: LẬP CHỈ MỤC ĐỐI CHIẾU TRỰC TIẾP FILE PDF GỐC (KHÔNG LỆCH TRANG KHI MẤT CACHE)
           updateProcessProgress(86, "[4/4] ĐANG CHUẨN HÓA DỮ LIỆU TRANG & GÓC XOAY...");
@@ -1738,13 +1658,6 @@
           );
 
           updateProcessProgress(100, "SỐ HÓA THÀNH CÔNG - SẴN SÀNG TÌM KIẾM!", true);
-
-          if (globalTesseractScheduler) {
-            const schedulerToClose = globalTesseractScheduler;
-            globalTesseractScheduler = null;
-            tesseractPreloadPromise = null;
-            schedulerToClose.terminate().catch(() => {});
-          }
 
           if (typeof window.markScanFileDigitized_PL === "function") {
             window.markScanFileDigitized_PL(finalDriveFileId);
@@ -2284,13 +2197,6 @@
       activeFetchAbortController = null;
     }
     activeFetchAbortController = new AbortController();
-
-    if (globalTesseractScheduler) {
-      const oldScheduler = globalTesseractScheduler;
-      globalTesseractScheduler = null;
-      tesseractPreloadPromise = null;
-      oldScheduler.terminate().catch(() => {});
-    }
 
     if (currentPdfDoc) {
       currentPdfDoc.destroy();
@@ -3187,6 +3093,32 @@
   window.toggleFullScreen = toggleFullScreen;
   window.downloadPdfFromJson = downloadPdfFromJson;
   window.copyShareLink = copyShareLink;
+
+  // THỰC THI SỐ HÓA LẠI NGAY LẬP TỨC (KHÔNG CẦN HỎI)
+  window.forceRedigitizeCurrentFile = function() {
+    if (!currentFileId) return;
+
+    // Chặn số hóa lại nếu đây là file Phụ lục/Phê duyệt giá
+    if (isPlOrPdgFile(currentFileName)) {
+      if (typeof showToast_PL === "function") {
+        showToast_PL("⚠️ Tài liệu này đang mở ở chế độ Xem trực tiếp, không áp dụng số hóa lại.", "error");
+      }
+      return;
+    }
+
+    if (typeof showToast_PL === "function") {
+      showToast_PL("🚀 Đang số hóa lại tài liệu bằng AI...", "success");
+    }
+
+    // Tăng Epoch để hủy ngay lập tức các tiến trình vẽ Canvas đang dang dở
+    currentSessionEpoch++;
+    
+    // Xóa sạch Cache bản số hóa cũ của file này trên RAM
+    delete SESSION_MANIFEST_CACHE[currentFileId];
+    
+    // Bật Loading Mờ đen và chạy lại quét AI từ đầu
+    processAndOptimizeFileJIT(currentFileId);
+  };
 
 window.BconsViewer = {
     warmToken: function() {
