@@ -241,12 +241,51 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
         ? flatpickr.l10ns.vi 
         : "vi";
 
+    function positionCalendarCleanly(instance) {
+        const cal = instance.calendarContainer;
+        if (!cal) return;
+        const scrollX = window.scrollX || window.pageXOffset;
+        const scrollY = window.scrollY || window.pageYOffset;
+
+        if (container && !isInput) {
+            const cRect = container.getBoundingClientRect();
+            const dRect = displayEl.getBoundingClientRect();
+            const targetW = Math.round(cRect.width) || 252;
+            const targetLeft = Math.max(scrollX + 8, Math.min(cRect.left + scrollX, scrollX + window.innerWidth - targetW - 8));
+            const targetTop = cRect.bottom + 8 + scrollY;
+            const arrowX = Math.max(16, Math.min(targetW - 24, (dRect.left + dRect.width / 2) - (targetLeft - scrollX) - 5));
+
+            cal.style.setProperty("width", targetW + "px", "important");
+            cal.classList.remove("arrowBottom");
+            cal.classList.add("arrowTop");
+            cal.style.right = "auto";
+            cal.style.left = targetLeft + "px";
+            cal.style.top = targetTop + "px";
+            cal.style.setProperty("--fp-arrow-left", Math.round(arrowX) + "px");
+        } else {
+            const calW = cal.offsetWidth || 252;
+            const calH = cal.offsetHeight || 275;
+            const iRect = displayEl.getBoundingClientRect();
+            const rawLeft = iRect.left + scrollX;
+            const targetLeft = Math.max(scrollX + 8, Math.min(rawLeft, scrollX + window.innerWidth - calW - 8));
+            const openBelow = (iRect.bottom + 8 + calH <= window.innerHeight) || (iRect.top - calH - 8 < 0);
+            const targetTop = openBelow ? (iRect.bottom + 8 + scrollY) : (iRect.top - calH - 8 + scrollY);
+
+            cal.classList.toggle("arrowTop", openBelow);
+            cal.classList.toggle("arrowBottom", !openBelow);
+            cal.style.right = "auto";
+            cal.style.left = targetLeft + "px";
+            cal.style.top = targetTop + "px";
+            cal.style.setProperty("--fp-arrow-left", "22px");
+        }
+    }
+
     return flatpickr(inputSelector, {
         defaultDate: today,
         dateFormat: "d/m/Y",
         locale: activeLocale,
+        positionElement: (container && !isInput) ? container : undefined,
         
-        // Khắc phục triệt để: Kiểm tra kiểu dữ liệu an toàn trước khi gọi regex
         parseDate: (datestr, format) => {
             if (!datestr) return today;
             if (datestr instanceof Date) return datestr;
@@ -254,17 +293,14 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
             
             if (typeof datestr === 'string') {
                 const cleanStr = datestr.trim();
-                // 1. Khớp định dạng tiếng Việt: ngày DD tháng MM năm YYYY
                 const vnMatch = cleanStr.match(/ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/i);
                 if (vnMatch) {
                     return new Date(parseInt(vnMatch[3], 10), parseInt(vnMatch[2], 10) - 1, parseInt(vnMatch[1], 10));
                 }
-                // 2. Khớp định dạng ngày chéo: DD/MM/YYYY
                 const slashMatch = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
                 if (slashMatch) {
                     return new Date(parseInt(slashMatch[3], 10), parseInt(slashMatch[2], 10) - 1, parseInt(slashMatch[1], 10));
                 }
-                // 3. Dự phòng đối tượng Date chuẩn ISO
                 const nativeParsed = new Date(cleanStr);
                 if (!isNaN(nativeParsed.getTime())) return nativeParsed;
             }
@@ -286,9 +322,17 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
             };
             instance.calendarContainer.appendChild(clearBtn);
         },
-        onOpen: () => { 
+        onOpen: (selectedDates, dateStr, instance) => { 
             if (container) container.classList.add("calendar-open"); 
             displayEl.classList.add("text-open"); 
+            positionCalendarCleanly(instance);
+            requestAnimationFrame(() => positionCalendarCleanly(instance));
+        },
+        onMonthChange: (selectedDates, dateStr, instance) => {
+            requestAnimationFrame(() => positionCalendarCleanly(instance));
+        },
+        onYearChange: (selectedDates, dateStr, instance) => {
+            requestAnimationFrame(() => positionCalendarCleanly(instance));
         },
         onClose: () => { 
             if (container) container.classList.remove("calendar-open"); 

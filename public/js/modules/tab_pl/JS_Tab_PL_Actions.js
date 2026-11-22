@@ -236,14 +236,44 @@ function submitEdit_PL() {
 /**
  * Mở bảng Checklist bàn giao hồ sơ
  */
+function openCancelTransferModal_PL(maHD) {
+    const overlay = document.getElementById('cancel-transfer-confirm-overlay');
+    const dialog = overlay ? overlay.querySelector('.scan-delete-dialog') : null;
+    const maText = document.getElementById('cancel-transfer-mahd');
+    if (overlay && maText) {
+        maText.textContent = maHD;
+        overlay.style.display = 'flex';
+        setTimeout(() => {
+            overlay.style.opacity = '1';
+            if (dialog) dialog.style.transform = 'scale(1)';
+        }, 10);
+    }
+}
+
+function closeCancelTransferModal_PL() {
+    const overlay = document.getElementById('cancel-transfer-confirm-overlay');
+    const dialog = overlay ? overlay.querySelector('.scan-delete-dialog') : null;
+    if (overlay) {
+        overlay.style.opacity = '0';
+        if (dialog) dialog.style.transform = 'scale(0.9)';
+        setTimeout(() => { overlay.style.display = 'none'; }, 200);
+    }
+}
+
+function executeActualCancelTransfer_PL() {
+    closeCancelTransferModal_PL();
+    if (!currentTransferData_PL || !currentTransferData_PL.isTransferred) return;
+    executeTransferScript_PL("");
+}
+
 function confirmTransfer_PL() {
     if (!currentTransferData_PL) return;
     const { maHD, isTransferred } = currentTransferData_PL;
 
-    // Nếu đã bàn giao rồi -> Click này tương đương với Hủy bàn giao (Reset)
+    // Nếu đã bàn giao rồi -> Hiển thị hộp thoại xác nhận Yes/No trước khi Hủy bàn giao
     if (isTransferred) { 
         closeContextMenu_PL(); 
-        executeTransferScript_PL(""); 
+        openCancelTransferModal_PL(maHD);
         return;
     }
 

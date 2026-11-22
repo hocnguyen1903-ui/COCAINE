@@ -590,6 +590,7 @@ document.addEventListener("keydown", function(e) {
 
     // 1. Không can thiệp nếu đang mở các bảng Modal / Panel
     const isModalOpen = (document.getElementById('data-delete-confirm-overlay')?.style.display === 'flex') ||
+                        (document.getElementById('cancel-transfer-confirm-overlay')?.style.display === 'flex') ||
                         (document.getElementById('edit-panel-pl')?.classList.contains('active')) ||
                         (document.getElementById('scan-panel-pl')?.classList.contains('active')) ||
                         (document.getElementById('transfer-panel-pl')?.classList.contains('active'));

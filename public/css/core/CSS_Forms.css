@@ -1,0 +1,598 @@
+/* ==========================================================================
+   CORE 2/3: FORM ELEMENTS, FLATPICKR & GENERAL DROPDOWN SYSTEM
+   (Hợp nhất từ CSS_Forms.css + CSS_Dropdown_General.css)
+   ========================================================================== */
+
+/* 1. CẤU TRÚC FORM CƠ BẢN */
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 3.5px;
+}
+
+label {
+    display: block;
+    margin-bottom: 0px;
+    font-size: 12.5px;
+    line-height: 30px;
+    color: #95A1AF;
+    letter-spacing: 1px;
+    transition: color 0.25s ease;
+}
+
+label:hover {
+    color: white;
+    cursor: pointer;
+}
+
+label:focus-within {
+    color: #FFC000;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.task-desc-edit) {
+    padding: 12px 20px;
+    border-radius: 35px;
+    font-size: 15px;
+    outline: none;
+    width: calc(100% - 40px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: rgba(0, 0, 0, 0.3) !important;
+    color: #E0E0E0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.task-desc-edit):hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 192, 0, 0.3) !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.task-desc-edit):focus {
+    background: rgba(0, 0, 0, 0.5) !important;
+    border-color: #FFBA08 !important;
+    box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 186, 8, 0.2);
+    transform: translateY(-1px);
+}
+
+input::placeholder {
+    color: rgba(255, 255, 255, 0.45) !important;
+    font-style: italic;
+    font-size: 13.5px;
+    letter-spacing: 0.5px;
+    -webkit-font-smoothing: antialiased;
+}
+
+input:focus::placeholder {
+    color: rgba(255, 255, 255, 0.2) !important;
+    transition: color 0.3s ease;
+}
+
+input.readonly-dark {
+    background: rgba(34, 40, 49, 0.6) !important;
+    border: 1px dashed rgba(149, 161, 175, 0.3) !important;
+    color: #95A1AF !important;
+    cursor: default;
+}
+
+#field0-hd, #field0-pl, #field0-tb, #field8-hd, #field8-pl, #field6-tb {
+    text-align: center !important;
+}
+
+#field0-hd::placeholder, #field0-pl::placeholder, #field0-tb::placeholder,
+#field8-hd::placeholder, #field8-pl::placeholder, #field6-tb::placeholder {
+    text-align: center !important;
+    font-style: italic;
+}
+
+/* 2. RADIO & CHECKBOX SYSTEM */
+.radio-container {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 90%;
+    margin-bottom: -5px;
+}
+
+.radio-label {
+    flex: 0 0 48%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    color: white;
+}
+
+.radio-label input[type="radio"] {
+    display: none;
+}
+
+.custom-radio {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #999;
+    border-radius: 50%;
+    position: relative;
+    display: inline-block;
+}
+
+.radio-label input[type="radio"]:checked + .custom-radio::after {
+    content: "";
+    width: 8px;
+    height: 8px;
+    background: #FFC000;
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.radio-label input[type="radio"]:checked + .custom-radio + .radio-text,
+.radio-label input[type="radio"]:checked + .custom-radio {
+    color: #FFC000;
+    border-color: #FFC000;
+}
+
+.radio-label:hover {
+    color: #FFC000;
+}
+
+.radio-label:hover .custom-radio {
+    border-color: #FFC000;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-right: 10px;
+}
+
+.checkbox-container label {
+    font-size: 15px !important;
+    color: #DBDBDB !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: inline-block !important;
+    line-height: 1.2 !important;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.checkbox-container label:hover {
+    color: white !important;
+}
+
+.checkbox-container input:checked ~ label {
+    color: white !important;
+}
+
+.checkbox-container input[type="checkbox"] {
+    width: 15px !important;
+    height: 15px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    cursor: pointer;
+    accent-color: #FFC000;
+    transition: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+/* 3. DATE DISPLAY, LOCATION DROPDOWN & LUXURY FLAT CALENDAR (FLATPICKR) */
+.date-display {
+    font-size: 15px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    color: #E0E0E0;
+    position: absolute;
+    right: 20px;
+    opacity: 0;
+    transition: opacity 0.8s ease-out 0.5s;
+    transform: none !important;
+    pointer-events: auto;
+    cursor: pointer;
+    z-index: 10;
+    white-space: nowrap;
+}
+
+.active-intro .date-display {
+    opacity: 1;
+    transform: none !important;
+}
+
+.date-display:hover,
+.date-display.text-open {
+    color: #FFC000 !important;
+}
+
+.date-display.different-date,
+.date-display.different-date:hover,
+.date-display.different-date.text-open {
+    color: #2ECC71 !important;
+    text-shadow: none !important;
+}
+
+.location-date-container:has(.different-date) {
+    border-color: #2ECC71 !important;
+}
+
+.location-date-container:has(.different-date) .location-dropdown {
+    color: #2ECC71 !important;
+}
+
+.location-date-container:has(.different-date):hover,
+.location-date-container:has(.different-date).calendar-open {
+    border-color: #2ECC71 !important;
+    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.25) !important;
+}
+
+.location-dropdown {
+    -webkit-appearance: none;
+    appearance: none;
+    background: #031c35;
+    color: #FFC000;
+    width: 85px;
+    padding: 4px 0;
+    font-size: 15px;
+    border-radius: 20px;
+    text-align: center;
+    cursor: pointer;
+    font-weight: bold;
+    border: 1px solid #7A828E;
+    transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.3s ease;
+    will-change: transform, opacity;
+    outline: none;
+    flex-shrink: 0;
+}
+
+html body .flatpickr-calendar .flatpickr-current-month .numInputWrapper input.cur-year,
+html body .flatpickr-calendar .flatpickr-current-month .numInputWrapper input.cur-year:hover,
+html body .flatpickr-calendar .flatpickr-current-month .numInputWrapper input.cur-year:focus {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    width: 42px !important;
+    height: auto !important;
+    color: #FFBA08 !important;
+    font-size: inherit !important;
+    font-weight: 700 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    transform: none !important;
+    display: inline-block !important;
+}
+
+.flatpickr-calendar .numInputWrapper {
+    width: 46px !important;
+}
+
+.flatpickr-calendar .numInputWrapper:hover {
+    background: rgba(255, 186, 8, 0.08) !important;
+    border-radius: 4px;
+}
+
+.flatpickr-calendar .numInputWrapper span.arrowUp:after {
+    border-bottom-color: #FFBA08 !important;
+}
+
+.flatpickr-calendar .numInputWrapper span.arrowDown:after {
+    border-top-color: #FFBA08 !important;
+}
+
+.flatpickr-calendar {
+    background: rgba(3, 28, 53, 0.98) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(255, 186, 8, 0.5) !important;
+    border-radius: 12px !important;
+    font-family: 'Poppins', sans-serif !important;
+    width: 252px !important;
+    box-sizing: border-box !important;
+    margin-top: 0 !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.65) !important;
+    z-index: 1000002 !important;
+}
+
+.flatpickr-months {
+    padding: 5px 4px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.flatpickr-month {
+    color: #FFBA08 !important;
+    fill: #FFBA08 !important;
+    height: 28px !important;
+}
+
+.flatpickr-current-month {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    height: 28px !important;
+    padding: 4px 0 0 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px;
+}
+
+.flatpickr-current-month .flatpickr-monthDropdown-months {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    padding: 0 2px !important;
+    color: #FFBA08 !important;
+    background: transparent !important;
+}
+
+.flatpickr-current-month .flatpickr-monthDropdown-months option {
+    background: #031c35 !important;
+    color: #E0E0E0 !important;
+}
+
+.flatpickr-prev-month, .flatpickr-next-month {
+    fill: #FFBA08 !important;
+    height: 28px !important;
+    padding: 6px 8px !important;
+    top: 4px !important;
+    transition: all 0.25s ease !important;
+}
+
+.flatpickr-prev-month svg, .flatpickr-next-month svg {
+    width: 11px !important;
+    height: 11px !important;
+}
+
+.flatpickr-prev-month:hover,
+.flatpickr-next-month:hover {
+    background: rgba(255, 186, 8, 0.1) !important;
+    border-radius: 6px;
+}
+
+.flatpickr-innerContainer,
+.flatpickr-rContainer {
+    width: 100% !important;
+}
+
+.flatpickr-weekdays {
+    height: 24px !important;
+    padding: 0 6px !important;
+    box-sizing: border-box !important;
+}
+
+span.flatpickr-weekday {
+    color: rgba(255, 255, 255, 0.45) !important;
+    font-weight: 600 !important;
+    font-size: 10px !important;
+    line-height: 24px !important;
+}
+
+.flatpickr-days {
+    width: 100% !important;
+    padding: 2px 6px 6px !important;
+    box-sizing: border-box !important;
+}
+
+.dayContainer {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    justify-content: space-between !important;
+}
+
+.flatpickr-day {
+    color: #E0E0E0 !important;
+    border-radius: 6px !important;
+    border: none !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    font-weight: 500 !important;
+    font-size: 11.5px !important;
+    height: 28px !important;
+    line-height: 28px !important;
+    max-width: calc((100% - 14px) / 7) !important;
+    flex-basis: calc((100% - 14px) / 7) !important;
+    margin: 1px !important;
+}
+
+.flatpickr-day:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: #FFFFFF !important;
+    box-shadow: none !important;
+}
+
+.flatpickr-day.today {
+    border: 1px solid #FFBA08 !important;
+    color: #FFBA08 !important;
+    background: transparent !important;
+}
+
+.flatpickr-day.selected,
+.flatpickr-day.selected:hover {
+    background: #FFBA08 !important;
+    color: #031c35 !important;
+    font-weight: 800 !important;
+    box-shadow: none !important;
+}
+
+.flatpickr-day.prevMonthDay,
+.flatpickr-day.nextMonthDay {
+    color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.flatpickr-calendar.arrowTop:before,
+.flatpickr-calendar.arrowTop:after,
+.flatpickr-calendar.arrowBottom:before,
+.flatpickr-calendar.arrowBottom:after {
+    left: var(--fp-arrow-left, 22px) !important;
+}
+
+.flatpickr-calendar.arrowTop:before {
+    border-bottom-color: rgba(255, 186, 8, 0.5) !important;
+}
+
+.flatpickr-calendar.arrowTop:after {
+    border-bottom-color: rgba(3, 28, 53, 0.98) !important;
+}
+
+.flatpickr-calendar.arrowBottom:before {
+    border-top-color: rgba(255, 186, 8, 0.5) !important;
+}
+
+.flatpickr-calendar.arrowBottom:after {
+    border-top-color: rgba(3, 28, 53, 0.98) !important;
+}
+
+.flatpickr-calendar.open {
+    animation: luxuryCalendarFadeIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.flatpickr-calendar .flatpickr-clear-btn {
+    background: rgba(255, 255, 255, 0.03);
+    color: #95A1AF;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 7px 0;
+    text-align: center;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: all 0.25s ease;
+    border-radius: 0 0 12px 12px;
+}
+
+.flatpickr-calendar .flatpickr-clear-btn:hover {
+    background: rgba(255, 186, 8, 0.1);
+    color: #FFBA08;
+    text-shadow: none !important;
+}
+
+@keyframes luxuryCalendarFadeIn {
+    from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ==========================================================================
+   4. DROPDOWN MENU SYSTEM (TAB HĐTCXD, DRAWING, TBKQ)
+   ========================================================================== */
+.dropdown-container {
+    position: relative;
+    width: 100%;
+    z-index: 10;
+}
+
+.dropdown-container:focus-within,
+.dropdown-container:hover {
+    z-index: 9999 !important;
+}
+
+.dropdown-icon, .calendar-icon {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+    color: #505966;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.dropdown-container input {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding-right: 40px !important;
+}
+
+.dropdown-container input:focus + .dropdown-icon {
+    color: #FFC000;
+}
+
+.smooth-dropdown {
+    position: absolute;
+    background: #031c35;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    border-radius: 8px;
+    border: 1.5px solid rgba(255, 186, 8, 0.4);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.8) !important;
+    display: block !important;
+    z-index: 100000 !important;
+    max-height: 0;
+    opacity: 0;
+    visibility: hidden;
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease,
+                visibility 0s linear 0.4s;
+}
+
+.smooth-dropdown.show {
+    max-height: 176px;
+    opacity: 1;
+    visibility: visible;
+    margin-top: 8px;
+    overflow-y: auto !important;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease,
+                visibility 0s linear 0s;
+}
+
+.smooth-dropdown::-webkit-scrollbar { width: 6px !important; }
+.smooth-dropdown::-webkit-scrollbar-track { background: transparent; }
+.smooth-dropdown::-webkit-scrollbar-thumb { background: rgba(255, 186, 8); border-radius: 8px; }
+.smooth-dropdown::-webkit-scrollbar-thumb:hover { background: #FFBA08; }
+
+#tab-hdtcxd .smooth-dropdown div:not(.disable-hover),
+#tab-drawing .smooth-dropdown div:not(.disable-hover),
+#tab-tbkq .smooth-dropdown div:not(.disable-hover) {
+    position: relative !important;
+    cursor: pointer;
+    padding: 10px 15px !important;
+    line-height: 1.2 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.5) !important;
+    font-size: 12px;
+    display: flex !important;
+    align-items: center;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+#tab-hdtcxd .smooth-dropdown div:not(.disable-hover):hover,
+#tab-drawing .smooth-dropdown div:not(.disable-hover):hover,
+#tab-tbkq .smooth-dropdown div:not(.disable-hover):hover {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: #ffffff !important;
+}
+
+.dd-prefix {
+    width: var(--pw, 85px);
+    flex-shrink: 0;
+    color: #FFBA08;
+    font-weight: 600;
+}
+
+.dd-divider {
+    width: 25px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.1);
+}
+
+.dd-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#tab-hdtcxd .smooth-dropdown div:not(.disable-hover).active,
+#tab-tbkq .smooth-dropdown div:not(.disable-hover).active {
+    background-color: rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+}

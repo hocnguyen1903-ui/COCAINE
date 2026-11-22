@@ -9,28 +9,19 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://npmcdn.com/flatpickr/dist/l10n/vi.js"></script>
-    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-<script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
-<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
-<script src="https://cytoscape.org/cytoscape.js-dagre/cytoscape-dagre.js"></script>
-<script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script> -->
 
     <!-- THƯ VIỆN LÕI CHO BCONS DOCUMENT VIEWER -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-    <!-- THỨ TỰ NẠP CSS BẮT BUỘC (CASCADING) -->
-    <link rel="stylesheet" href="public/css/CSS.css">
-    <link rel="stylesheet" href="public/css/CSS_Header.css">
-    <link rel="stylesheet" href="public/css/CSS_Forms.css">
-    <link rel="stylesheet" href="public/css/CSS_UI_Elements.css">
-    <link rel="stylesheet" href="public/css/CSS_Dropdown_General.css">
-    <link rel="stylesheet" href="public/css/CSS_Dropdown_PL.css">
-    <link rel="stylesheet" href="public/css/CSS_Modals.css">
-    <link rel="stylesheet" href="public/css/CSS_System.css">
-    <link rel="stylesheet" href="public/css/Drawing.css">
-    <link rel="stylesheet" href="public/css/CSS_Viewer.css">
+    <!-- 1. CORE CSS (Nền tảng, Form, Nút & Modal dùng chung) -->
+    <link rel="stylesheet" href="public/css/core/CSS_Base.css">
+    <link rel="stylesheet" href="public/css/core/CSS_Forms.css">
+    <link rel="stylesheet" href="public/css/core/CSS_Components.css">
+
+    <!-- 2. MODULES CSS (Giao diện chuyên biệt từng Tab) -->
+    <link rel="stylesheet" href="public/css/modules/CSS_Tab_PL.css">
+    <link rel="stylesheet" href="public/css/modules/CSS_Viewer.css">
+    <link rel="stylesheet" href="public/css/modules/CSS_Drawing.css">
 
     <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 </head>
@@ -198,7 +189,6 @@
         <!-- ==========================================================================
              VÙNG KẾT HỢP 2 TRƯỜNG TRÊN 1 HÀNG (GIÁ TRỊ & TẠM ỨNG)
              ========================================================================== -->
-        <!-- Đã đảo ngược logic: Chữ luôn hiện, chỉ ẩn ô nhập liệu bên trong -->
         <div style="display: flex; gap: 15px; align-items: flex-start; width: 100%; position: relative; z-index: 900;">
 
             <!-- 1. Ô GIÁ TRỊ HỢP ĐỒNG -->
@@ -206,7 +196,6 @@
                 <div style="margin-bottom: 4px;">
                     <span><i class="bi bi-coin"></i> Contract Value</span>
                 </div>
-                <!-- Ẩn ở đây -->
                 <div id="cont-field4-hd" class="dropdown-container" style="display: none;">
                     <input type="text" name="field4-hd" id="field4-hd" placeholder="-- Nhập giá trị hợp đồng --" 
                            onclick="this.select()" oninput="formatInput_HD(this)" 
@@ -219,7 +208,6 @@
                 <div style="margin-bottom: 4px;">
                     <span><i class="bi bi-cash-coin"></i> Advance</span>
                 </div>
-                <!-- Ẩn ở đây -->
                 <div id="cont-field5-hd" class="dropdown-container" style="display: none;">
                     <input type="text" id="field5-hd" placeholder="-- % --" 
                            oninput="filterAdvance_HD(this)" 
@@ -269,13 +257,12 @@
              ========================================================================== -->
         <div style="display: flex; gap: 15px; align-items: flex-start; width: 100%; position: relative; z-index: 800; margin-top: 5px;">
 
-            <!-- 1. Ô BẢO HÀNH (Chiếm 7 phần - Thẳng cột với Giá trị) -->
+            <!-- 1. Ô BẢO HÀNH -->
             <label style="flex: 7; margin-bottom: 0;">
                 <div style="margin-bottom: 4px;">
                     <span><i class="bi bi-tools"></i> Settlement / Warranty</span>
                 </div>
                 <div id="cont-field6-hd" class="dropdown-container" style="display: none;">
-                    <!-- Đã trả lại placeholder gốc, bỏ căn giữa -->
                     <input type="text" name="field6-hd" id="field6-hd" placeholder="-- Hình thức bảo hành --" 
                            oninput="coreFilter('field6-hd', 'drop-field6-hd', 'warranty')" 
                            onkeydown="masterKeyboardNav(event, 'drop-field6-hd', 'div:not(.disable-hover)', 'field7-hd', (el) => el.onmousedown())"
@@ -285,13 +272,12 @@
                 </div>
             </label>
 
-            <!-- 2. Ô TIẾN ĐỘ THI CÔNG (Chiếm 3 phần - Thẳng cột với Tạm ứng) -->
+            <!-- 2. Ô TIẾN ĐỘ THI CÔNG -->
             <label style="flex: 3; margin-bottom: 0;">
                 <div style="margin-bottom: 4px;">
                     <span><i class="bi bi-hourglass-split"></i> Progress</span>
                 </div>
                 <div id="cont-field7-hd" class="dropdown-container" style="display: none;">
-                    <!-- Đã trả lại placeholder gốc, ép căn giữa giống ô Tạm ứng cho đẹp -->
                     <input type="text" name="field7-hd" id="field7-hd" placeholder="-- Days --" 
                            onclick="this.select()" oninput="formatInput_HD(this)" 
                            style="text-align: center !important;" autocomplete="off">
@@ -352,7 +338,6 @@
                     <div class="ep-opt-card" onclick="selectEditCategory_PL('DATE', 'Ngày ký')" style="padding: 11px 12px;"><i class="bi bi-calendar-check"></i> Ngày ký</div>
                     <div class="ep-opt-card" onclick="selectEditCategory_PL('PACKAGE', 'Tên gói thầu')" style="padding: 11px 12px;"><i class="bi bi-box-seam"></i> Tên gói thầu</div>
                     <div class="ep-opt-card" onclick="selectEditCategory_PL('VALUE', 'Giá trị')" style="padding: 11px 12px;"><i class="bi bi-currency-dollar"></i> Giá trị</div>
-                    <!-- Bỏ style border-top và padding thủ công, để nó tự thừa kế từ ep-opt-card -->
 <div class="ep-opt-card ep-delete-card" onclick="deleteContractRow_PL()">
     <i class="bi bi-trash3-fill"></i> 
     <span style="font-weight: 700; letter-spacing: 1px;">DELETE DATA</span>
@@ -360,17 +345,13 @@
                 </div>
 
                 <div id="ep-view-editor" style="display: none; flex-direction: column; gap: 10px; padding: 15px 20px;">
-    <!-- Vùng nhập liệu -->
     <div style="display: flex; flex-direction: column; gap: 4px;">
         <label id="ep-editor-label" style="font-size: 11px; color: #95A1AF;"></label>
         <input type="text" id="ep-input-val" style="background: #000; border: 1.5px solid #FFBA08; color: #2ECC71; padding: 10px; border-radius: 8px; font-size: 15px; font-weight: bold; outline: none; width: 100%; box-sizing: border-box;">
     </div>
 
-    <!-- Footer: Chỉ giữ lại 1 tầng nút bấm duy nhất -->
     <div id="ep-footer-normal" style="display: flex; gap: 10px; margin-top: 15px;">
         <button type="button" class="btn-secondary-luxury" style="flex:1; padding: 10px; border-radius: 6px; font-size: 11px;" onclick="backToSelector_PL()">BACK</button>
-        
-        <!-- THAY ĐỔI: Bấm là thực thi submitEdit_PL() luôn, không chờ confirm nữa -->
         <button type="button" class="btn-primary-luxury" style="flex:1; padding: 10px; border-radius: 6px; font-size: 11px;" onclick="submitEdit_PL()">UPDATE</button>
     </div>
 </div>
@@ -503,42 +484,6 @@
     </div>
     
 </div>
-
-<!-- Modal xác nhận xóa dữ liệu HĐ/PLHĐ (Đồng bộ cứng sang cấu trúc 340px Luxury và hoạt ảnh scale) -->
-<div id="data-delete-confirm-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 20000000; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
-    <div class="scan-delete-dialog" style="border: 2.5px solid #ff4d4d; width: 340px; box-shadow: 0 0 20px rgba(255, 77, 77, 0.5); background: #031c35; border-radius: 15px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; transform: scale(0.9); transition: transform 0.3s ease;">
-        <i class="bi bi-exclamation-triangle-fill icon-alert-luxury" style="color: #ff4d4d; font-size: 50px; margin-bottom: 18px; filter: drop-shadow(0 0 12px rgba(255, 77, 77, 0.6));"></i>
-        <div style="color: white; font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase;">CONFIRM DATA DELETION!</div>
-        <div id="delete-data-mahd" style="color: #FFBA08; font-family: 'Courier New', Courier, monospace; font-weight: bold; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 20px; font-size: 12px; border: 1px solid rgba(255,186,8,0.3); word-break: break-all; width: 100%; box-sizing: border-box; line-height: 1.4;"></div>
-        <div style="color: #95A1AF; font-size: 11.5px; line-height: 1.6; margin-bottom: 30px; padding: 0 10px;">
-            Hành động này sẽ xóa vĩnh viễn dữ liệu trên <b style="color: #eee;">Sheet theo dõi</b> và các <b style="color: #eee;">File Scan</b> liên quan. <br><b style="color: #fff;">Không thể khôi phục!</b>
-        </div>
-        <div style="display: flex; width: 100%; gap: 15px;">
-            <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 45px; border-radius: 10px; font-size: 13px; font-weight: bold;" onclick="closeDataDeleteModal()">CANCEL</button>
-            <button type="button" class="btn-danger-luxury" style="flex: 1; height: 45px; background: #ff4d4d !important; border-radius: 10px; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);" onclick="executeActualDeleteData_PL()">CONFIRM</button>
-        </div>
-    </div>
-</div>
-<!-- Modal xác nhận xóa FILE SCAN (Full Screen Luxury) -->
-<div id="scan-delete-confirm-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 20000000; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
-    <div class="scan-delete-dialog" style="border: 2.5px solid #ff4d4d; width: 340px; box-shadow: 0 0 20px rgba(255, 77, 77, 0.5); background: #031c35; border-radius: 15px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; transform: scale(0.9); transition: transform 0.3s ease;">
-        <i class="bi bi-file-earmark-x-fill icon-alert-luxury" style="color: #ff4d4d; font-size: 50px; margin-bottom: 18px; filter: drop-shadow(0 0 12px rgba(255, 77, 77, 0.6));"></i>
-        <div style="color: white; font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase;">Confirm File Deletion!</div>
-        
-        <!-- Khung tên file Luxury -->
-        <div id="delete-scan-filename" style="color: #FFBA08; font-family: 'Courier New', Courier, monospace; font-weight: bold; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 20px; font-size: 12px; border: 1px solid rgba(255,186,8,0.3); word-break: break-all; width: 100%; box-sizing: border-box; line-height: 1.4;"></div>
-        
-        <div style="color: #95A1AF; font-size: 11.5px; line-height: 1.6; margin-bottom: 30px; padding: 0 10px;">
-            File scan này sẽ bị xóa <b style="color: #fff;">Vĩnh Viễn</b> khỏi hệ thống. <br><b style="color: #fff;">Không thể khôi phục!</b>
-        </div>
-        
-        <div style="display: flex; width: 100%; gap: 15px;">
-            <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 45px; border-radius: 10px; font-size: 13px; font-weight: bold;" onclick="cancelDeleteScan_PL()">CANCEL</button>
-            <button type="button" class="btn-danger-luxury" style="flex: 1; height: 45px; background: #ff4d4d !important; border-radius: 10px; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);" onclick="executeActualDelete_PL()">CONFIRM</button>
-        </div>
-    </div>
-</div>
-
     </div>
     <div id="tab-tbkq" class="tab-content" style="display: none;">
         <div class="form-container">
@@ -548,7 +493,6 @@
     </div>
 
     <form id="dataForm-tb">
-        <!-- CHỈ ĐỂ INPUT VÀ DROPDOWN TRONG NÀY -->
         <div class="dropdown-container" style="position: relative; z-index: 1000;">
             <input type="text" name="field0-tb" id="field0-tb" placeholder="-- Search for Bidding Package --" 
                    oninput="coreFilter('field0-tb', 'drop-field0-tb', 'pack')" 
@@ -556,12 +500,10 @@
                    onclick="this.select(); coreFilter('field0-tb', 'drop-field0-tb', 'pack'); event.stopPropagation();" 
                    style="border-radius: 35px; text-align: center; font-size: 18px;" autocomplete="off">
 
-            <!-- Dropdown giờ sẽ bám sát đít input vì container giờ chỉ cao bằng cái input -->
             <div id="drop-field0-tb" class="smooth-dropdown"></div>
         </div>
 
         <h1>THÔNG BÁO KẾT QUẢ GÓI THẦU</h1>
-        <!-- FIELD MỚI: ITEM CATEGORY (FULL NAME) -->
 <label>
     <div>
         <span><i class="bi bi-intersect"></i> Item Category </span>
@@ -623,7 +565,7 @@
             <div id="cont-field5-tb" class="dropdown-container" style="display: none;">
                 <input type="text" id="field5-tb" placeholder="-- Nhập tên Nhà thầu phụ --" 
                        oninput="coreFilter('field5-tb', 'drop-field5-tb', 'contractor')" 
-                       onkeydown="masterKeyboardNav(event, 'drop-field5-tb', 'div:not(.disable-hover)', 'submitButton-tb', (el) => el.onmousedown())"
+                       onkeydown="masterKeyboardNav(event, 'drop-field5-tb', 'div:not(.disable-hover)', 'field6-tb', (el) => el.onmousedown())"
                        onclick="this.select(); coreFilter('field5-tb', 'drop-field5-tb', 'contractor');" autocomplete="off">
                 <div id="drop-field5-tb" class="smooth-dropdown"></div>
             </div>
@@ -698,7 +640,7 @@
     </div>
 </div>
 
-<!-- 2. Bản vẽ cập nhật (Đã đổi màu: Tiêu đề xanh Cyan, Cấu trúc tên màu trắng) -->
+<!-- 2. Bản vẽ cập nhật -->
 <div class="guide-step" style="align-items: flex-start;">
     <div class="guide-icon" style="color: #00BCD4; border-color: rgba(0, 188, 212, 0.3); background: rgba(0, 188, 212, 0.05);"><i class="bi bi-file-earmark-arrow-up-fill"></i></div>
     <div class="guide-text">
@@ -708,7 +650,7 @@
     </div>
 </div>
 
-<!-- 3. Phiếu đề xuất (Đã đổi màu: Tiêu đề vàng Gold, Cấu trúc tên màu trắng) -->
+<!-- 3. Phiếu đề xuất -->
 <div class="guide-step" style="align-items: flex-start;">
     <div class="guide-icon" style="color: #FFBA08; border-color: rgba(255, 186, 8, 0.3); background: rgba(255, 186, 8, 0.05);"><i class="bi bi-file-earmark-medical-fill"></i></div>
     <div class="guide-text">
@@ -719,49 +661,45 @@
 </div>
                 </div>
 
-                <!-- VÙNG TẢI FILE PHÂN MẢNH CỐ ĐỊNH SÁT ĐÁY PANEL (ĐÃ ĐỒNG BỘ ĐỐI XỨNG 10PX CẢ 4 HƯỚNG) -->
-<!-- ĐÃ ĐỒNG BỘ: Sử dụng padding: 10px đều cho cả Trên - Dưới - Trái - Phải để tạo độ cân đối tuyệt đối -->
+                <!-- VÙNG TẢI FILE PHÂN MẢNH CỐ ĐỊNH SÁT ĐÁY PANEL -->
 <div style="padding: 15px; flex-shrink: 0; width: 100%; box-sizing: border-box; background: transparent; border-top: 1px solid rgba(255,255,255,0.05);">
     <input type="file" id="drawing-upload-input" accept=".pdf, .xls, .xlsx" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; opacity: 0;" multiple>
     
-    <!-- Giữ nguyên margin-bottom 0px sát đáy gọn gàng -->
     <div id="drawing-upload-zone" class="scan-drop-zone" style="min-height: 100px; height: auto !important; margin-top: auto !important; margin-bottom: 0px !important; width: 100%; padding: 12px !important; box-sizing: border-box;">
             
-            <!-- 1. Trạng thái trống (Đã đồng bộ tuyệt đối với tab Hợp đồng) -->
+            <!-- 1. Trạng thái trống -->
             <div id="drawing-state-empty" style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
                 <i class="bi bi-cloud-arrow-up" style="font-size: 32px; color: #FFBA08; margin-bottom: 6px;"></i>
                 <div style="color: #E0E0E0; font-size: 11.5px; font-weight: 600;">Drag & drop FILE here!</div>
                 <div style="color: #95A1AF; font-size: 9.5px; margin-top: 4px;">Or click to browse from computer</div>
             </div>
 
-                        <!-- 2. Trạng thái Hàng chờ (Đồng bộ với tab PLHD, có nút X xóa từng file, nút Cancel & Upload) -->
-                        <div id="drawing-state-queue" style="display: none; width: 100%; flex-direction: column; text-align: left;">
-                            <div style="font-size: 10.5px; color: #FFBA08; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                                <i class="bi bi-list-task"></i> DANH SÁCH HÀNG CHỜ:
-                            </div>
-                            
-                            <!-- List danh sách file cuộn nội bộ mượt mà -->
-                            <div id="drawing-queue-list" style="width: 100%; margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px;"></div>
-                            
-                            <!-- Hàng nút Cancel & Upload -->
-                            <div style="display: flex; gap: 10px; width: 100%; pointer-events: auto;">
-                                <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 32px; border-radius: 6px; font-size: 11px; padding: 0;" onclick="clearDrawingUploadQueue(event)">CANCEL</button>
-                                <button type="button" class="btn-primary-luxury" style="flex: 1; height: 32px; border-radius: 6px; font-size: 11px; padding: 0;" onclick="startDrawingQueueUpload(event)">UPLOAD</button>
-                            </div>
-                        </div>
-
-                        <!-- 3. Trạng thái đang tải lên thực tế (Có thanh Progress và icon lơ lửng) -->
-                        <div id="drawing-state-uploading" style="display: none; width: 100%; flex-direction: column; align-items: center; pointer-events: none;">
-                            <i class="bi bi-cloud-arrow-up luxury-upload-icon-active" style="font-size: 30px; color: #FFBA08; margin-bottom: 6px;"></i>
-                            <div id="drawing-upload-status" style="color: #FFBA08; font-size: 12px; font-weight: bold; text-transform: uppercase;">XỬ LÝ TỆP TIN...</div>
-                            <div style="width: 80%; height: 3px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 10px;">
-                                <div id="drawing-upload-progress" style="width: 0%; height: 100%; background: #FFBA08; box-shadow: 0 0 10px #FFBA08;"></div>
-                            </div>
-                        </div>
-                        
-                    </div>
+            <!-- 2. Trạng thái Hàng chờ -->
+            <div id="drawing-state-queue" style="display: none; width: 100%; flex-direction: column; text-align: left;">
+                <div style="font-size: 10.5px; color: #FFBA08; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                    <i class="bi bi-list-task"></i> DANH SÁCH HÀNG CHỜ:
+                </div>
+                
+                <div id="drawing-queue-list" style="width: 100%; margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px;"></div>
+                
+                <div style="display: flex; gap: 10px; width: 100%; pointer-events: auto;">
+                    <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 32px; border-radius: 6px; font-size: 11px; padding: 0;" onclick="clearDrawingUploadQueue(event)">CANCEL</button>
+                    <button type="button" class="btn-primary-luxury" style="flex: 1; height: 32px; border-radius: 6px; font-size: 11px; padding: 0;" onclick="startDrawingQueueUpload(event)">UPLOAD</button>
                 </div>
             </div>
+
+            <!-- 3. Trạng thái đang tải lên thực tế -->
+            <div id="drawing-state-uploading" style="display: none; width: 100%; flex-direction: column; align-items: center; pointer-events: none;">
+                <i class="bi bi-cloud-arrow-up luxury-upload-icon-active" style="font-size: 30px; color: #FFBA08; margin-bottom: 6px;"></i>
+                <div id="drawing-upload-status" style="color: #FFBA08; font-size: 12px; font-weight: bold; text-transform: uppercase;">XỬ LÝ TỆP TIN...</div>
+                <div style="width: 80%; height: 3px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 10px;">
+                    <div id="drawing-upload-progress" style="width: 0%; height: 100%; background: #FFBA08; box-shadow: 0 0 10px #FFBA08;"></div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+</div>
 
             <!-- Content Panel -->
             <div id="dp-content-state" style="display: none; flex: 1; flex-direction: column; overflow: hidden;">
@@ -809,7 +747,7 @@
         </div>
         
   <div class="info-modal-body">
-    <!-- PHẦN 1: SOẠN THẢO PHỤ LỤC (MỚI BỔ SUNG) -->
+    <!-- PHẦN 1: SOẠN THẢO PHỤ LỤC -->
     <div class="info-section-title">CREATE ANNEX (PLHD)</div>
     <div class="info-row">
         <div class="info-key"><i class="bi bi-file-earmark-plus-fill"></i></div>
@@ -826,7 +764,7 @@
 </div>
     </div>
 
-    <!-- PHẦN 2: TÌM KIẾM (ĐÃ ĐỒNG BỘ 100% CHUẨN ĐẸP) -->
+    <!-- PHẦN 2: TÌM KIẾM -->
     <div class="info-section-title" style="margin-top: 25px;">ADVANCED SEARCH</div>
     
     <div class="info-row">
@@ -856,7 +794,7 @@
         </div>
     </div>
 
-    <!-- PHẦN 3: QUẢN LÝ (GIỮ NGUYÊN CODE SẾP GỬI) -->
+    <!-- PHẦN 3: QUẢN LÝ -->
     <div class="info-section-title" style="margin-top: 25px;">DATA MANAGEMENT</div>
     
     <div class="info-row">
@@ -866,17 +804,14 @@
             <p>Click chuột phải hoặc Nhấn giữ vào dòng dữ liệu.</p>
             
             <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
-                <!-- Dòng 1: Transfer -->
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span class="info-tag-fixed">Transfer Records</span>
                     <span class="info-tag-desc">Chuyển giao hợp đồng qua phòng Thanh toán.</span>
                 </div>
-                <!-- Dòng 2: Edit -->
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span class="info-tag-fixed">Edit Data</span>
                     <span class="info-tag-desc">Cập nhật: Mã số, Ngày ký, Tên gói thầu, Giá trị hoặc Xoá dữ liệu.</span>
                 </div>
-                <!-- Dòng 3: Scan -->
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span class="info-tag-fixed">Upload Files</span>
                     <span class="info-tag-desc">Quản lý File.</span>
@@ -923,7 +858,7 @@
                         </label>
                     </div>
 
-                    <!-- TÙY CHỌN 2: GOM NHÓM THEO DỰ ÁN & CHÈN DÒNG TIÊU ĐỀ -->
+                    <!-- TÙY CHỌN 2: SẮP XẾP THEO DỰ ÁN -->
                     <div style="margin-bottom: 22px; padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 186, 8, 0.25); border-radius: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer;" onclick="toggleExportGroupByProject_UI(event)">
                         <input type="checkbox" id="exportGroupByProjectCheckbox-pl" style="width: 16px; height: 16px; cursor: pointer; accent-color: #FFBA08; margin: 0;" onclick="event.stopPropagation();">
                         <label for="exportGroupByProjectCheckbox-pl" style="cursor: pointer; font-size: 12px; color: #E0E0E0; line-height: 1.4; margin: 0; user-select: none;">
@@ -940,45 +875,82 @@
             </div>
         </div>
 
-        <!-- Modal xác nhận xóa FILE BẢN VẼ TRONG TAB DRAWING (Luxury style) -->
+        <!-- 1. MODAL XÓA BẢN VẼ DRAWING (ĐỎ) -->
         <div id="drawing-delete-confirm-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 20000000; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
-            <div class="scan-delete-dialog" style="border: 2.5px solid #ff4d4d; width: 340px; box-shadow: 0 0 20px rgba(255, 77, 77, 0.5); background: #031c35; border-radius: 15px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; transform: scale(0.9); transition: transform 0.3s ease;">
+            <div class="scan-delete-dialog" style="border: 2px solid #ff4d4d; width: 360px; box-shadow: 0 0 25px rgba(255, 77, 77, 0.45); background: #031c35; border-radius: 15px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; transform: scale(0.9); transition: transform 0.3s ease;">
                 <i class="bi bi-file-earmark-x-fill icon-alert-luxury" style="color: #ff4d4d; font-size: 50px; margin-bottom: 18px; filter: drop-shadow(0 0 12px rgba(255, 77, 77, 0.6));"></i>
                 <div style="color: white; font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase;">Confirm File Deletion!</div>
-                
                 <div id="delete-drawing-filename" style="color: #FFBA08; font-family: 'Courier New', Courier, monospace; font-weight: bold; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 20px; font-size: 12px; border: 1px solid rgba(255,186,8,0.3); word-break: break-all; width: 100%; box-sizing: border-box; line-height: 1.4;"></div>
-                
                 <div style="color: #95A1AF; font-size: 11.5px; line-height: 1.6; margin-bottom: 30px; padding: 0 10px;">
                     Bản vẽ này sẽ bị xóa <b style="color: #fff;">Vĩnh Viễn</b> khỏi Google Drive và dọn sạch các tác vụ liên quan. <br><b style="color: #fff;">Không thể khôi phục!</b>
                 </div>
-                
                 <div style="display: flex; width: 100%; gap: 15px;">
-                    <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 45px; border-radius: 10px; font-size: 13px; font-weight: bold;" onclick="cancelDeleteDrawing_Client()">CANCEL</button>
-                    <button type="button" class="btn-danger-luxury" style="flex: 1; height: 45px; background: #ff4d4d !important; border-radius: 10px; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);" id="confirmDeleteDrawingBtn">CONFIRM</button>
+                    <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 44px; border-radius: 10px !important; font-size: 13px; font-weight: bold;" onclick="cancelDeleteDrawing_Client()">CANCEL</button>
+                    <button type="button" class="btn-danger-luxury" style="flex: 1; height: 44px; background: #ff4d4d !important; border-radius: 10px !important; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);" id="confirmDeleteDrawingBtn">CONFIRM</button>
                 </div>
             </div>
         </div>
 
-        <!-- Modal chỉnh sửa TÊN FILE BẢN VẼ (Luxury style) -->
-        <div id="drawing-edit-confirm-overlay" class="info-modal-overlay" style="display: none; z-index: 20000000; align-items: center; justify-content: center;">
-            <div class="info-modal-content" style="width: 440px; max-width: 90%; transform: scale(0.9); transition: transform 0.3s ease;">
-                <div class="info-modal-header">
-                    <i class="bi bi-pencil-square" style="color: #FFBA08; font-size: 32px; filter: drop-shadow(0 0 10px rgba(255, 18, 8, 0.4));"></i>
-                    <span>SYSTEM EDIT DRAWING</span>
+        <!-- 2. MODAL SỬA TÊN BẢN VẼ (VÀNG) -->
+        <div id="drawing-edit-confirm-overlay" onclick="if(event.target === this) cancelEditDrawing_Client()" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 20000000; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
+            <div class="scan-delete-dialog" style="border: 2px solid #FFBA08; width: 360px; box-shadow: 0 0 25px rgba(255, 186, 8, 0.45); background: #031c35; border-radius: 15px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; transform: scale(0.9); transition: transform 0.3s ease;">
+                <i class="bi bi-pencil-square" style="color: #FFBA08; font-size: 46px; margin-bottom: 14px; filter: drop-shadow(0 0 10px rgba(255, 186, 8, 0.5));"></i>
+                <div style="color: white; font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 6px; text-transform: uppercase;">EDIT DRAWING NAME</div>
+                <div style="color: #95A1AF; font-size: 11px; margin-bottom: 18px; letter-spacing: 0.3px;">Hệ thống sẽ tự động tái định tuyến trên Drive</div>
+                <div style="width: 100%; margin-bottom: 25px;">
+                    <input type="text" id="drawing-edit-input-val" style="background: #000 !important; border: 1.5px solid #FFBA08 !important; color: #2ECC71 !important; padding: 10px 14px; border-radius: 8px !important; font-size: 13px !important; font-weight: bold; outline: none; width: 100%; box-sizing: border-box; text-align: left;" onkeydown="if(event.key === 'Enter') document.getElementById('confirmEditDrawingBtn').click()">
                 </div>
-                
-                <div class="info-modal-body" style="margin-top: 20px;">
-                    <div class="info-section-title">Chỉnh sửa tên bản vẽ</div>
-                    
-                    <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 25px;">
-                        <label style="font-size: 11.5px; color: #95A1AF;">Nhập tên file mới (hệ thống tự động tái định tuyến):</label>
-                        <input type="text" id="drawing-edit-input-val" style="background: #000; border: 1.5px solid #FFBA08; color: #2ECC71; padding: 10px 15px; border-radius: 8px; font-size: 13.5px; font-weight: bold; outline: none; width: 100%; box-sizing: border-box;" onkeydown="if(event.key === 'Enter') document.getElementById('confirmEditDrawingBtn').click()">
-                    </div>
-                    
-                    <div style="display: flex; gap: 15px; width: 100%; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 20px;">
-                        <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 42px; border-radius: 8px;" onclick="cancelEditDrawing_Client()">CANCEL</button>
-                        <button type="button" class="btn-primary-luxury" style="flex: 1; height: 42px; border-radius: 8px; font-weight: bold;" id="confirmEditDrawingBtn">UPDATE</button>
-                    </div>
+                <div style="display: flex; width: 100%; gap: 15px;">
+                    <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 44px; border-radius: 10px !important; font-size: 13px; font-weight: bold;" onclick="cancelEditDrawing_Client()">CANCEL</button>
+                    <button type="button" class="btn-primary-luxury" style="flex: 1; height: 44px; border-radius: 10px !important; font-size: 13px; font-weight: bold;" id="confirmEditDrawingBtn">UPDATE</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. MODAL XÓA DÒNG DỮ LIỆU HỢP ĐỒNG / PLHD (ĐỎ) -->
+        <div id="data-delete-confirm-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 20000000; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
+            <div class="scan-delete-dialog" style="border: 2px solid #ff4d4d; width: 360px; box-shadow: 0 0 25px rgba(255, 77, 77, 0.45); background: #031c35; border-radius: 15px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; transform: scale(0.9); transition: transform 0.3s ease;">
+                <i class="bi bi-exclamation-triangle-fill icon-alert-luxury" style="color: #ff4d4d; font-size: 50px; margin-bottom: 18px; filter: drop-shadow(0 0 12px rgba(255, 77, 77, 0.6));"></i>
+                <div style="color: white; font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase;">CONFIRM DATA DELETION!</div>
+                <div id="delete-data-mahd" style="color: #FFBA08; font-family: 'Courier New', Courier, monospace; font-weight: bold; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 20px; font-size: 12px; border: 1px solid rgba(255,186,8,0.3); word-break: break-all; width: 100%; box-sizing: border-box; line-height: 1.4;"></div>
+                <div style="color: #95A1AF; font-size: 11.5px; line-height: 1.6; margin-bottom: 30px; padding: 0 10px;">
+                    Hành động này sẽ xóa vĩnh viễn dữ liệu trên <b style="color: #eee;">Sheet theo dõi</b> và các <b style="color: #eee;">File Scan</b> liên quan. <br><b style="color: #fff;">Không thể khôi phục!</b>
+                </div>
+                <div style="display: flex; width: 100%; gap: 15px;">
+                    <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 44px; border-radius: 10px !important; font-size: 13px; font-weight: bold;" onclick="closeDataDeleteModal()">CANCEL</button>
+                    <button type="button" class="btn-danger-luxury" style="flex: 1; height: 44px; background: #ff4d4d !important; border-radius: 10px !important; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);" onclick="executeActualDeleteData_PL()">CONFIRM</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. MODAL XÓA FILE SCAN RIÊNG LẺ (ĐỎ) -->
+        <div id="scan-delete-confirm-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 20000000; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
+            <div class="scan-delete-dialog" style="border: 2px solid #ff4d4d; width: 360px; box-shadow: 0 0 25px rgba(255, 77, 77, 0.45); background: #031c35; border-radius: 15px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; transform: scale(0.9); transition: transform 0.3s ease;">
+                <i class="bi bi-file-earmark-x-fill icon-alert-luxury" style="color: #ff4d4d; font-size: 50px; margin-bottom: 18px; filter: drop-shadow(0 0 12px rgba(255, 77, 77, 0.6));"></i>
+                <div style="color: white; font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase;">Confirm File Deletion!</div>
+                <div id="delete-scan-filename" style="color: #FFBA08; font-family: 'Courier New', Courier, monospace; font-weight: bold; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 20px; font-size: 12px; border: 1px solid rgba(255,186,8,0.3); word-break: break-all; width: 100%; box-sizing: border-box; line-height: 1.4;"></div>
+                <div style="color: #95A1AF; font-size: 11.5px; line-height: 1.6; margin-bottom: 30px; padding: 0 10px;">
+                    File scan này sẽ bị xóa <b style="color: #fff;">Vĩnh Viễn</b> khỏi hệ thống. <br><b style="color: #fff;">Không thể khôi phục!</b>
+                </div>
+                <div style="display: flex; width: 100%; gap: 15px;">
+                    <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 44px; border-radius: 10px !important; font-size: 13px; font-weight: bold;" onclick="cancelDeleteScan_PL()">CANCEL</button>
+                    <button type="button" class="btn-danger-luxury" style="flex: 1; height: 44px; background: #ff4d4d !important; border-radius: 10px !important; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);" onclick="executeActualDelete_PL()">CONFIRM</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. MODAL HỦY BÀN GIAO HỒ SƠ (VÀNG) -->
+        <div id="cancel-transfer-confirm-overlay" onclick="if(event.target === this) closeCancelTransferModal_PL()" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 20000000; justify-content: center; align-items: center; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
+            <div class="scan-delete-dialog" style="border: 2px solid #FFBA08; width: 360px; box-shadow: 0 0 25px rgba(255, 186, 8, 0.45); background: #031c35; border-radius: 15px; padding: 30px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; transform: scale(0.9); transition: transform 0.3s ease;">
+                <i class="bi-file-earmark-minus" style="color: #FFBA08; font-size: 46px; margin-bottom: 14px; filter: drop-shadow(0 0 10px rgba(255, 186, 8, 0.5));"></i>
+                <div style="color: white; font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase;">CONFIRM CANCEL TRANSFER!</div>
+                <div id="cancel-transfer-mahd" style="color: #FFBA08; font-family: 'Courier New', Courier, monospace; font-weight: bold; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 20px; font-size: 12px; border: 1px solid rgba(255,186,8,0.3); word-break: break-all; width: 100%; box-sizing: border-box; line-height: 1.4;"></div>
+                <div style="color: #95A1AF; font-size: 11.5px; line-height: 1.6; margin-bottom: 30px; padding: 0 10px;">
+                    Hủy bỏ trạng thái <b style="color: #ffffff;">Chuyển hồ sơ</b> và <b style="color: #FFBA08;">Chờ bàn giao</b>!
+                </div>
+                <div style="display: flex; width: 100%; gap: 15px;">
+                    <button type="button" class="btn-secondary-luxury" style="flex: 1; height: 44px; border-radius: 10px !important; font-size: 13px; font-weight: bold;" onclick="closeCancelTransferModal_PL()">NO</button>
+                    <button type="button" class="btn-primary-luxury" style="flex: 1; height: 44px; border-radius: 10px !important; font-size: 13px; font-weight: bold;" onclick="executeActualCancelTransfer_PL()">YES</button>
                 </div>
             </div>
         </div>
@@ -994,8 +966,14 @@
 <script src="public/js/modules/tab_pl/JS_Tab_PL_Actions.js"></script>
 <script src="public/js/modules/tab_pl/JS_Tab_PL_Files.js"></script>
 <script src="public/js/modules/JS_Tab_TB.js"></script>
-<script src="public/js/modules/JS_Drawing.js"></script>
-<script src="public/js/modules/JS_Viewer_Core.js"></script>
+<script src="public/js/modules/drawing/JS_Drawing_State.js"></script>
+<script src="public/js/modules/drawing/JS_Drawing_Mindmap.js"></script>
+<script src="public/js/modules/drawing/JS_Drawing_Upload.js"></script>
+<script src="public/js/modules/drawing/JS_Drawing_Tasks.js"></script>
+<script src="public/js/modules/viewer/JS_Viewer_State.js"></script>
+<script src="public/js/modules/viewer/JS_Viewer_Search.js"></script>
+<script src="public/js/modules/viewer/JS_Viewer_Pipeline.js"></script>
+<script src="public/js/modules/viewer/JS_Viewer_UI.js"></script>
 
 <!-- KHUNG PREVIEW DOCK BÊN PHẢI (BCONS NATIVE VIEWER) -->
     <div id="pl-dock-preview-panel">
@@ -1007,20 +985,18 @@
 
             <!-- CỤM TÌM KIẾM AI (LOGO THƯƠNG HIỆU + ENTER ĐỂ TÌM) -->
             <div class="search-box-wrap" style="position: static; transform: none;">
-                <!-- Logo bấm đúp (double click) mới chạy số hóa lại -->
                 <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="search-brand-icon" alt="" 
                      ondblclick="forceRedigitizeCurrentFile()" 
                      style="cursor: pointer; pointer-events: auto; margin-right: 6px; transition: all 0.2s ease;" 
                      onmouseover="this.style.transform='scale(1.1)'; this.style.filter='drop-shadow(0 0 8px rgba(255, 186, 8, 0.6))';" 
                      onmouseout="this.style.transform='scale(1)'; this.style.filter='none';">
                 
-                <input type="text" id="ai-search-input" class="search-input" placeholder="Search..." onkeydown="handleSearchKey(event)" onclick="this.select()">
+                <input type="text" id="ai-search-input" class="search-input" placeholder="Press Ctrl+F to Search..." onkeydown="handleSearchKey(event)" onclick="this.select()">
                 <span id="search-counter" class="search-counter">0/0</span>
                 <button id="btn-prev" class="nav-arrow-btn" onclick="navigateMatch(-1)" disabled><i class="bi bi-chevron-up"></i></button>
                 <button id="btn-next" class="nav-arrow-btn" onclick="navigateMatch(1)" disabled><i class="bi bi-chevron-down"></i></button>
             </div>
 
-            <!-- CHỈ GIỮ LẠI NÚT ĐÓNG (X) TRÊN HEADER -->
             <div class="dock-preview-actions" style="margin-left: 10px;">
                 <button type="button" onclick="closePreviewModal_PL()" title="Đóng preview (ESC)">
                     <i class="bi bi-x-lg"></i>
@@ -1044,10 +1020,9 @@
         </div>
 
         <div class="dock-preview-body" style="position: relative; overflow: hidden; display: flex; flex-direction: column;">
-            <!-- VIEWPORT CHỨA TRANG PDF ẢO HÓA -->
             <div id="viewport-container" style="flex: 1; width: 100%; height: 100%;"></div>
 
-            <!-- THANH ĐIỀU KHIỂN NỔI CAPSULE (ĐỒNG BỘ 100% BCONS-VIEWER) -->
+            <!-- THANH ĐIỀU KHIỂN NỔI CAPSULE -->
             <div id="page-indicator" class="floating-control-bar" style="display: none;">
                 <span>Page</span>
                 <input type="text" id="jump-page-input" class="page-jump-input" value="1" onkeydown="handlePageJumpKey(event)" data-tip="Jump to page">
@@ -1068,7 +1043,7 @@
                 <button class="capsule-btn" onclick="zoomChange(0.15)" data-tip="Zoom In"><i class="bi bi-plus-lg" style="font-size: 13px;"></i></button>
             </div>
 
-            <!-- OVERLAY LOADING (ĐỒNG BỘ LUXURY LOADER + THANH TIẾN ĐỘ) -->
+            <!-- OVERLAY LOADING -->
             <div id="loading-overlay" class="viewer-loader-overlay">
                 <div class="loader-content" style="margin-top: 0;">
                     <img src="https://i.postimg.cc/W4v0Vv2C/logo.png" class="bcons-logo-img-pulse">

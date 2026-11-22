@@ -854,3 +854,21 @@ function syncExistingDigitizedFlags_PL() {
   }
   SpreadsheetApp.flush();
 }
+
+/**
+ * Ghi đè nội dung nhị phân PDF sạch lên đúng fileId gốc trên Drive (giữ nguyên ID & quyền chia sẻ)
+ */
+function overwritePdfFile_Backend(fileId, base64Data) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+    if (!fileId || !base64Data) throw new Error("Thiếu fileId hoặc dữ liệu PDF.");
+    const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), "application/pdf");
+    Drive.Files.update({}, fileId, blob, { supportsAllDrives: true });
+    return { success: true };
+  } catch (e) {
+    throw new Error("Không thể ghi đè file PDF trên Drive: " + e.message);
+  } finally {
+    lock.releaseLock();
+  }
+}

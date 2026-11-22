@@ -135,10 +135,16 @@
 }
 
 /* 4. CỤM TÌM KIẾM TRÊN HEADER DOCK (MỞ RỘNG RỘNG RÃI & KHÔNG KHUẤT CHỮ) */
+#pl-dock-preview-panel .dock-preview-header {
+  position: relative;
+  z-index: 210;
+}
+
 #pl-dock-preview-panel .search-box-wrap {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 3.5px; /* 👈 Giảm khoảng cách chung giữa các phần tử từ 6px xuống 3.5px */
+  gap: 0 !important;
   background: rgba(0, 0, 0, 0.3) !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
   box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05) !important;
@@ -147,23 +153,6 @@
   height: 32px;
   box-sizing: border-box;
   transition: all 0.3s ease;
-}
-
-#pl-dock-preview-panel .search-brand-icon {
-  width: 15px;
-  height: 15px;
-  object-fit: contain;
-  flex-shrink: 0;
-  opacity: 0.85;
-  pointer-events: none;
-  user-select: none;
-  -webkit-user-drag: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-#pl-dock-preview-panel .search-box-wrap:focus-within .search-brand-icon {
-  opacity: 1;
-  transform: scale(1.06);
 }
 
 #pl-dock-preview-panel .search-box-wrap:focus-within {
@@ -172,35 +161,108 @@
   box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.8), 0 0 12px rgba(255, 186, 8, 0.2) !important;
 }
 
-#pl-dock-preview-panel .search-box-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0 !important; /* 👈 Bỏ gap tự động để kiểm soát khoảng cách chính xác từng pixel */
-  background: rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05) !important;
-  padding: 0 6px 0 10px;
-  border-radius: 20px;
-  height: 32px;
-  box-sizing: border-box;
-  transition: all 0.3s ease;
-}
-
+/* MỞ KHÓA TƯƠNG TÁC CHO FAVICON ĐỂ HOVER & CLICK */
 #pl-dock-preview-panel .search-brand-icon {
   width: 15px;
   height: 15px;
   object-fit: contain;
   flex-shrink: 0;
   opacity: 0.85;
-  pointer-events: none;
+  pointer-events: auto !important;
+  cursor: pointer !important;
   user-select: none;
   -webkit-user-drag: none;
-  margin-right: 6px; /* 👈 Khoảng cách từ Favicon đến ô nhập */
-  transition: opacity 0.2s ease;
+  margin-right: 6px;
+  transition: opacity 0.2s ease, transform 0.2s ease, filter 0.2s ease;
 }
 
-#pl-dock-preview-panel .search-box-wrap:focus-within .search-brand-icon {
+#pl-dock-preview-panel .search-box-wrap:focus-within .search-brand-icon,
+#pl-dock-preview-panel .search-brand-icon:hover,
+#pl-dock-preview-panel .search-brand-icon.note-pinned {
   opacity: 1;
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 5px rgba(255, 186, 8, 0.45));
+}
+
+/* POPOVER NOTE GIỚI THIỆU TÌM KIẾM & SỐ HÓA */
+#pl-dock-preview-panel .search-favicon-note {
+  position: absolute;
+  top: 52px;
+  left: 12px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  background: rgba(3, 28, 53, 0.97);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 186, 8, 0.45);
+  border-radius: 6px;
+  padding: 8px 11px 7px;
+  
+  /* ĐỒNG BỘ ĐỔ BÓNG CHUẨN TOOLTIP DASHBOARD TẠI ĐÂY */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+
+  color: #E0E0E0;
+  z-index: 9999;
+  box-sizing: border-box;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.2s;
+  text-align: left;
+}
+
+#pl-dock-preview-panel .search-favicon-note.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Mũi tên nhỏ hướng lên đúng tâm Favicon */
+#pl-dock-preview-panel .search-favicon-note::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: var(--arrow-left, 20px);
+  width: 8px;
+  height: 8px;
+  background: rgba(3, 28, 53, 0.97);
+  border-top: 1px solid rgba(255, 186, 8, 0.45);
+  border-left: 1px solid rgba(255, 186, 8, 0.45);
+  transform: translateY(4.5px) rotate(45deg);
+}
+
+#pl-dock-preview-panel .sfn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#pl-dock-preview-panel .sfn-row {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+#pl-dock-preview-panel .sfn-key {
+  color: #00BCD4;
+  font-weight: 600;
+  margin-right: 3px;
+}
+
+#pl-dock-preview-panel .sfn-key-gold {
+  color: #FFBA08;
+}
+
+#pl-dock-preview-panel .sfn-footer {
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 9px;
+  color: #95A1AF;
+  font-style: italic;
+  letter-spacing: 0.3px;
 }
 
 #pl-dock-preview-panel .search-input {
@@ -223,8 +285,8 @@
 
 #pl-dock-preview-panel .search-input::placeholder {
   color: rgba(255, 255, 255, 0.45) !important;
-  font-style: normal !important;
-  font-size: 11.5px !important;
+  font-style: italic !important;
+  font-size: 10px !important;
 }
 
 #pl-dock-preview-panel .search-input:focus {

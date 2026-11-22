@@ -396,7 +396,8 @@ function doPost(e) {
     "getPdfBase64Chunk": () => getPdfBase64Chunk(payload?.[0] || payload?.fileId, payload?.[1] || payload?.chunkIndex),
     "getDriveAccessToken": () => getDriveAccessToken(),
     "makeFilePublicAndGetLink": () => makeFilePublicAndGetLink(payload?.[0] || payload?.fileId || payload),
-    "markScanDigitized_PL": () => markScanDigitized_PL(payload)
+    "markScanDigitized_PL": () => markScanDigitized_PL(payload),
+    "overwritePdfFile_Backend": () => overwritePdfFile_Backend(payload?.[0], payload?.[1]),
   };
 
   try {

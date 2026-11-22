@@ -399,7 +399,8 @@ async function callBackend(action, data = {}, retries = 1) {
         "approveUser_InApp", 
         "rejectUser_InApp",
         "getDrawingUploadSession_Backend", 
-        "extractDataOnly"
+        "extractDataOnly",
+        "overwritePdfFile_Backend",
     ];
 
     if (writeActions.includes(action)) {

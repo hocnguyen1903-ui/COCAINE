@@ -138,15 +138,12 @@ const UI_BASE_ZOOM = 0.8;
 
 function getMasterPanelWidth_PL() {
     const raw = getComputedStyle(document.documentElement).getPropertyValue('--master-panel-width').trim();
-    return parseInt(raw, 10) || 1000;
+    return parseInt(raw, 10) || 1040;
 }
 
-/**
- * Đồng bộ vị trí & quãng đường di chuyển bằng GPU translate3d (Không gây Reflow CPU)
- */
-function syncPrvSplitLayout_PL() {
+function syncPrvSplitLayout_PL(skipViewerRefresh = false, prepareHiddenState = false) {
     if (document.fullscreenElement || document.webkitFullscreenElement) {
-        if (window.BconsViewer && typeof window.BconsViewer.refreshFitWidth === "function") {
+        if (!skipViewerRefresh && window.BconsViewer && typeof window.BconsViewer.refreshFitWidth === "function") {
             window.BconsViewer.refreshFitWidth();
         }
         return;
@@ -160,6 +157,10 @@ function syncPrvSplitLayout_PL() {
     const masterW = getMasterPanelWidth_PL();
     const isVerticalOrMobile = (window.innerWidth <= 960) || (window.innerWidth < window.innerHeight);
 
+    // ĐỌC LAYOUT TRƯỚC KHI GHI STYLE (Loại bỏ Forced Synchronous Layout)
+    const fcTop = formContainer.offsetTop;
+    const fcHeight = formContainer.offsetHeight;
+
     // TRƯỜNG HỢP 1: MÀN HÌNH DỌC / ĐIỆN THOẠI
     if (isVerticalOrMobile) {
         const screenH = Math.round(window.innerHeight / UI_BASE_ZOOM);
@@ -168,57 +169,70 @@ function syncPrvSplitLayout_PL() {
         const singleTop = 85;
         const singleH = Math.max(480, screenH - singleTop - 20);
 
-        formContainer.style.setProperty('width', `${singleW}px`, 'important');
-        formContainer.style.setProperty('max-width', `${singleW}px`, 'important');
-        formContainer.style.setProperty('opacity', '0', 'important');
-        formContainer.style.setProperty('pointer-events', 'none', 'important');
-
         panel.style.setProperty('min-width', '320px', 'important');
         panel.style.setProperty('top', `${singleTop}px`, 'important');
         panel.style.setProperty('height', `${singleH}px`, 'important');
         panel.style.setProperty('width', `${singleW}px`, 'important');
         panel.style.setProperty('right', `${singleRight}px`, 'important');
+
+        if (prepareHiddenState) {
+            panel.style.setProperty('transform', 'translate3d(520px, 0, 0)', 'important');
+            panel.style.setProperty('opacity', '0', 'important');
+            panel.style.setProperty('pointer-events', 'none', 'important');
+            return;
+        }
+
+        formContainer.style.setProperty('width', `${singleW}px`, 'important');
+        formContainer.style.setProperty('max-width', `${singleW}px`, 'important');
+        formContainer.style.setProperty('opacity', '0', 'important');
+        formContainer.style.setProperty('pointer-events', 'none', 'important');
+
         panel.style.setProperty('transform', 'translate3d(0, 0, 0)', 'important');
         panel.style.setProperty('opacity', '1', 'important');
         panel.style.setProperty('pointer-events', 'auto', 'important');
 
-        if (window.BconsViewer && typeof window.BconsViewer.refreshFitWidth === "function") {
+        if (!skipViewerRefresh && window.BconsViewer && typeof window.BconsViewer.refreshFitWidth === "function") {
             window.BconsViewer.refreshFitWidth();
         }
         return;
     }
 
     // TRƯỜNG HỢP 2: MÀN HÌNH NGANG RỘNG (HIỂN THỊ SONG SONG 2 KHUNG 1000PX)
-    formContainer.style.setProperty('opacity', '1', 'important');
-    formContainer.style.setProperty('pointer-events', 'auto', 'important');
-
     const minGap = 20;
     const equalW = Math.min(masterW, Math.max(420, Math.floor((screenW - (3 * minGap)) / 2)));
     const G = Math.max(12, Math.floor((screenW - (2 * equalW)) / 3));
 
-    // TUYỆT ĐỐI KHÔNG GÁN margin-top/bottom ĐỂ GIỮ CAO ĐỘ ĐỨNG IM 100%
+    panel.style.setProperty('min-width', '420px', 'important');
+    panel.style.setProperty('top', `${fcTop}px`, 'important');
+    panel.style.setProperty('height', `${fcHeight}px`, 'important');
+    panel.style.setProperty('width', `${equalW}px`, 'important');
+    panel.style.setProperty('right', `${G}px`, 'important');
+
+    if (prepareHiddenState) {
+        panel.style.setProperty('transform', 'translate3d(520px, 0, 0)', 'important');
+        panel.style.setProperty('opacity', '0', 'important');
+        panel.style.setProperty('pointer-events', 'none', 'important');
+        return;
+    }
+
+    formContainer.style.setProperty('opacity', '1', 'important');
+    formContainer.style.setProperty('pointer-events', 'auto', 'important');
     formContainer.style.setProperty('margin-left', `${G}px`, 'important');
     formContainer.style.setProperty('margin-right', 'auto', 'important');
     formContainer.style.setProperty('width', `${equalW}px`, 'important');
     formContainer.style.setProperty('max-width', `${equalW}px`, 'important');
 
-    panel.style.setProperty('min-width', '420px', 'important');
-    panel.style.setProperty('top', `${formContainer.offsetTop}px`, 'important');
-    panel.style.setProperty('height', `${formContainer.offsetHeight}px`, 'important');
-    panel.style.setProperty('width', `${equalW}px`, 'important');
-    panel.style.setProperty('right', `${G}px`, 'important');
     panel.style.setProperty('transform', 'translate3d(0, 0, 0)', 'important');
     panel.style.setProperty('opacity', '1', 'important');
     panel.style.setProperty('pointer-events', 'auto', 'important');
 
-    if (window.BconsViewer && typeof window.BconsViewer.refreshFitWidth === "function") {
+    if (!skipViewerRefresh && window.BconsViewer && typeof window.BconsViewer.refreshFitWidth === "function") {
         window.BconsViewer.refreshFitWidth();
     }
 }
 
-/**
- * MỞ PREVIEW DOCK (KHỞI CHẠY CÙNG 1 NHỊP FRAME VỚI DASHBOARD)
- */
+let activePanelTransitionCancel_PL = null;
+
 function viewScanFile_PL(id, name, targetRowElement = null) {
     if (!id || id === "undefined") return;
     let targetId = id;
@@ -276,30 +290,62 @@ function viewScanFile_PL(id, name, targetRowElement = null) {
     document.querySelectorAll('#dropdown-field0-pl .hoc-tooltip').forEach(r => r.classList.remove('is-previewing-row'));
     if (targetRowElement) targetRowElement.classList.add('is-previewing-row');
 
-    panel.style.display = "flex";
-    if (tabPL) tabPL.classList.add("split-preview-active");
+    if (activePanelTransitionCancel_PL) {
+        activePanelTransitionCancel_PL();
+        activePanelTransitionCancel_PL = null;
+    }
 
-    // Đồng bộ 2 khung trượt trên cùng 1 khung hình GPU
-    requestAnimationFrame(() => {
-    syncPrvSplitLayout_PL();
-    });
+    if (!wasAlreadyOpen) {
+        // BƯỚC 1: Đặt sẵn kích thước & trạng thái xuất phát offscreen trước khi bật transition
+        panel.style.display = "flex";
+        syncPrvSplitLayout_PL(true, true);
+        void panel.offsetWidth;
 
-    if (window.BconsViewer) {
-        if (!wasAlreadyOpen) {
-            setTimeout(() => {
-                if (currentPreviewFileId_PL === targetId) {
-                    window.BconsViewer.loadFile(targetId, targetName);
-                }
-            }, 100);
-        } else {
+        // Tạo cổng chờ transition (460ms) để CPU chỉ parse/render PDF sau khi trượt xong
+        if (window.BconsViewer && typeof window.BconsViewer.setTransitionGate === "function") {
+            const gatePromise = new Promise(resolve => {
+                let done = false;
+                let timer = null;
+                const finish = () => {
+                    if (done) return;
+                    done = true;
+                    panel.removeEventListener("transitionend", onEnd);
+                    clearTimeout(timer);
+                    if (activePanelTransitionCancel_PL === finish) activePanelTransitionCancel_PL = null;
+                    resolve();
+                };
+                const onEnd = (e) => {
+                    if (e.target === panel && e.propertyName === "transform") finish();
+                };
+                panel.addEventListener("transitionend", onEnd);
+                timer = setTimeout(finish, 470);
+                activePanelTransitionCancel_PL = finish;
+            });
+            window.BconsViewer.setTransitionGate(gatePromise);
+        }
+
+        // Khởi chạy I/O (IDB / Drive fetch) ngay tại t=0ms song song với animation
+        if (window.BconsViewer) {
+            window.BconsViewer.loadFile(targetId, targetName);
+        }
+
+        // BƯỚC 2: Kích hoạt animation trượt đồng bộ trên khung hình tiếp theo
+        requestAnimationFrame(() => {
+            if (currentPreviewFileId_PL !== targetId) return;
+            if (tabPL) tabPL.classList.add("split-preview-active");
+            syncPrvSplitLayout_PL(true, false);
+        });
+    } else {
+        syncPrvSplitLayout_PL(true, false);
+        if (window.BconsViewer) {
+            if (typeof window.BconsViewer.setTransitionGate === "function") {
+                window.BconsViewer.setTransitionGate(Promise.resolve());
+            }
             window.BconsViewer.loadFile(targetId, targetName);
         }
     }
 }
 
-/**
- * ĐÓNG PREVIEW DOCK (CẢ 2 KHUNG CÙNG TRƯỢT VỀ VỊ TRÍ GỐC TRONG 1 NHỊP GPU)
- */
 function closePreviewModal_PL(isInstant = false) {
     const tabPL = document.getElementById("tab-plhd");
     const panel = document.getElementById("pl-dock-preview-panel");
@@ -307,9 +353,13 @@ function closePreviewModal_PL(isInstant = false) {
 
     currentPreviewFileId_PL = "";
 
+    if (activePanelTransitionCancel_PL) {
+        activePanelTransitionCancel_PL();
+        activePanelTransitionCancel_PL = null;
+    }
+
     document.querySelectorAll('#dropdown-field0-pl .hoc-tooltip').forEach(r => r.classList.remove('is-previewing-row'));
 
-    // ĐÓNG TỨC THÌ KHI CHUYỂN TAB: Triệt tiêu 100% tranh chấp CPU/GPU
     if (isInstant) {
         if (panel) {
             panel.style.display = "none";
@@ -327,17 +377,16 @@ function closePreviewModal_PL(isInstant = false) {
             formContainer.style.removeProperty('pointer-events');
         }
         if (tabPL) tabPL.classList.remove("split-preview-active");
-        
-        // Dời việc dọn dẹp RAM của Viewer sang 500ms sau khi tab mới đã lướt xong
+
         setTimeout(() => {
             if (window.BconsViewer) window.BconsViewer.close();
         }, 500);
         return;
     }
 
-    // ĐÓNG BÌNH THƯỜNG KHI Ở TRONG TAB PHỤ LỤC (BẤM NÚT X HOẶC ESC)
-    if (window.BconsViewer) {
-        window.BconsViewer.close();
+    // Dừng mọi fetch/render đang chạy nhưng dời việc giải phóng DOM & PDF sang sau khi trượt đóng xong
+    if (window.BconsViewer && typeof window.BconsViewer.abortActiveTasks === "function") {
+        window.BconsViewer.abortActiveTasks();
     }
 
     if (panel) {
@@ -361,6 +410,8 @@ function closePreviewModal_PL(isInstant = false) {
 
         setTimeout(() => {
             if (tabPL.classList.contains("split-preview-active")) return;
+            if (window.BconsViewer) window.BconsViewer.close();
+
             formContainer.style.removeProperty('max-width');
             formContainer.style.removeProperty('width');
             formContainer.style.removeProperty('margin-left');
@@ -373,15 +424,17 @@ function closePreviewModal_PL(isInstant = false) {
                 panel.style.removeProperty('right');
                 panel.style.removeProperty('width');
             }
-        }, 400);
+        }, 420);
     } else if (panel) {
         setTimeout(() => {
+            if (tabPL && tabPL.classList.contains("split-preview-active")) return;
+            if (window.BconsViewer) window.BconsViewer.close();
             panel.style.display = "none";
             panel.style.removeProperty('top');
             panel.style.removeProperty('height');
             panel.style.removeProperty('right');
             panel.style.removeProperty('width');
-        }, 400);
+        }, 420);
     }
 
     if (tabPL) tabPL.classList.remove("split-preview-active");

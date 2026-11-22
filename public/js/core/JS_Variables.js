@@ -190,6 +190,7 @@ document.addEventListener("DOMContentLoaded", () => {
             closeScanPanel_PL();
             if (typeof closeSearchGuide_PL === "function") closeSearchGuide_PL();
             if (typeof closeDataDeleteModal === "function") closeDataDeleteModal();
+            if (typeof closeCancelTransferModal_PL === "function") closeCancelTransferModal_PL();
             if (typeof cancelDeleteScan_PL === "function") cancelDeleteScan_PL();
             
             const list = document.getElementById('dropdown-field0-pl');
