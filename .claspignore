@@ -7,6 +7,7 @@ public/**
 node_modules/**
 package.json
 package-lock.json
+gdp.js
 README.md
 
 # File an he dieu hanh

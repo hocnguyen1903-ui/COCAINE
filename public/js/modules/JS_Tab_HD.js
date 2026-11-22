@@ -80,8 +80,12 @@ function updateContractNo_HD() {
         const f3 = document.getElementById("field3-hd").value.split(" | ")[0] || ""; 
         const f2 = document.getElementById("field2-hd").value.split(" | ")[0] || ""; 
         const loc = document.getElementById("locationDropdown-hd").value || "";
+        const dateText = document.getElementById("dateDisplay-hd")?.textContent || "";
+        const yearMatch = dateText.match(/\b(20\d{2})\b/);
+        const year = yearMatch ? yearMatch[1] : new Date().getFullYear();
+
         if (f3 && f2) {
-            document.getElementById("field8-hd").value = `.../${new Date().getFullYear()}/HĐTCXD-${f2}/${loc}-${f3}`;
+            document.getElementById("field8-hd").value = `.../${year}/HĐTCXD-${f2}/${loc}-${f3}`;
         }
     } catch (e) { console.error("Lỗi nhảy số HD:", e); }
 }
@@ -116,7 +120,7 @@ function filterAdvance_HD(input) {
     if (filtered.length > 0) {
         drop.innerHTML = filtered.map(val => 
             `<div onmouseover="currentFocusIndex = -1; moveHighlight('drop-field5-hd')" 
-                  onmousedown="selectAdvance_HD('${val}'); event.preventDefault();">
+                  onmousedown="selectAdvance_HD('${val}'); event?.preventDefault();">
                   ${val}%
              </div>`
         ).join("");
@@ -165,7 +169,6 @@ function coreFilter(inputId, dropId, dataKey) {
     }
 
     if (uniqueFiltered.length > 0) {
-        // Tính toán độ rộng động cho prefix (Mã dự án/Mã nhà thầu)
         let maxChars = 0;
         uniqueFiltered.forEach(item => {
             const val = (typeof item === 'object') ? (item.searchString || item.display) : item;
@@ -177,7 +180,6 @@ function coreFilter(inputId, dropId, dataKey) {
         const dynamicWidth = maxChars > 0 ? (maxChars * 8.5 + 2) : 0;
         drop.style.setProperty('--pw', dynamicWidth + 'px');
 
-        // Bỏ hoàn toàn giới hạn .slice(0, 50) hiển thị theo yêu cầu
         drop.innerHTML = uniqueFiltered.map(item => {
             const val = (typeof item === 'object') ? (item.searchString || item.display) : item;
             let displayHTML = val;
@@ -186,7 +188,7 @@ function coreFilter(inputId, dropId, dataKey) {
                 displayHTML = `<span class="dd-prefix">${p[0]}</span><span class="dd-divider">|</span><span class="dd-label">${p[1]}</span>`;
             }
             return `<div onmouseover="currentFocusIndex = -1; moveHighlight('${dropId}')" 
-                         onmousedown="coreSelect('${inputId}', '${dropId}', '${escapeStr(val)}', '${escapeStr(item.category || "")}'); event.preventDefault();">
+                         onmousedown="coreSelect('${inputId}', '${dropId}', '${escapeStr(val)}', '${escapeStr(item.category || "")}'); event?.preventDefault();">
                          ${displayHTML}
                     </div>`;
         }).join("");

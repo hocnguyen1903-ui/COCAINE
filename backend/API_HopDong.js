@@ -39,9 +39,31 @@ function getContractTemplateId_HD(type) {
 }
 
 function createContractFile_HD(id, name) {
-  const destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
-  const file = DriveApp.getFileById(id).makeCopy(name, destinationFolder);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+  let destinationFolder;
+  try {
+    destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
+  } catch(e) {
+    throw new Error("Tài khoản không có quyền truy cập Thư mục xuất file (EXPORT_FOLDER_ID).");
+  }
+
+  let file;
+  try {
+    file = DriveApp.getFileById(id).makeCopy(name, destinationFolder);
+  } catch(e) {
+    throw new Error("Không thể nhân bản File Mẫu Hợp đồng. Kiểm tra quyền truy cập Template: " + e.message);
+  }
+
+  // Bọc an toàn: Bỏ qua lỗi nếu Google Drive chặn quyền bật Link Sharing Public Edit
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+  } catch(shareErr) {
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch(shareErr2) {
+      console.warn("Bỏ qua lỗi setSharing do chính sách bảo mật Google Drive: " + shareErr2.message);
+    }
+  }
+
   return file;
 }
 
@@ -53,24 +75,51 @@ function escapeSpecialChars(s) {
 // --- PHÂN HỆ: HỢP ĐỒNG GỐC (HDTCXD) ---
 // ==========================================
 
-function getLatestContractNumber_HD(targetYear) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("SO HDTCXD BCONS - NTP");
+function getLatestContractNumber_TB(targetYear) {
+  const year = String(targetYear || new Date().getFullYear()).trim();
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME_SO_TB);
   if (!sheet) return "00";
   const lastRow = sheet.getLastRow();
   if (lastRow < 3) return "00";
-  const data = sheet.getRange(3, 5, lastRow - 2, 1).getValues(); 
+
+  // Đọc đồng thời Cột B (Ngày ký) và Cột C (Số công văn)
+  const data = sheet.getRange(3, 2, lastRow - 2, 2).getValues(); 
   let maxStt = 0;
-  
-  // Chỉ so khớp phần [Số_TT]/[Năm]/ bất kể loại hợp đồng phía sau (HĐTCXD, HĐDV, HĐMB, ...)
-  const regex = new RegExp("^(\\d+)\\/" + targetYear + "\\/", "i");
+
   for (let i = 0; i < data.length; i++) {
-    const val = data[i][0].toString().trim();
-    const match = val.match(regex);
-    if (match) {
-      const stt = parseInt(match[1], 10);
+    const rawDate = data[i][0];
+    // Loại bỏ khoảng trắng thừa để tránh lỗi gõ nhầm (vd: "115 / TB" thành "115/TB")
+    const valCV = (data[i][1] || "").toString().replace(/\s+/g, "");
+    
+    // Regex bắt: (Nhóm 1: Số thứ tự) / (Nhóm 2: Năm - nếu có) /
+    // VD 1: "115/2026/TB" -> match[1]="115", match[2]="2026"
+    // VD 2: "114/TB"      -> match[1]="114", match[2]=undefined
+    const match = valCV.match(/^(\d+)\/(?:(\d{4})\/)?/);
+    if (!match) continue;
+
+    const sttStr = match[1];
+    const stringYear = match[2];
+    let isSameYear = false;
+
+    if (stringYear) {
+      // Ưu tiên 1: Lấy số năm trực tiếp trong chuỗi mã số
+      isSameYear = (stringYear === year);
+    } else {
+      // Ưu tiên 2: Nếu mã số không có năm, lấy năm từ cột Ngày ký
+      if (rawDate instanceof Date) {
+        isSameYear = (rawDate.getFullYear().toString() === year);
+      } else if (rawDate) {
+        isSameYear = rawDate.toString().includes(year);
+      }
+    }
+
+    // Nếu xác nhận đúng là của năm mục tiêu thì so sánh tìm số lớn nhất
+    if (isSameYear) {
+      const stt = parseInt(sttStr, 10);
       if (stt > maxStt) maxStt = stt;
     }
   }
+  
   return String(maxStt).padStart(2, '0');
 }
 
@@ -190,21 +239,44 @@ function writeToSheetAndExportDoc_HD(data) {
 // ==========================================
 
 function getLatestContractNumber_TB(targetYear) {
+  const year = String(targetYear || new Date().getFullYear()).trim();
   const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME_SO_TB);
   if (!sheet) return "00";
   const lastRow = sheet.getLastRow();
   if (lastRow < 3) return "00";
-  const data = sheet.getRange(3, 3, lastRow - 2, 1).getValues(); 
+
+  // SỬ DỤNG getDisplayValues() ĐỂ ÉP ĐỌC ĐÚNG CHUỖI KÝ TỰ HIỂN THỊ (TRÁNH LỖI ĐỊNH DẠNG DATE)
+  const data = sheet.getRange(3, 2, lastRow - 2, 2).getDisplayValues(); 
   let maxStt = 0;
-  const regex = new RegExp("^(\\d+)\\/" + targetYear + "\\/TB", "i");
+
   for (let i = 0; i < data.length; i++) {
-    const val = data[i][0].toString().trim();
-    const match = val.match(regex);
-    if (match) {
-      const stt = parseInt(match[1], 10);
-      if (stt > maxStt) maxStt = stt;
+    const strDate = (data[i][0] || "").toString().trim(); // Ví dụ: "24/11/2026"
+    const valCV = (data[i][1] || "").toString().replace(/\s+/g, ""); // Ví dụ: "115/TB/..."
+    
+    // Bắt số thứ tự ở ngay đầu chuỗi (Ví dụ: lấy "115" từ "115/TB/...")
+    const match = valCV.match(/^(\d+)\//);
+    if (!match) continue;
+    const stt = parseInt(match[1], 10);
+
+    let isSameYear = false;
+
+    // ƯU TIÊN 1: Kiểm tra xem trong mã có chứa số năm không (Ví dụ bắt "2026" từ "112/2026/TB/...")
+    const yearMatchInCV = valCV.match(/^\d+\/(\d{4})\//);
+
+    if (yearMatchInCV) {
+      // Nếu có năm trong mã số, bắt buộc phải khớp với năm mục tiêu (year)
+      isSameYear = (yearMatchInCV[1] === year);
+    } else {
+      // ƯU TIÊN 2: Nếu mã số KHÔNG có năm (Ví dụ: "115/TB/..."), đối chiếu với cột Ngày ký
+      isSameYear = strDate.includes(year);
+    }
+
+    // Nếu dòng này thuộc đúng năm mục tiêu, so sánh để tìm số lớn nhất
+    if (isSameYear && stt > maxStt) {
+      maxStt = stt;
     }
   }
+  
   return String(maxStt).padStart(2, '0');
 }
 

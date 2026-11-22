@@ -633,16 +633,22 @@ document.addEventListener("keydown", function(e) {
         return;
     }
 
-    // 3. XỬ LÝ PHÍM ENTER (Chọn dòng đang highlight)
-    if (e.key === "Enter") {
-        if (typeof currentFocusIndex !== 'undefined' && currentFocusIndex >= 0 && items[currentFocusIndex]) {
-            const targetItem = items[currentFocusIndex];
-            const displayVal = targetItem.getAttribute("data-display");
-            if (displayVal) {
-                e.preventDefault();
-                selectField0_PL(displayVal);
-                currentFocusIndex = -1;
-                document.getElementById('field5-pl')?.focus();
+    // 3. XỬ LÝ PHÍM ENTER & TAB (Chọn dòng đang highlight hoặc dòng đầu tiên và chuyển sang field tiếp theo)
+    if (e.key === "Enter" || e.key === "Tab") {
+        const isField0 = activeEl && activeEl.id === 'field0-pl';
+        if (isField0 || (typeof currentFocusIndex !== 'undefined' && currentFocusIndex >= 0)) {
+            const targetItem = (typeof currentFocusIndex !== 'undefined' && currentFocusIndex >= 0 && items[currentFocusIndex]) 
+                ? items[currentFocusIndex] 
+                : items[0];
+
+            if (targetItem) {
+                const displayVal = targetItem.getAttribute("data-display");
+                if (displayVal) {
+                    e.preventDefault();
+                    selectField0_PL(displayVal);
+                    currentFocusIndex = -1;
+                    document.getElementById('field5-pl')?.focus();
+                }
             }
         }
         return;

@@ -591,12 +591,11 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
     }
     
     const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, fileName);
-
     const file = targetFolder.createFile(blob);
     
-    // Bỏ qua lỗi nếu Google Workspace chặn quyền bật Link Sharing Public đối với file mềm
+    // Bảo vệ file gốc: chỉ cho phép xem (VIEW), không cho phép chỉnh sửa/xóa trực tiếp trên Drive
     try {
-        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     } catch(shareErr) {
         console.warn("Bỏ qua cảnh báo setSharing trên file Scan: " + shareErr.message);
     }
@@ -610,7 +609,6 @@ function uploadScanToDrive(base64Data, maHD, fileName) {
     const targetIndex = dataE.findIndex(val => val.toString().trim().toUpperCase() === maHD.trim().toUpperCase());
 
     if (targetIndex !== -1) {
-      // Ghi trực tiếp thông tin Scan vào Cột P (Cột 16) trên Sổ Gốc
       const cell = sheetLog.getRange(targetIndex + 1, 16);
       SpreadsheetApp.flush(); 
       const currentVal = cell.getValue().toString();
@@ -685,27 +683,44 @@ function deleteScanFilePermanently(maHD, fileIdToDelete) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(20000); 
-    if (!fileIdToDelete) throw new Error("ID không hợp lệ");
-    Drive.Files.remove(fileIdToDelete);
+    if (!fileIdToDelete || !maHD) throw new Error("Thông tin yêu cầu không hợp lệ.");
 
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const sheetLog = ss.getSheetByName("SO HDTCXD BCONS - NTP");
+    if (!sheetLog) throw new Error("Không tìm thấy Sổ gốc!");
+
     const lastRowLog = sheetLog.getLastRow();
     const dataE = sheetLog.getRange(1, 5, lastRowLog, 1).getValues().flat();
     const targetIndex = dataE.findIndex(val => val.toString().trim().toUpperCase() === maHD.trim().toUpperCase());
 
-    if (targetIndex !== -1) {
-      // SỬA TẠI ĐÂY: Xóa tệp scan trực tiếp trên Cột P (Cột 16) của Sổ Gốc
-      const cell = sheetLog.getRange(targetIndex + 1, 16);
-      const currentVal = cell.getValue().toString();
-      const updatedFiles = currentVal.split(";;").filter(f => f && !f.startsWith(fileIdToDelete + "|"));
-      
-      if (updatedFiles.length > 0) {
-        cell.setValue(updatedFiles.join(";;"));
-      } else {
-        cell.clearContent();
-      }
+    if (targetIndex === -1) {
+      throw new Error("Không tìm thấy hồ sơ hợp đồng tương ứng.");
     }
+
+    // CHỐNG IDOR: Kiểm tra fileIdToDelete có thực sự nằm trong danh sách file scan của mã HĐ này không
+    const cell = sheetLog.getRange(targetIndex + 1, 16);
+    const currentVal = cell.getValue().toString();
+    const isFileBelongsToContract = currentVal.includes(fileIdToDelete + "|");
+
+    if (!isFileBelongsToContract) {
+      throw new Error("BẢO MẬT: File không thuộc hồ sơ hợp đồng này, từ chối xóa!");
+    }
+
+    // Sau khi xác thực hợp lệ mới thực hiện xóa vật lý trên Drive
+    try {
+      Drive.Files.remove(fileIdToDelete);
+    } catch (driveErr) {
+      console.warn("File đã bị xóa trước đó trên Drive: " + driveErr.message);
+    }
+
+    const updatedFiles = currentVal.split(";;").filter(f => f && !f.startsWith(fileIdToDelete + "|"));
+    if (updatedFiles.length > 0) {
+      cell.setValue(updatedFiles.join(";;"));
+    } else {
+      cell.clearContent();
+    }
+
+    SpreadsheetApp.flush();
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -863,8 +878,39 @@ function overwritePdfFile_Backend(fileId, base64Data) {
   try {
     lock.waitLock(20000);
     if (!fileId || !base64Data) throw new Error("Thiếu fileId hoặc dữ liệu PDF.");
+
+    const targetId = String(fileId).trim();
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+
+    // CHỐNG IDOR: Xác minh fileId có tồn tại trong hệ thống quản lý trước khi ghi đè
+    let isPermitted = false;
+
+    // 1. Kiểm tra trong Sổ Hợp Đồng (Cột P)
+    const sheetLog = ss.getSheetByName("SO HDTCXD BCONS - NTP");
+    if (sheetLog && sheetLog.getLastRow() >= 3) {
+      const scans = sheetLog.getRange(3, 16, sheetLog.getLastRow() - 2, 1).getValues().flat();
+      if (scans.some(v => v && String(v).includes(targetId + "|"))) {
+        isPermitted = true;
+      }
+    }
+
+    // 2. Kiểm tra trong Drawing_Log (Cột B) nếu chưa thấy ở Sổ HĐ
+    if (!isPermitted) {
+      const drawSheet = ss.getSheetByName("Drawing_Log");
+      if (drawSheet && drawSheet.getLastRow() >= 2) {
+        const drawFiles = drawSheet.getRange(2, 2, drawSheet.getLastRow() - 1, 1).getValues().flat();
+        if (drawFiles.some(v => v && String(v).trim() === targetId)) {
+          isPermitted = true;
+        }
+      }
+    }
+
+    if (!isPermitted) {
+      throw new Error("BẢO MẬT: Tệp tin không thuộc phạm vi hồ sơ được quản lý!");
+    }
+
     const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), "application/pdf");
-    Drive.Files.update({}, fileId, blob, { supportsAllDrives: true });
+    Drive.Files.update({}, targetId, blob, { supportsAllDrives: true });
     return { success: true };
   } catch (e) {
     throw new Error("Không thể ghi đè file PDF trên Drive: " + e.message);

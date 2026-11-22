@@ -62,8 +62,9 @@ async function openTab(tabId, triggerIntro = true) {
             projInput.placeholder = "Project"; // Luôn hiển thị Project, không hiện Loading
         }
 
-        // Kích hoạt cập nhật ngầm danh sách dự án
-        if (typeof fetchActiveProjectsForDrawing === 'function') {
+        // Chỉ kích hoạt cập nhật ngầm danh sách dự án khi đã có phiên đăng nhập hợp lệ
+        const sessionTok = localStorage.getItem('bcons_session_token');
+        if (sessionTok && sessionTok.startsWith("BCONS2.") && typeof fetchActiveProjectsForDrawing === 'function') {
             fetchActiveProjectsForDrawing();
         }
 
@@ -151,7 +152,31 @@ async function openTab(tabId, triggerIntro = true) {
 }
 
 async function loadSystemData(isSilent = false) {
-    const token = localStorage.getItem('bcons_session_token');
+    let token = localStorage.getItem('bcons_session_token');
+    if (token && !token.startsWith("BCONS2.")) {
+        localStorage.removeItem('bcons_session_token');
+        token = null;
+    }
+
+    const loading = document.getElementById("loadingSystem");
+
+    // Nếu chưa đăng nhập: không đọc cache nội bộ, không gọi getSystemData lên Server
+    if (!token) {
+        if (loading && !isSilent) {
+            loading.style.display = "flex";
+            loading.style.opacity = "1";
+            setTimeout(() => {
+                loading.style.opacity = "0";
+                setTimeout(() => {
+                    loading.style.display = "none";
+                    showLoginUI();
+                }, 350);
+            }, 2500);
+        } else {
+            showLoginUI();
+        }
+        return;
+    }
 
     // Nếu đang mở các panel chỉnh sửa/bàn giao/scan thì không can thiệp ngầm
     const isPanelActive = document.getElementById('edit-panel-pl')?.classList.contains('active') ||
@@ -163,8 +188,6 @@ async function loadSystemData(isSilent = false) {
     const displayEl = document.getElementById('staffNameDisplay');
     if (displayEl && name) displayEl.textContent = name;
 
-    const loading = document.getElementById("loadingSystem");
-
     // 1. NẠP DỮ LIỆU TỪ CACHE MỚI NHẤT TRONG LOCALSTORAGE LẬP TỨC (0ms)
     try {
         const cachedRaw = localStorage.getItem('bcons_cached_system_data');
@@ -174,7 +197,6 @@ async function loadSystemData(isSilent = false) {
             PRECOMPUTED_PL_DATA = null;
             pendingUsersList_PL = cachedData.pendingUsers || [];
 
-            // Dựng sẵn dữ liệu từ cache lên các tab ngay trong lúc màn che loader đang chạy
             if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
                 executeFilter_PL(false, false, true);
             }
@@ -199,7 +221,7 @@ async function loadSystemData(isSilent = false) {
         console.warn("Lỗi đọc cache khởi động:", cacheErr);
     }
 
-    // 2. KHÓA MÀN HÌNH CHỜ ĐÚNG 1.5s RỒI TỰ ĐỘNG HẠ MÀN CHE
+    // 2. KHÓA MÀN HÌNH CHỜ ĐÚNG NHỊP RỒI TỰ ĐỘNG HẠ MÀN CHE
     if (loading && !isSilent) {
         loading.style.display = "flex";
         loading.style.opacity = "1";
@@ -208,15 +230,16 @@ async function loadSystemData(isSilent = false) {
             loading.style.opacity = "0";
             setTimeout(() => { 
                 loading.style.display = "none"; 
-                // Kiểm tra đăng nhập sau khi loader tắt
-                if (!token) showLoginUI();
             }, 350);
         }, 2500);
-    } else if (!token) {
-        showLoginUI();
     }
 
-    // 3. TẢI DỮ LIỆU TƯƠI MỚI NGẦM TRONG NỀN TỪ MÁY CHỦ (BACKGROUND FETCH)
+    // Nếu đang ở Tab Drawing (ví dụ vừa đăng nhập xong tại tab này), kích hoạt tải dự án Drawing
+    if (activeTabId === 'tab-drawing' && typeof fetchActiveProjectsForDrawing === 'function') {
+        fetchActiveProjectsForDrawing();
+    }
+
+    // 3. TẢI DỮ LIỆU TƯƠI MỚI NGẦM TRONG NỀN TỪ MÁY CHỦ (ĐÃ ĐÍNH KÈM TOKEN)
     try {
         const sysData = await callBackend('getSystemData');
         if (sysData) {
@@ -224,14 +247,12 @@ async function loadSystemData(isSilent = false) {
             PRECOMPUTED_PL_DATA = null;
             pendingUsersList_PL = sysData.pendingUsers || [];
 
-            // Cập nhật bản đệm cache mới nhất cho lần mở web kế tiếp
             localStorage.setItem('bcons_cached_system_data', JSON.stringify(sysData));
 
             if (sysData.currentUserRole) {
                 localStorage.setItem('bcons_staff_role', sysData.currentUserRole);
             }
 
-            // Cập nhật giao diện ngầm (bảo toàn vị trí cuộn để không làm gián đoạn người dùng)
             if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
                 executeFilter_PL(false, false, true);
             }
@@ -255,9 +276,8 @@ async function loadSystemData(isSilent = false) {
         }
     } catch (error) {
         console.error("Lỗi đồng bộ ngầm máy chủ:", error);
-        // Nếu đã có cache hiển thị thì không hiện thông báo lỗi làm phiền
         const hasCache = !!localStorage.getItem('bcons_cached_system_data');
-        if (!hasCache) {
+        if (!hasCache && (!error.message || !error.message.includes("UNAUTHORIZED"))) {
             showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng kiểm tra mạng!", "error");
         }
     }
@@ -365,15 +385,9 @@ async function callBackend(action, data = {}, retries = 1) {
     const token = localStorage.getItem('bcons_session_token');
 
     const publicActions = [
-        "getSystemData", 
-        "loginUser", 
-        "registerUser", 
-        "getActiveProjectFolders_Backend", 
-        "getMindmapData", 
-        "getTasksByFileId", 
-        "getAllTasksByProject", 
-        "getProjectDrawingFullData",
-        "getDriveFileStreamInfo_Backend"
+        "loginUser",
+        "registerUser",
+        "forgotPassword"
     ];
 
     // Chỉ chặn ở Client nếu là hành động GHI mà chưa đăng nhập
@@ -401,6 +415,7 @@ async function callBackend(action, data = {}, retries = 1) {
         "getDrawingUploadSession_Backend", 
         "extractDataOnly",
         "extractDataFromImages",
+        "forgotPassword",
         "callCloudVisionApiBatch",
         "saveDriveCacheFast",
         "overwritePdfFile_Backend",
@@ -441,6 +456,9 @@ async function callBackend(action, data = {}, retries = 1) {
                 if (res.message && res.message.includes("UNAUTHORIZED")) {
                     localStorage.removeItem('bcons_session_token');
                     localStorage.removeItem('bcons_staff_identity');
+                    localStorage.removeItem('bcons_staff_role');
+                    localStorage.removeItem('bcons_cached_system_data');
+                    localStorage.removeItem('bcons_cached_drawing_projects');
                     showLoginUI();
                 }
                 throw new Error(res.message);
@@ -472,11 +490,16 @@ async function callBackend(action, data = {}, retries = 1) {
 /**
  * Xử lý sự kiện nhấn nút SIGN IN (Đồng bộ tên và quyền lên Client)
  */
+function clearUnregisteredNotice() {
+    const notice = document.getElementById('unregisteredNotice');
+    if (notice) notice.style.display = 'none';
+}
+
 async function performLogin() {
     const mailEl = document.getElementById('loginEmail');
     const passEl = document.getElementById('loginPassword');
     const mail = mailEl ? mailEl.value.trim() : "";
-    const password = passEl ? passEl.value.trim() : "";
+    const password = passEl ? passEl.value : "";
     
     if (!mail || !password) {
         alert("Sếp vui lòng điền đầy đủ thông tin đăng nhập!");
@@ -505,15 +528,23 @@ async function performLogin() {
             loadSystemData();
         }
     } catch (err) {
-        alert(err.message || "Xác thực thất bại!");
+        if (err.message && err.message.includes("chưa được đăng ký")) {
+            if (!isRegisterMode) toggleLoginMode();
+            const notice = document.getElementById('unregisteredNotice');
+            if (notice) notice.style.display = 'block';
+            document.getElementById('registerName')?.focus();
+        } else {
+            alert(err.message || "Xác thực thất bại!");
+        }
     } finally {
         if (loginBtn) {
             loginBtn.disabled = false;
-            loginBtn.textContent = "SIGN IN";
+            if (!isRegisterMode && !isForgotPasswordMode) {
+                loginBtn.textContent = "SIGN IN";
+            }
         }
     }
 }
-
 
 /**
  * Hiển thị khung đăng nhập chặn tương tác
@@ -540,40 +571,152 @@ function showLoginUI() {
 function performLogout() {
     localStorage.removeItem('bcons_session_token');
     localStorage.removeItem('bcons_staff_identity');
-    // Reload trang để xóa sạch toàn bộ RAM state lưu tạm trên thiết bị
+    localStorage.removeItem('bcons_staff_role');
+    localStorage.removeItem('bcons_cached_system_data');
+    localStorage.removeItem('bcons_cached_drawing_projects');
     window.location.reload();
 }
 
 // Biến trạng thái đăng ký của giao diện
 let isRegisterMode = false;
 
-/**
- * Chuyển đổi trạng thái giao diện giữa ĐĂNG NHẬP và ĐĂNG KÝ
- */
-function toggleLoginMode() {
-    const title = document.getElementById('loginTitle');
-    const passContainer = document.getElementById('passwordFieldContainer');
-    const nameContainer = document.getElementById('nameFieldContainer');
+let isForgotPasswordMode = false;
+
+function backToSignInMode() {
+    isRegisterMode = false;
+    isForgotPasswordMode = false;
+    clearNameWarning();
+    clearUnregisteredNotice();
+
+    document.getElementById('loginTitle').textContent = "MEMBER SIGN IN";
+    document.getElementById('passwordFieldContainer').style.setProperty('display', 'flex', 'important');
+    document.getElementById('forgotPasswordLink').style.display = 'inline';
+    document.getElementById('passwordHintText').style.display = 'none';
+    document.getElementById('nameFieldContainer').style.setProperty('display', 'none', 'important');
+    document.getElementById('forgotPasswordNote').style.display = 'none';
+
     const submitBtn = document.getElementById('loginSubmitBtn');
+    submitBtn.textContent = "SIGN IN";
+    submitBtn.setAttribute('onclick', 'performLogin()');
+
     const toggleLink = document.getElementById('toggleLoginView');
+    toggleLink.textContent = "Chưa có tài khoản? Đăng ký ngay";
+    toggleLink.setAttribute('onclick', 'toggleLoginMode()');
+}
 
-    isRegisterMode = !isRegisterMode;
-    clearNameWarning(); 
+function openForgotPasswordMode() {
+    isRegisterMode = false;
+    isForgotPasswordMode = true;
+    clearNameWarning();
+    clearUnregisteredNotice();
 
-    if (isRegisterMode) {
-        title.textContent = "CREATE AN ACCOUNT";
-        passContainer.style.setProperty('display', 'flex', 'important'); // HIỂN THỊ TRƯỜNG PASSWORD KHI ĐĂNG KÝ
-        nameContainer.style.setProperty('display', 'flex', 'important');
-        submitBtn.textContent = "REGISTER";
-        submitBtn.setAttribute('onclick', 'performRegister()');
-        toggleLink.textContent = "Đã có tài khoản? Đăng nhập ngay";
-    } else {
-        title.textContent = "MEMBER SIGN IN";
-        passContainer.style.setProperty('display', 'flex', 'important');
-        nameContainer.style.setProperty('display', 'none', 'important');
-        submitBtn.textContent = "SIGN IN";
-        submitBtn.setAttribute('onclick', 'performLogin()');
-        toggleLink.textContent = "Chưa có tài khoản? Đăng ký ngay";
+    document.getElementById('loginTitle').textContent = "RESET PASSWORD";
+    document.getElementById('passwordFieldContainer').style.setProperty('display', 'none', 'important');
+    document.getElementById('nameFieldContainer').style.setProperty('display', 'none', 'important');
+    document.getElementById('forgotPasswordNote').style.display = 'block';
+
+    const submitBtn = document.getElementById('loginSubmitBtn');
+    submitBtn.textContent = "SEND NEW PASSWORD";
+    submitBtn.setAttribute('onclick', 'performForgotPassword()');
+
+    const toggleLink = document.getElementById('toggleLoginView');
+    toggleLink.textContent = "Quay lại đăng nhập";
+    toggleLink.setAttribute('onclick', 'backToSignInMode()');
+
+    document.getElementById('loginEmail')?.focus();
+}
+
+function toggleLoginMode() {
+    if (isForgotPasswordMode || isRegisterMode) {
+        backToSignInMode();
+        return;
+    }
+
+    isRegisterMode = true;
+    isForgotPasswordMode = false;
+    clearNameWarning();
+    clearUnregisteredNotice();
+
+    document.getElementById('loginTitle').textContent = "CREATE AN ACCOUNT";
+    document.getElementById('passwordFieldContainer').style.setProperty('display', 'flex', 'important');
+    document.getElementById('forgotPasswordLink').style.display = 'none';
+    document.getElementById('passwordHintText').style.display = 'block';
+    document.getElementById('nameFieldContainer').style.setProperty('display', 'flex', 'important');
+    document.getElementById('forgotPasswordNote').style.display = 'none';
+
+    const submitBtn = document.getElementById('loginSubmitBtn');
+    submitBtn.textContent = "REGISTER";
+    submitBtn.setAttribute('onclick', 'performRegister()');
+
+    const toggleLink = document.getElementById('toggleLoginView');
+    toggleLink.textContent = "Đã có tài khoản? Đăng nhập ngay";
+}
+
+async function performRegister() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    const name = document.getElementById('registerName').value.trim().toUpperCase();
+    const password = document.getElementById('loginPassword').value;
+
+    if (!mail || !name || !password) {
+        alert("Sếp vui lòng điền đầy đủ Email, Name và Password!");
+        return;
+    }
+
+    if (password.length < 4) {
+        alert("Mật khẩu đăng ký phải chứa tối thiểu 4 ký tự!");
+        return;
+    }
+
+    const registerBtn = document.getElementById('loginSubmitBtn');
+    registerBtn.disabled = true;
+    registerBtn.textContent = "REGISTERING...";
+
+    try {
+        const res = await callBackend("registerUser", { mail, name, password });
+        if (res) {
+            showToast_PL("🚀 Gửi yêu cầu đăng ký thành công! Hãy liên hệ với Admin để được duyệt!", "success");
+            document.getElementById('registerName').value = "";
+            document.getElementById('loginPassword').value = "";
+            backToSignInMode();
+        }
+    } catch (err) {
+        if (err.message && err.message.includes("đã tồn tại")) {
+            showNameWarning(name);
+        } else {
+            alert(err.message || "Đăng ký thất bại!");
+        }
+    } finally {
+        registerBtn.disabled = false;
+        if (isRegisterMode) {
+            registerBtn.textContent = "REGISTER";
+        }
+    }
+}
+
+async function performForgotPassword() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    if (!mail) {
+        alert("Vui lòng nhập Email đã đăng ký!");
+        return;
+    }
+
+    const btn = document.getElementById('loginSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = "SENDING...";
+
+    try {
+        await callBackend("forgotPassword", { mail });
+        showToast_PL("📧 Mật khẩu mới đã được gửi về Email của bạn!", "success");
+        document.getElementById('loginPassword').value = "";
+        backToSignInMode();
+        document.getElementById('loginPassword')?.focus();
+    } catch (err) {
+        alert(err.message || "Không thể gửi yêu cầu cấp lại mật khẩu!");
+    } finally {
+        btn.disabled = false;
+        if (isForgotPasswordMode) {
+            btn.textContent = "SEND NEW PASSWORD";
+        }
     }
 }
 
@@ -606,51 +749,6 @@ function clearNameWarning() {
         inputEl.style.setProperty('border-color', 'rgba(255, 186, 8, 0.4)', 'important');
     }
 }
-
-/**
- * Xử lý sự kiện đăng ký tài khoản mới lên hệ thống
- */
-async function performRegister() {
-    const mail = document.getElementById('loginEmail').value.trim();
-    const name = document.getElementById('registerName').value.trim().toUpperCase();
-    const password = document.getElementById('loginPassword').value.trim();
-
-    if (!mail || !name || !password) {
-        alert("Sếp vui lòng điền đầy đủ Email, Name và Password!");
-        return;
-    }
-
-    if (password.length < 4) {
-        alert("Mật khẩu đăng ký phải chứa tối thiểu 4 ký tự!");
-        return;
-    }
-
-    const registerBtn = document.getElementById('loginSubmitBtn');
-    registerBtn.disabled = true;
-    registerBtn.textContent = "REGISTERING...";
-
-    try {
-        const res = await callBackend("registerUser", { mail, name, password });
-        if (res) {
-            showToast_PL("🚀 Gửi yêu cầu đăng ký thành công! Hãy liên hệ với Admin để được duyệt!", "success");
-            document.getElementById('registerName').value = "";
-            document.getElementById('loginPassword').value = "";
-            toggleLoginMode();
-        }
-    } catch (err) {
-        if (err.message && err.message.includes("đã tồn tại")) {
-            showNameWarning(name);
-        } else {
-            alert(err.message || "Đăng ký thất bại!");
-        }
-    } finally {
-        registerBtn.disabled = false;
-        if (isRegisterMode) {
-            registerBtn.textContent = "REGISTER";
-        }
-    }
-}
-
 
 function submitData_HD() {
     const btn = document.getElementById("submitButton-hd");
@@ -818,7 +916,10 @@ function executeTransferScript_PL(docTypesString) {
 function updateContractNo_TB() {
     const f6 = document.getElementById("field6-tb");
     if (f6) {
-        f6.value = `.../${new Date().getFullYear()}/TB/KĐT-BCONS`;
+        const dateText = document.getElementById("dateDisplay-tb")?.textContent || "";
+        const yearMatch = dateText.match(/\b(20\d{2})\b/);
+        const year = yearMatch ? yearMatch[1] : new Date().getFullYear();
+        f6.value = `.../${year}/TB/KĐT-BCONS`;
     }
 }
 

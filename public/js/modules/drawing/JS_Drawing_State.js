@@ -58,11 +58,14 @@
   });
 
   try {
-    const cachedProjects = localStorage.getItem("bcons_cached_drawing_projects");
-    if (cachedProjects) {
-      S.activeDrawingProjects = JSON.parse(cachedProjects) || [];
-      if (S.activeDrawingProjects.length > 0) {
-        S.isDrawingListLoaded = true;
+    const bootTok = localStorage.getItem("bcons_session_token");
+    if (bootTok && bootTok.startsWith("BCONS2.")) {
+      const cachedProjects = localStorage.getItem("bcons_cached_drawing_projects");
+      if (cachedProjects) {
+        S.activeDrawingProjects = JSON.parse(cachedProjects) || [];
+        if (S.activeDrawingProjects.length > 0) {
+          S.isDrawingListLoaded = true;
+        }
       }
     }
   } catch (e) {
@@ -110,6 +113,9 @@
   }
 
   function fetchActiveProjectsForDrawing(forceRefresh = false) {
+    const sessionTok = localStorage.getItem("bcons_session_token");
+    if (!sessionTok || !sessionTok.startsWith("BCONS2.")) return;
+
     const input = document.getElementById("drawing-project-search");
     const syncBtnIcon = document.querySelector("#btn-sync-drawing i");
 

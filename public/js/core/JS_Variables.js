@@ -129,6 +129,10 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     bindEnterKey("loginEmail", () => {
+        if (typeof isForgotPasswordMode !== "undefined" && isForgotPasswordMode) {
+            performForgotPassword();
+            return;
+        }
         const pass = document.getElementById("loginPassword");
         if (pass && pass.offsetParent !== null) pass.focus();
         else {

@@ -78,13 +78,14 @@ function formatInput_PL(input) {
 }
 
 /**
- * 7. Điều hướng bàn phím Vạn năng (Mũi tên & Enter) cho Dropdown
+ * 7. Điều hướng bàn phím Vạn năng (Mũi tên, Enter & Tab) cho Dropdown
  */
 function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback) {
-    // 🚀 TRIỆT TIÊU XUNG ĐỘT KÉP: Tab Phụ lục (dropdown-field0-pl) đã được xử lý tập trung tại JS_Tab_PL_Core.js
     if (dropId === "dropdown-field0-pl") {
         return;
     }
+
+    const isCommitKey = (e.key === "Enter" || e.key === "Tab");
 
     const drop = document.getElementById(dropId);
     
@@ -95,20 +96,30 @@ function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback)
     );
 
     if (!isVisible) {
-        if (e.key === "Enter") {
+        if (isCommitKey && nextInputId) {
             e.preventDefault();
-            document.getElementById(nextInputId)?.focus();
+            const nextField = document.getElementById(nextInputId);
+            if (nextField) {
+                nextField.focus();
+                if (nextField.tagName === "INPUT") nextField.select();
+            }
         }
         return;
     }
 
     const items = drop.querySelectorAll(itemSelector);
     if (items.length === 0) {
-        if (e.key === "Enter") {
+        if (isCommitKey) {
             e.preventDefault();
             if (drop.classList.contains("show")) drop.classList.remove("show");
             if (drop.classList.contains("open-smooth")) drop.classList.remove("open-smooth");
-            document.getElementById(nextInputId)?.focus();
+            if (nextInputId) {
+                const nextField = document.getElementById(nextInputId);
+                if (nextField) {
+                    nextField.focus();
+                    if (nextField.tagName === "INPUT") nextField.select();
+                }
+            }
         }
         return;
     }
@@ -131,12 +142,18 @@ function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback)
             }
         });
     } 
-    else if (e.key === "Enter") {
+    else if (isCommitKey) {
         e.preventDefault();
         
         if (dropId === 'drop-field5-hd' && currentFocusIndex === -1) {
             drop.classList.remove("show");
-            setTimeout(() => { document.getElementById(nextInputId)?.focus(); }, 100);
+            setTimeout(() => {
+                const nextField = document.getElementById(nextInputId);
+                if (nextField) {
+                    nextField.focus();
+                    if (nextField.tagName === "INPUT") nextField.select();
+                }
+            }, 100);
             return;
         }
         

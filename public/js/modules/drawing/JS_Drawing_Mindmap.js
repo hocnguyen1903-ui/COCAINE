@@ -323,8 +323,6 @@
               "border-width": 1.5,
               "border-color": "#2ECC71",
               "border-style": "solid",
-              "shadow-blur": 0,
-              "shadow-opacity": 0,
               "background-image": C.PIN_ACTIVE_SVG
             }
           },
