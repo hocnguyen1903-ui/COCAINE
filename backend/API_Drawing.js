@@ -553,25 +553,18 @@ function extractDataFromImages(imagesBase64Array, fileType = "UPDATE") {
 Task: Extract distinct requested work scopes or physical items from this Proposal (Phiếu đề xuất - PĐX).
 
 Semantic Extraction Principles:
-1. TARGET IDENTIFICATION: Capture the primary operational scopes, physical components, or site activities requested.
-   - Check the Subject line ('V/v: ...' or main header), sections ('Nội dung đề xuất', 'Phương án'), or summary tables.
-2. HIERARCHICAL DEDUPLICATION (GRANULARITY OVER UMBRELLA):
-   - If the text contains both a broad umbrella/parent scope (often from the title or general introduction) AND specific breakdown items (detailed by zone, system type, or sub-scope in breakdown tables/sections):
-     + ALWAYS DROP the overarching generic parent item.
-     + ONLY EXTRACT the specific child items that contain concrete zones, classifications, or detailed scopes.
-     + Never output both a broad summary header and the detailed items it encompasses.
-3. VERB FILTERING (CRITICAL):
-   - STRIP purely administrative filler verbs: 'đề xuất', 'kính trình', 'xin phê duyệt', 'nhằm phục vụ', 'triển khai', 'báo cáo', 'kính gửi', 'cung cấp', 'thực hiện'.
-   - PRESERVE technical/operational action verbs that define the actual site scope: 'vận hành', 'tháo dỡ', 'di dời', 'gia cố', 'gia công', 'lắp đặt', 'thay thế', 'thí nghiệm', 'kiểm định', 'sơn', 'hoàn thiện', 'thuê'.
-4. LOCATION & SCOPE HANDLING:
-   - If specific zones/floors/units/types are stated: Append and compress them (e.g., 'Tầng'='T', 'Hầm'='H', 'Mái'='MÁI', 'đến'='-'). Example: 'từ Hầm 1 đến Tầng 5' -> 'H1-T5'.
-   - If the scope is project-wide or general: Output the clean scope without forcing floor abbreviations.
-5. CONDENSATION: 2 to 9 words per item. Strip wordy prepositions (tại, ở, vị trí khu vực). No duplicate items.
-6. DEPARTMENT (dept):
-   - Mechanical, electrical, plumbing, equipment/machinery operations, temporary utilities -> 'MEP'.
-   - Civil, structural, architectural finishes, doors, painting, landscape, earthworks, temporary civil structures -> 'XD'.
-7. EXCLUSIONS:
-   - Ignore contract references, company headers, signatures, routing slips, dates, and cost/manpower/schedule table headers (e.g., 'nhân công', 'thời gian', 'ghi chú').
+1. TARGET IDENTIFICATION: Capture the primary operational scopes, physical components, or site activities. Prioritize Subject lines ('V/v: ...'), 'Nội dung đề xuất', and summary tables.
+2. OCR ERROR CORRECTION: Detect and fix OCR typos using standard construction terminology.
+3. AGGREGATION & SEMANTIC FACTORING (CRITICAL): If multiple lines mention similar core materials/actions at DIFFERENT locations, combine them into ONE item. Unify synonymous or descriptive nouns into a single overarching component name to avoid wordy repetition.
+   - Abstract Logic: [Action A for Synonym 1] at [Zone X] + [Action A for Synonym 2] at [Zone Y] -> Output ONLY "[Action A for Unified Core Item] [Zone X] và [Zone Y]".
+4. HIERARCHICAL DEDUPLICATION: ALWAYS DROP generic parent items if specific detailed child items are present.
+5. VERB FILTERING: STRIP administrative verbs (đề xuất, kính trình, phê duyệt). PRESERVE technical action verbs (vận hành, tháo dỡ, di dời, gia cố, lắp đặt, thay thế, sơn, thuê).
+6. LOCATION ABBREVIATION: Compress floor/zone ranges strictly ('Tầng'='T', 'Hầm'='H', 'Mái'='MÁI', 'Tum'='TUM', 'đến'='-'). 
+7. ULTRA-CONDENSATION (MAX 10 WORDS): Strictly limit output to UNDER 12 WORDS per item. Aggressively strip spatial prepositions (tại, ở, các, khu vực, vị trí) and redundant adjectives. Shorter is always better.
+8. DEPARTMENT (XD/MEP):
+   - MEP: Mechanical, electrical, plumbing, heavy machinery/equipment operation, temporary utilities.
+   - XD: Civil, structural, architectural finishes, landscaping, temporary civil structures.
+9. EXCLUSIONS: Ignore contract numbers, company headers, signatures, dates, and administrative table columns.
 
 Format: Strict JSON only.
 {"notes":[{"note": "Action/Item + Zone/Type (if any)", "dept": "XD/MEP"}]}
@@ -580,39 +573,27 @@ OCR TEXT INPUT:
 ${combinedText}`;
 
     const promptOriginalUpdate = `Role: Senior Construction Data Architect.
-Task: From the OCR text below (pages separated by "=== TRANG X ===", table cells separated by " | "), extract a consolidated list of "Target Construction Categories".
+Task: Extract a highly condensed, consolidated list of "Target Construction Categories" from the OCR table text.
 
-Data Source Anchoring (Flexible Table Matching):
-1. PRIMARY SOURCES:
-   - Table 1 (Thành phần hồ sơ): Extract from column 'Diễn giải' or 'Tên hồ sơ/bản vẽ'.
-   - Table 2 (Danh mục thay đổi / danh mục bản vẽ): Synthesize from:
-     + The Component Column (named 'Hạng mục thay đổi', 'Tên bản vẽ', 'Hạng mục', or similar).
-     + The Scope/Detail Column (named 'Nội dung thay đổi', 'Diễn giải', 'Chi tiết', or similar).
-2. EXCLUSIONS (MANDATORY):
-   - STRICTLY EXCLUDE procurement/document nouns: 'vật tư', 'vật liệu', 'mẫu vật liệu', 'mẫu vật tư', 'danh mục vật tư', 'bảng kê', 'thiết bị', 'phụ kiện', 'bìa', 'ghi chú'.
-   - IGNORE drawing/sheet codes entirely (e.g., 'BCT2.RFA.SD.NK.00', 'KT13-01', 'N-HD-200E', 'Đ-EL-200', 'KC-01').
-   - IGNORE administrative columns: "Stt", "Lý do", "Trách nhiệm", "Mục đích", signatures, dates, and approvals.
+Data Source Anchoring:
+1. EXTRACT FROM: 'Diễn giải', 'Tên hồ sơ/bản vẽ', 'Hạng mục thay đổi', 'Nội dung thay đổi'.
+2. STRICT EXCLUSIONS: Procurement nouns ('vật tư', 'vật liệu', 'mẫu', 'danh mục', 'bảng kê', 'thiết bị', 'phụ kiện', 'bìa', 'ghi chú'), drawing codes, and administrative data (Stt, Lý do, signatures).
 
-Core Definition:
-A "Target Construction Category" MUST be a tangible, physical component or functional system installed on-site (the "WHAT").
-
-Generative & Normalization Rules:
-1. STRIP DRAWING PREFIXES: Automatically drop all drawing-type prefixes and document words:
-   - 'mặt bằng', 'mặt đứng', 'mặt cắt', 'chi tiết', 'định vị', 'bố trí', 'sơ đồ', 'tổng thể', 'bản vẽ', 'danh mục', 'hồ sơ', 'bìa', 'thống kê'.
-   - Drop generic verbs: 'thay đổi', 'cập nhật', 'điều chỉnh', 'bổ sung', 'bỏ', 'vạt'.
-   - Example: 'Mặt bằng hoàn thiện đường bộ' -> 'Hoàn thiện đường bộ'
-   - Example: 'Mặt bằng định vị kicker sân vườn' -> 'Kicker sân vườn'
-2. PARENT FAMILY GROUPING (ABSTRACTION): Group specific sub-instances or item codes into their parent architectural/structural family:
-   - Door/Glass instances [Vách kính VK1, Chi tiết VK2, Cửa đi C1] -> 'Cửa và vách kính' (hoặc 'Vách kính').
-   - Landscape instances [Cây lớn, Cây bụi, Thảm cỏ] -> 'Cây lớn, cây bụi và thảm'.
-   - Civil/Structural instances [Kicker K1, Kicker K2] -> 'Kicker sân vườn'.
-3. STANDARDIZED NAMING:
-   - Civil / Architectural / Landscape (XD): Output the direct concise category name (2-6 words).
-   - MEP / Fire Safety (MEP/PCCC): MUST start with prefix 'Hệ thống ' followed by function (e.g., 'Hệ thống thoát nước mưa', 'Hệ thống chiếu sáng', 'Hệ thống thông gió').
-4. OUTPUT RESTRICTIONS: Vietnamese language, NO duplicate categories, 'XD' items listed first, then 'MEP'.
+Generative Rules:
+1. OCR ERROR CORRECTION: Fix OCR typos. Use meaningful Vietnamese construction terminology.
+2. AGGREGATION & SEMANTIC FACTORING (CRITICAL): Merge rows mentioning similar core components at DIFFERENT locations into ONE item. Unify synonymous or overly descriptive nouns to avoid repetition.
+   - Abstract Logic: [Item Variant A] at [Zone X] + [Item Variant B] at [Zone Y] -> Output ONLY "[Unified Core Item] [Zone X] và [Zone Y]".
+3. ROW-LEVEL SYNTHESIS: Merge general item (Col 1) and specific detail/zone (Col 2) of the SAME ROW into one string.
+4. STRIP PREFIXES: Drop drawing-type prefixes (mặt bằng, mặt đứng, chi tiết, sơ đồ, bản vẽ, tổng thể) and action verbs (thay đổi, cập nhật, điều chỉnh, bổ sung, bỏ, vạt).
+5. ABSTRACTION: Group specific sub-instances into a broader parent family.
+6. ULTRA-CONDENSATION (MAX 10 WORDS): Strictly limit output to UNDER 12 WORDS per item. Aggressively strip spatial prepositions (tại, ở, các, khu vực, vị trí) and redundant descriptive words. Shorter is always better.
+7. NAMING STANDARD:
+   - Civil/Arch (XD): Direct concise noun phrase.
+   - MEP: MUST start with 'Hệ thống '.
+8. OUTPUT: Vietnamese language, NO duplicates, 'XD' first, then 'MEP'.
 
 Format: Strict JSON only.
-{"notes":[{"note": "Target Category Name", "dept": "XD/MEP"}]}
+{"notes":[{"note": "Category Name", "dept": "XD/MEP"}]}
 
 OCR TEXT INPUT:
 ${combinedText}`;
@@ -622,10 +603,7 @@ ${combinedText}`;
       "contents": [{ "parts": [{ "text": finalPrompt }] }],
       "generationConfig": {
         "response_mime_type": "application/json",
-        "temperature": 0.1,
-        "thinkingConfig": {
-          "thinkingBudget": 0
-        }
+        "temperature": 0.1
       }
     };
 
@@ -638,11 +616,10 @@ ${combinedText}`;
 
     // Chuỗi model ưu tiên phản hồi siêu tốc (< 2s), tắt reasoning ngầm
     const modelChain = [
-      "gemini-2.5-flash",
-      "gemini-2.0-flash",
-      "gemini-1.5-flash",
-      "gemini-3.7-flash",
-      "gemini-2.5-pro"
+      "gemini-3.8-flash",        // Ưu tiên 1: Flash mới & thông minh nhất, tuân thủ rule gộp/sửa chính tả chuẩn (~1.5-2.5s)
+      "gemini-3.6-flash",        // Dự phòng 1: Flash ổn định GA
+      "gemini-3.5-flash-lite",   // Dự phòng 2: Siêu tốc, quota lớn nhất
+      "gemini-flash-latest"      // Chốt chặn dài hạn: Tự trỏ về Flash mới nhất, tránh lỗi 404 khi Google đổi phiên bản
     ];
     console.log(`[AI Extraction] [2/3] Dựng Prompt ngữ cảnh xong: ${new Date().getTime() - tPromptStart}ms`);
 
@@ -651,6 +628,9 @@ ${combinedText}`;
     const responseText = fetchWithRobustFallback(payload, options, modelChain);
     const tGeminiDuration = ((new Date().getTime() - tGeminiStart) / 1000).toFixed(2);
 
+    if (!responseText || typeof responseText !== "string") {
+      throw new Error("AI trả về dữ liệu rỗng.");
+    }
     const cleanText = responseText.replace(/```json/gi, "").replace(/```/g, "").trim();
     const parsedData = JSON.parse(cleanText);
     const countItems = (parsedData.notes && Array.isArray(parsedData.notes)) ? parsedData.notes.length : 0;
@@ -822,42 +802,63 @@ function extractStructuredPageText_(resp) {
  * Điều phối gọi API: Tự động trượt model khi gặp bất kỳ mã lỗi nào
  */
 function fetchWithRobustFallback(payloadBody, options, modelChain) {
-    const maxRetries = 3; 
-    let currentModelIndex = 0;
+  const geminiKey = (GEMINI_API_KEY || PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "").trim();
+  if (!geminiKey) throw new Error("Chưa cấu hình GEMINI_API_KEY trong Script Properties.");
 
-    for (let i = 0; i <= maxRetries; i++) {
-        let currentModel = modelChain[currentModelIndex];
-        try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${GEMINI_API_KEY}`;
-            const response = UrlFetchApp.fetch(url, options);
-            const responseCode = response.getResponseCode();
-            const responseText = response.getContentText();
-            
-            if (responseCode === 200) {
-                const result = JSON.parse(responseText);
-                if (result.error) throw new Error(result.error.message);
-                return result.candidates[0].content.parts[0].text;
-            }
-            
-            // Trượt model ngay lập tức nếu gặp bất kỳ lỗi gì (kể cả 400, 404, 429, 500)
-            if (currentModelIndex < modelChain.length - 1) {
-                currentModelIndex++;
-                console.warn(`[AI System] Lỗi ${responseCode}. Chuyển sang model: ${modelChain[currentModelIndex]}`);
-                continue;
-            }
-            
-            if (i === maxRetries) throw new Error(`Lỗi API ${responseCode}: ` + responseText);
-            Utilities.sleep(1500);
-            
-        } catch (e) {
-            if (currentModelIndex < modelChain.length - 1) {
-                currentModelIndex++;
-                continue;
-            }
-            if (i === maxRetries) throw new Error("Đứt kết nối AI hoàn toàn: " + e.message);
-            Utilities.sleep(1500);
+  let lastError = "Không có phản hồi từ AI.";
+
+  for (let i = 0; i < modelChain.length; i++) {
+    const currentModel = modelChain[i];
+    try {
+      const reqPayload = JSON.parse(JSON.stringify(payloadBody));
+
+      // Tự động gắn cấu hình thinking chuẩn theo từng thế hệ model để giữ tốc độ tối đa
+      if (reqPayload.generationConfig) {
+        if (/flash-lite/i.test(currentModel)) {
+          reqPayload.generationConfig.thinkingConfig = { thinkingLevel: "minimal" };
+        } else if (/gemini-3/i.test(currentModel)) {
+          reqPayload.generationConfig.thinkingConfig = { thinkingLevel: "low" };
+        } else if (/gemini-2\.5-flash/i.test(currentModel)) {
+          reqPayload.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+        } else {
+          delete reqPayload.generationConfig.thinkingConfig;
         }
+      }
+
+      const reqOptions = {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify(reqPayload),
+        muteHttpExceptions: true
+      };
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${geminiKey}`;
+      const response = UrlFetchApp.fetch(url, reqOptions);
+      const responseCode = response.getResponseCode();
+      const responseText = response.getContentText();
+
+      if (responseCode === 200) {
+        const result = JSON.parse(responseText);
+        if (result.error) throw new Error(result.error.message);
+        const outText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (outText && typeof outText === "string") {
+          return outText;
+        }
+        lastError = `${currentModel}: Phản hồi rỗng hoặc bị bộ lọc an toàn chặn.`;
+      } else {
+        lastError = `${currentModel} (HTTP ${responseCode}): ${responseText.slice(0, 220)}`;
+        console.warn(`[AI System] ${lastError}`);
+        if (responseCode === 429 || responseCode === 503) {
+          Utilities.sleep(800);
+        }
+      }
+    } catch (e) {
+      lastError = `${currentModel}: ${e.message}`;
+      console.warn(`[AI System] Ngoại lệ tại ${lastError}`);
     }
+  }
+
+  throw new Error("Tất cả model AI đều thất bại. Chi tiết: " + lastError);
 }
 
 function getActiveProjectFolders_Backend() {

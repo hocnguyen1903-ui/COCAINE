@@ -822,8 +822,8 @@
     return maxLines;
   }
 
-  async function renderPdfPagesToImagesForAI(buffer, fileType = "UPDATE") {
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  async function renderPdfPagesToImagesForAI(pdfSource, fileType = "UPDATE") {
+    const pdf = await pdfjsLib.getDocument(pdfSource).promise;
     const images = [];
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -950,7 +950,7 @@
         zone.classList.add("ai-zone-alert");
         mainMsg.style.color = "#fff";
         mainMsg.textContent = "XÁC NHẬN GHI ĐÈ DỮ LIỆU?";
-        subMsg.innerHTML = `<div style="margin-top:8px; display:flex; gap:10px; justify-content:center; pointer-events:auto;"><button onclick="event.stopPropagation(); extractFromCurrentSelected(true)" class="btn-primary-luxury" style="height:24px; padding:0 10px; font-size:9px; background:#ff4d4d !important; border-color:#ff4d4d !important;">YES</button><button onclick="event.stopPropagation(); resetAIZoneUI()" class="btn-secondary-luxury" style="height:24px; padding:0 10px; font-size:9px;">CANCEL</button></div>`;
+        subMsg.innerHTML = `<div style="margin-top:8px; display:flex; gap:10px; justify-content:center; pointer-events:auto;"><button onclick="event.stopPropagation(); extractFromCurrentSelected(true)" class="btn-danger-luxury" style="height:24px; padding:0 12px; font-size:9.5px; border-radius: 6px !important; border:none;">YES</button><button onclick="event.stopPropagation(); resetAIZoneUI()" class="btn-secondary-luxury" style="height:24px; padding:0 12px; font-size:9.5px; border-radius: 6px !important;">CANCEL</button></div>`;
       }
       return;
     }
@@ -963,41 +963,25 @@
       console.log(`%c[AI Pipeline] 🚀 BẮT ĐẦU: "${cleanFileName}" (${fileType})`, "color: #00BCD4; font-weight: bold; font-size: 12px;");
 
       try {
-        let fileBuffer = null;
 
-        // BƯỚC 1: TẢI FILE NHỊ PHÂN
-        let tBinaryStart = performance.now();
-        try {
-          let base64Res = await serverCall("getFileBase64ForAI", targetFileId);
-          if (base64Res && typeof base64Res === "string" && !base64Res.startsWith("{")) {
-            let binary = atob(base64Res);
-            let bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            fileBuffer = bytes.buffer;
-          }
-        } catch (fastErr) {
-          console.warn("[AI Pipeline] Fast-path thất bại, chuyển tải trực tiếp Stream.");
+        // BƯỚC 1: LẤY LINK STREAM TỪ DRIVE (KHÔNG TẢI TOÀN BỘ FILE NHỊ PHÂN)
+        let tStreamStart = performance.now();
+        let streamInfo = await serverCall("getDriveFileStreamInfo_Backend", targetFileId);
+        if (!streamInfo || !streamInfo.downloadUrl || !streamInfo.token) {
+          throw new Error("Không thể kết nối lấy luồng dữ liệu từ Google Drive.");
         }
+        let durStream = ((performance.now() - tStreamStart) / 1000).toFixed(2);
+        console.log(`%c[AI Pipeline] [1/4] Lấy luồng Drive thành công: ${durStream}s (Sẵn sàng Range Requests)`, "color: #90CAF9;");
 
-        if (!fileBuffer) {
-          let streamInfo = await serverCall("getDriveFileStreamInfo_Backend", targetFileId);
-          if (!streamInfo || !streamInfo.downloadUrl || !streamInfo.token) {
-            throw new Error("Không thể kết nối tải tệp từ Google Drive.");
-          }
-          let driveResp = await fetch(streamInfo.downloadUrl, {
-            headers: { Authorization: "Bearer " + streamInfo.token }
-          });
-          if (!driveResp.ok) {
-            throw new Error(`Google Drive từ chối cấp dữ liệu (${driveResp.status}): ${driveResp.statusText}`);
-          }
-          fileBuffer = await driveResp.arrayBuffer();
-        }
-        let durBinary = ((performance.now() - tBinaryStart) / 1000).toFixed(2);
-        console.log(`%c[AI Pipeline] [1/4] Tải file PDF nhị phân: ${durBinary}s (${(fileBuffer.byteLength / 1048576).toFixed(2)} MB)`, "color: #90CAF9;");
-
-        // BƯỚC 2: RENDER PDF SANG CANVAS ẢNH
+        // BƯỚC 2: RENDER PDF SANG ẢNH (PDF.js CHỈ TẢI VÀI TRĂM KB CỦA CÁC TRANG CẦN THIẾT)
         let tRenderStart = performance.now();
-        let imagesBase64 = await renderPdfPagesToImagesForAI(fileBuffer, fileType);
+        const pdfSource = {
+          url: streamInfo.downloadUrl,
+          httpHeaders: { Authorization: "Bearer " + streamInfo.token },
+          disableAutoFetch: true, // Ép PDF.js chỉ tải đúng phần byte nó cần, không tải toàn bộ 18MB
+          disableStream: false
+        };
+        let imagesBase64 = await renderPdfPagesToImagesForAI(pdfSource, fileType);
         let durRender = ((performance.now() - tRenderStart) / 1000).toFixed(2);
         console.log(`%c[AI Pipeline] [2/4] Render PDF.js ra ${imagesBase64.length} trang ảnh A4: ${durRender}s`, "color: #80CBC4;");
 
@@ -1047,7 +1031,7 @@
         let durTotal = ((performance.now() - perfStart) / 1000).toFixed(2);
 
         console.log(`%c[AI Pipeline] [4/4] Lưu Database Task_Log: ${durSave}s (${unique.length} hạng mục)`, "color: #A5D6A7;");
-        console.log(`%c[AI Pipeline] ✔ HOÀN THÀNH XUẤT SẮC TOÀN TIẾN TRÌNH: ${durTotal}s (Binary: ${durBinary}s | Render: ${durRender}s | AI Backend: ${durBackend}s | Save: ${durSave}s)`, "color: #00E676; font-weight: bold; font-size: 12px;");
+        console.log(`%c[AI Pipeline] ✔ HOÀN THÀNH XUẤT SẮC TOÀN TIẾN TRÌNH: ${durTotal}s (Stream Auth: ${durStream}s | Render (Smart Fetch): ${durRender}s | AI Backend: ${durBackend}s | Save: ${durSave}s)`, "color: #00E676; font-weight: bold; font-size: 12px;");
 
         showToast_PL(`🚀 Đã trích xuất xong: <b>${cleanFileName}</b>`, "success");
       } catch (err) {

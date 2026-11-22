@@ -142,7 +142,9 @@
     .ai-extracting-active { animation: aiPulseBackground 2s ease-in-out infinite !important; pointer-events: none !important; border-style: dashed !important; }
     .ai-extracting-active i.bi-robot { animation: iconShake 0.5s ease-in-out infinite !important; color: #00fbff !important; filter: drop-shadow(0 0 10px #00BCD4) !important; }
     @keyframes aiPulseBackground { 0%, 100% { background: rgba(0, 188, 212, 0.03); } 50% { background: rgba(0, 188, 212, 0.15); } }
+    
     #ai-paste-zone.ai-zone-alert { border-color: #ff4d4d !important; background: rgba(255, 77, 77, 0.05) !important; }
+    #ai-paste-zone.ai-zone-alert .ai-icon-frame { border-color: rgba(255, 77, 77, 0.4) !important; background: rgba(255, 77, 77, 0.1) !important; box-shadow: 0 0 12px rgba(255, 77, 77, 0.15) !important; }
     #ai-paste-zone.ai-zone-alert i.bi-robot { color: #ff4d4d !important; filter: drop-shadow(0 0 10px rgba(255, 77, 77, 0.5)) !important; animation: none !important; transform: scale(1.1); }
 
     /* 7. PDF Wrapper */

@@ -130,6 +130,9 @@ function handleFullExportProcess_HD(formData) {
     var targetYear = extractYearFromDateString(formData.date);
     var extractedField2 = formData.field2.includes(" | ") ? formData.field2.split(" | ")[0].trim() : formData.field2;
     var extractedField3 = formData.field3.includes(" | ") ? formData.field3.split(" | ")[0].trim() : formData.field3;
+    
+    // Đưa ra ngoài để dùng chung cho cả Hợp đồng gốc và Dự thảo
+    var packageNameRaw = formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0;
 
     if (!formData.draftContract) {
       var lastNumber = getLatestContractNumber_HD(targetYear); 
@@ -137,12 +140,12 @@ function handleFullExportProcess_HD(formData) {
 
       formData.field8 = `${nextNo}/${targetYear}/HĐTCXD-${extractedField2}/${formData.location}-${extractedField3}`;
       
-      var packageNameRaw = formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0;
       var packageName = packageNameRaw.toUpperCase().replace(/[^A-Z0-9\sĐƯÁÀẢÃẠÂẤẦẨẪẬĂẮẰẲẴẶÉÈẺẼẸÊẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴ]/g, "");
       formData.fileName = `${extractedField2}_${nextNo}_${targetYear}_${packageName}_${extractedField3}`;
     } else {
       formData.field8 = `.../${targetYear}/HĐTCXD-${extractedField2}/${formData.location}-${extractedField3}`;
-      formData.fileName = "Dự thảo hợp đồng";
+      // Cấu trúc mới: Mã dự án_Dự thảo hợp đồng_Tên viết tắt của gói thầu
+      formData.fileName = `${extractedField2}_Dự thảo hợp đồng_${packageNameRaw}`;
     }
 
     return writeToSheetAndExportDoc_HD(formData);
@@ -290,8 +293,12 @@ function handleFullExportProcess_TB(formData) {
 
     formData.field6 = `${nextNo}/${targetYear}/TB/KĐT-BCONS`;
     
-    const projectName = formData.field1.includes(" | ") ? formData.field1.split(" | ")[0] : formData.field1;
-    formData.fileName = `TBKQTT_${formData.field6.replace(/\//g, '-')}_${projectName}`;
+    // Tách Mã dự án và Tên viết tắt gói thầu
+    const projectName = formData.field1.includes(" | ") ? formData.field1.split(" | ")[0].trim() : formData.field1.trim();
+    const packageNameRaw = formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0.trim();
+    
+    // Cấu trúc mới: Mã dự án_TBKQGT_Tên viết tắt gói thầu
+    formData.fileName = `${projectName}_TBKQGT_${packageNameRaw}`;
 
     return writeToSheetAndExportDoc_TB(formData);
   } catch (e) { 

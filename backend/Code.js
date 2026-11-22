@@ -666,3 +666,13 @@ function keepSystemWarm_Trigger() {
     console.warn("[Keep-Warm Failed]: " + e.message);
   }
 }
+
+/**
+ * Cấp link tải trực tiếp từ Drive qua Service Account (để PDF.js tải theo dải byte)
+ */
+function getDriveFileStreamInfo_Backend(fileId) {
+  return {
+    downloadUrl: "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(fileId) + "?alt=media&supportsAllDrives=true",
+    token: getServiceAccountReadOnlyToken_()
+  };
+}
