@@ -109,8 +109,54 @@ function saveDriveCacheFast(fileId, fileName, jsonDataString) {
   }
 }
 
+function getServiceAccountReadOnlyToken_() {
+  const cache = CacheService.getScriptCache();
+  const cachedToken = cache.get("SA_DRIVE_RO_TOKEN");
+  if (cachedToken) return cachedToken;
+
+  const props = PropertiesService.getScriptProperties();
+  const clientEmail = (props.getProperty("SA_CLIENT_EMAIL") || "").trim();
+  const rawPrivateKey = props.getProperty("SA_PRIVATE_KEY") || "";
+  const privateKey = rawPrivateKey.replace(/\\n/g, "\n").trim();
+
+  if (!clientEmail || !privateKey) {
+    throw new Error("Chưa cấu hình SA_CLIENT_EMAIL hoặc SA_PRIVATE_KEY trong Script Properties!");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claimSet = {
+    iss: clientEmail,
+    scope: "https://www.googleapis.com/auth/drive.readonly",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: now + 3600,
+    iat: now
+  };
+
+  const toB64Url = (input) => Utilities.base64EncodeWebSafe(input).replace(/=+$/, "");
+  const signingInput = toB64Url(JSON.stringify(header)) + "." + toB64Url(JSON.stringify(claimSet));
+  const signatureBytes = Utilities.computeRsaSha256Signature(signingInput, privateKey);
+  const jwt = signingInput + "." + toB64Url(signatureBytes);
+
+  const res = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
+    method: "post",
+    contentType: "application/x-www-form-urlencoded",
+    payload: "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=" + encodeURIComponent(jwt),
+    muteHttpExceptions: true
+  });
+
+  const code = res.getResponseCode();
+  const data = JSON.parse(res.getContentText());
+  if (code !== 200 || !data.access_token) {
+    throw new Error("Không thể cấp Service Account Token: " + (data.error_description || data.error || code));
+  }
+
+  cache.put("SA_DRIVE_RO_TOKEN", data.access_token, 3000);
+  return data.access_token;
+}
+
 function getDriveAccessToken() {
-  return ScriptApp.getOAuthToken();
+  return getServiceAccountReadOnlyToken_();
 }
 
 function makeFilePublicAndGetLink(fileId) {
@@ -131,6 +177,7 @@ function makeFilePublicAndGetLink(fileId) {
 
 function callCloudVisionApiBatch(imagesBase64Array) {
   try {
+    enforceAiGuard_("VISION", imagesBase64Array, 16, 20);
     const rawKey = PropertiesService.getScriptProperties().getProperty("VISION_API_KEY");
     if (!rawKey) throw new Error("Chưa cài đặt khóa 'VISION_API_KEY' trong Script Properties!");
 

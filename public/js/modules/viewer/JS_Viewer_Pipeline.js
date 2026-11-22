@@ -400,35 +400,6 @@
   async function overwriteOriginalPdfOnDrive(fileId, cleanBuffer) {
     if (!fileId || String(fileId).startsWith("local_")) return false;
 
-    try {
-      let token = await getDriveTokenAsync();
-      const slashes = String.fromCharCode(47, 47);
-      const url = "https:" + slashes + "www.googleapis.com/upload/drive/v3/files/" + fileId + "?uploadType=media&supportsAllDrives=true";
-      let res = await fetch(url, {
-        method: "PATCH",
-        headers: {
-          "Authorization": "Bearer " + token,
-          "Content-Type": "application/pdf"
-        },
-        body: cleanBuffer
-      });
-      if (res.status === 401 || res.status === 403) {
-        invalidateDriveToken();
-        token = await getDriveTokenAsync();
-        res = await fetch(url, {
-          method: "PATCH",
-          headers: {
-            "Authorization": "Bearer " + token,
-            "Content-Type": "application/pdf"
-          },
-          body: cleanBuffer
-        });
-      }
-      if (res.ok) return true;
-    } catch (directErr) {
-      console.warn("PATCH trực tiếp Drive thất bại, chuyển sang Backend GAS:", directErr);
-    }
-
     if (typeof callBackend === "function") {
       const b64 = arrayBufferToBase64(cleanBuffer);
       const res = await callBackend("overwritePdfFile_Backend", [fileId, b64]);

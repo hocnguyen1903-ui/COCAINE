@@ -24,23 +24,14 @@
           return function(fn) { return createGasBridge(onSuccess, fn); };
         }
         return function(...args) {
-          fetch(GAS_WEB_APP_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            redirect: "follow",
-            body: JSON.stringify({ action: prop, args: args })
-          })
-          .then(res => res.json())
-          .then(res => {
-            if (res.ok) {
-              if (onSuccess) onSuccess(res.data);
-            } else {
-              if (onFailure) onFailure(new Error(res.error || "Lỗi Server GAS"));
-            }
-          })
-          .catch(err => {
-            if (onFailure) onFailure(err);
-          });
+          const payload = args.length === 1 ? args[0] : args;
+          callBackend(prop, payload)
+            .then(data => {
+              if (onSuccess) onSuccess(data);
+            })
+            .catch(err => {
+              if (onFailure) onFailure(err);
+            });
         };
       }
     });

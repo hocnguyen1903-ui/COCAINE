@@ -333,16 +333,9 @@ function doPost(e) {
     "getTasksByFileId",
     "getAllTasksByProject",
     "getProjectDrawingFullData",
-    "getDriveFileStreamInfo_Backend",
-    "getFileBase64ForAI",
-    "extractDataOnly",
-    // ROUTE MỚI CHO BCONS VIEWER:
     "getDriveCacheFast",
-    "saveDriveCacheFast",
-    "callCloudVisionApiBatch",
     "getPdfBase64Fast",
     "getPdfBase64Chunk",
-    "getDriveAccessToken",
     "makeFilePublicAndGetLink"
   ];
 
@@ -380,6 +373,7 @@ function doPost(e) {
     "getFileBase64ForAI": () => getFileBase64ForAI(payload),
     "getDriveFileStreamInfo_Backend": () => getDriveFileStreamInfo_Backend(payload),
     "extractDataOnly": () => extractDataOnly(payload?.[0], payload?.[1], payload?.[2]),
+    "extractDataFromImages": () => extractDataFromImages(payload?.[0], payload?.[1]),
     "batchAddTasksBackend": () => batchAddTasksBackend(payload?.[0], payload?.[1], payload?.[2], payload?.[3]),
     "approveUser_InApp": () => approveUser_InApp(payload), 
     "getDrawingUploadSession_Backend": () => getDrawingUploadSession_Backend(payload),
@@ -392,10 +386,10 @@ function doPost(e) {
     "getDriveCacheFast": () => getDriveCacheFast(payload?.[0] || payload?.fileId, payload?.[1] || payload?.fileName),
     "saveDriveCacheFast": () => saveDriveCacheFast(payload?.[0] || payload?.fileId, payload?.[1] || payload?.fileName, payload?.[2] || payload?.jsonDataString),
     "callCloudVisionApiBatch": () => callCloudVisionApiBatch(Array.isArray(payload) ? payload : (payload?.images || payload)),
-    "getPdfBase64Fast": () => getPdfBase64Fast(payload?.[0] || payload?.fileId || payload),
+    "getPdfBase64Fast": () => getPdfBase64Fast(Array.isArray(payload) ? payload[0] : (payload?.fileId || payload)),
     "getPdfBase64Chunk": () => getPdfBase64Chunk(payload?.[0] || payload?.fileId, payload?.[1] || payload?.chunkIndex),
     "getDriveAccessToken": () => getDriveAccessToken(),
-    "makeFilePublicAndGetLink": () => makeFilePublicAndGetLink(payload?.[0] || payload?.fileId || payload),
+    "makeFilePublicAndGetLink": () => makeFilePublicAndGetLink(Array.isArray(payload) ? payload[0] : (payload?.fileId || payload)),
     "markScanDigitized_PL": () => markScanDigitized_PL(payload),
     "overwritePdfFile_Backend": () => overwritePdfFile_Backend(payload?.[0], payload?.[1]),
   };
@@ -467,15 +461,3 @@ function keepSystemWarm_Trigger() {
     console.warn("[Keep-Warm Failed]: " + e.message);
   }
 }
-
-/**
- * Cung cấp thông tin luồng tải trực tiếp từ Google Drive API cho Client (Bypass RAM Apps Script)
- */
-function getDriveFileStreamInfo_Backend(fileId) {
-  return {
-    downloadUrl: "https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media",
-    token: ScriptApp.getOAuthToken()
-  };
-}
-
-// test

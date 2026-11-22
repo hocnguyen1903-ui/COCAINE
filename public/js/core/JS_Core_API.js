@@ -400,6 +400,9 @@ async function callBackend(action, data = {}, retries = 1) {
         "rejectUser_InApp",
         "getDrawingUploadSession_Backend", 
         "extractDataOnly",
+        "extractDataFromImages",
+        "callCloudVisionApiBatch",
+        "saveDriveCacheFast",
         "overwritePdfFile_Backend",
     ];
 
@@ -407,7 +410,9 @@ async function callBackend(action, data = {}, retries = 1) {
         retries = 0; 
     }
 
-    const timeoutDuration = writeActions.includes(action) ? 60000 : 30000;
+    const timeoutDuration = (action === "extractDataFromImages" || action === "extractDataOnly" || action === "callCloudVisionApiBatch") 
+        ? 90000 
+        : (writeActions.includes(action) ? 60000 : 30000);
 
     for (let attempt = 0; attempt <= retries; attempt++) {
         const controller = new AbortController();

@@ -474,74 +474,348 @@ function getFileBase64ForAI(fileId) {
 }
 
 /**
- * Lõi AI: Áp dụng chuỗi model tối ưu theo danh sách API thực tế của tài khoản
+ * Lõi AI 2 giai đoạn (v2): Cloud Vision OCR (tối đa 6 trang) -> Sắp xếp khối bảng -> Gemini Text-only
+ * (Kèm console tracking chi tiết từng mốc thời gian thực thi)
  */
-function extractDataOnly(base64, mimeType = "application/pdf", fileType = "UPDATE") {
-  try {
-    const promptProposal = `Role: Senior Construction Consultant.
-Task: Extract distinct work items AND their exact locations, condensed into concise strings.
+function extractDataFromImages(imagesBase64Array, fileType = "UPDATE") {
+  const tTotalStart = new Date().getTime();
+  console.log(`[AI Extraction] >>> BẮT ĐẦU TIẾN TRÌNH: Nhận ${imagesBase64Array ? imagesBase64Array.length : 0} trang ảnh (Loại: ${fileType})`);
 
-Rules:
-1. EXTRACTION PATTERN: Identify the [Core Physical Item] + [Specific Location].
-2. MULTIPLE LOCATIONS: If an item applies to multiple distinct zones, strictly preserve conjunctions (và, &) or commas to separate them. DO NOT merge independent zones into illogical strings.
-3. TARGETED CONDENSATION (PRIORITIZE BREVITY): Aim for the absolute minimum number of words possible. MAXIMUM 13 words per note. Aggressively strip generic action verbs (thi công, lắp đặt) and filler prepositions (tại, khu vực). Shorter is always better.
-   - Example Input: "[Verb] [Item X] [Preposition] [Zone A] và [Zone B]"
-   - Expected Output: "[Item X] [Zone A] và [Zone B]"
-4. FLOOR ABBREVIATION (CRITICAL): Compress floor ranges into extreme abbreviations. 'Tầng' = 'T', 'Hầm' = 'H', 'Mái' = 'MÁI', 'Tum' = 'TUM', 'đến' = '-'. Example Input: 'từ Hầm 2 đến Tầng 8'. Expected Output: 'H2-T8'. Example Input: 'tầng 1 đến tầng tum'. Expected Output: 'T1-TUM'.
-5. EXCLUSIONS: Ignore signatures, routing slips, and administrative metadata.
-6. OUTPUT: Vietnamese language.
-7. FORMAT: JSON only. {"notes":[{"note": "Item + Zone A và Zone B", "dept": "XD/MEP"}]}`;
+  try {
+    enforceAiGuard_("EXTRACT", imagesBase64Array, 8, 10);
+
+    const visionKey = (PropertiesService.getScriptProperties().getProperty("VISION_API_KEY") || "").trim();
+    if (!visionKey) {
+      throw new Error("Chưa cấu hình VISION_API_KEY trong Script Properties.");
+    }
+
+    // --- BƯỚC 1: CLOUD VISION OCR BATCH ---
+    const tVisionStart = new Date().getTime();
+    let pageTexts = fetchVisionTextBatch_(imagesBase64Array, visionKey);
+    const tVisionDuration = ((new Date().getTime() - tVisionStart) / 1000).toFixed(2);
+    console.log(`[AI Extraction] [1/3] Cloud Vision OCR hoàn tất: ${tVisionDuration}s (${pageTexts.length} trang)`);
+
+    // --- CHỐT CHẶN BẢO VỆ: KIỂM CHUẨN TIÊU ĐỀ TRANG 1 TRƯỚC KHI GỌI GEMINI ---
+    const page1Raw = pageTexts[0] || "";
+    const page1Clean = removeVietnameseDiacritics(page1Raw);
+
+    if (fileType === "UPDATE") {
+      const hasDistributionHeader = page1Clean.includes("danh muc phan phoi");
+      if (!hasDistributionHeader) {
+        console.warn(`[AI Gatekeeper] ⛔ DỪNG TIẾN TRÌNH: Trang 1 không chứa tiêu đề 'Danh mục phân phối...'. Đã hủy gọi Gemini để tránh lãng phí tài nguyên!`);
+        return {
+          error: "Tệp tin không đúng định dạng: Trang đầu tiên không phải 'Danh mục phân phối...'. Đã dừng trích xuất!"
+        };
+      }
+    } else if (fileType === "PROPOSAL") {
+      const hasProposalHeader = page1Clean.includes("phieu de xuat") || page1Clean.includes("de xuat") || page1Clean.includes("pdx");
+      if (!hasProposalHeader) {
+        console.warn(`[AI Gatekeeper] ⛔ DỪNG TIẾN TRÌNH: Trang 1 không chứa tiêu đề 'Phiếu đề xuất...'. Đã hủy gọi Gemini!`);
+        return {
+          error: "Tệp tin không đúng định dạng: Trang đầu tiên không phải 'Phiếu đề xuất...'. Đã dừng trích xuất!"
+        };
+      }
+    }
+
+    // --- BỘ LỌC CẮT BỎ ĐÍNH KÈM CHO PHIẾU ĐỀ XUẤT (PĐX) ---
+    if (fileType === "PROPOSAL") {
+      let proposalEndIdx = -1;
+      for (let idx = 0; idx < pageTexts.length; idx++) {
+        const norm = removeVietnameseDiacritics(pageTexts[idx]);
+        const hasSignatures = (norm.includes("phe duyet") && (norm.includes("giam doc") || norm.includes("ban qlda"))) ||
+                              norm.includes("tran trong cam on") ||
+                              (norm.includes("tong giam doc") && norm.includes("giam doc"));
+        if (hasSignatures) {
+          proposalEndIdx = idx;
+          console.log(`[AI Gatekeeper] ✍️ Nhận diện khối ký tên PĐX tại Trang ${idx + 1}. Dừng quét và loại bỏ toàn bộ các trang đính kèm/bản vẽ phía sau!`);
+          break;
+        }
+      }
+
+      if (proposalEndIdx !== -1) {
+        pageTexts = pageTexts.slice(0, proposalEndIdx + 1);
+      }
+    }
+
+    const combinedText = pageTexts
+      .map((txt, idx) => txt ? `=== TRANG ${idx + 1} ===\n${txt}` : "")
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (!combinedText.trim()) {
+      console.warn(`[AI Extraction] Cảnh báo: Toàn bộ ảnh quét không phát hiện ký tự văn bản.`);
+      return { notes: [] };
+    }
+
+    // --- BƯỚC 2: BUILD PROMPT CẤU TRÚC ---
+    const tPromptStart = new Date().getTime();
+    const promptProposal = `Role: Senior Construction Consultant.
+Task: Extract distinct requested work scopes or physical items from this Proposal (Phiếu đề xuất - PĐX).
+
+Semantic Extraction Principles:
+1. TARGET IDENTIFICATION: Capture the primary operational scopes, physical components, or site activities requested.
+   - Check the Subject line ('V/v: ...' or main header), sections ('Nội dung đề xuất', 'Phương án'), or summary tables.
+2. HIERARCHICAL DEDUPLICATION (GRANULARITY OVER UMBRELLA):
+   - If the text contains both a broad umbrella/parent scope (often from the title or general introduction) AND specific breakdown items (detailed by zone, system type, or sub-scope in breakdown tables/sections):
+     + ALWAYS DROP the overarching generic parent item.
+     + ONLY EXTRACT the specific child items that contain concrete zones, classifications, or detailed scopes.
+     + Never output both a broad summary header and the detailed items it encompasses.
+3. VERB FILTERING (CRITICAL):
+   - STRIP purely administrative filler verbs: 'đề xuất', 'kính trình', 'xin phê duyệt', 'nhằm phục vụ', 'triển khai', 'báo cáo', 'kính gửi', 'cung cấp', 'thực hiện'.
+   - PRESERVE technical/operational action verbs that define the actual site scope: 'vận hành', 'tháo dỡ', 'di dời', 'gia cố', 'gia công', 'lắp đặt', 'thay thế', 'thí nghiệm', 'kiểm định', 'sơn', 'hoàn thiện', 'thuê'.
+4. LOCATION & SCOPE HANDLING:
+   - If specific zones/floors/units/types are stated: Append and compress them (e.g., 'Tầng'='T', 'Hầm'='H', 'Mái'='MÁI', 'đến'='-'). Example: 'từ Hầm 1 đến Tầng 5' -> 'H1-T5'.
+   - If the scope is project-wide or general: Output the clean scope without forcing floor abbreviations.
+5. CONDENSATION: 2 to 9 words per item. Strip wordy prepositions (tại, ở, vị trí khu vực). No duplicate items.
+6. DEPARTMENT (dept):
+   - Mechanical, electrical, plumbing, equipment/machinery operations, temporary utilities -> 'MEP'.
+   - Civil, structural, architectural finishes, doors, painting, landscape, earthworks, temporary civil structures -> 'XD'.
+7. EXCLUSIONS:
+   - Ignore contract references, company headers, signatures, routing slips, dates, and cost/manpower/schedule table headers (e.g., 'nhân công', 'thời gian', 'ghi chú').
+
+Format: Strict JSON only.
+{"notes":[{"note": "Action/Item + Zone/Type (if any)", "dept": "XD/MEP"}]}
+
+OCR TEXT INPUT:
+${combinedText}`;
 
     const promptOriginalUpdate = `Role: Senior Construction Data Architect.
-Task: Extract a consolidated list of "Target Construction Categories" by strictly prioritizing the "Diễn giải" column.
+Task: From the OCR text below (pages separated by "=== TRANG X ===", table cells separated by " | "), extract a consolidated list of "Target Construction Categories".
 
-Data Source Anchoring & Prioritization:
-1. PRIMARY SOURCE: Scan and extract physical entities primarily from the "Diễn giải" column (typically in Table 1: Thành phần hồ sơ).
-2. SECONDARY SOURCE: Use the "Danh mục bản vẽ thiết kế thay đổi" (Table 2) ONLY as a fallback to clarify or identify specific components if the Primary Source is too generic (e.g., if "Diễn giải" only states an abstract scope like "Hồ sơ phần thân", look into Table 2 to extract the actual physical entities like "Cửa, vách kính").
-3. EXCLUSIONS: Strictly ignore outer headers, routing slips, signatures, and project scopes.
+Data Source Anchoring (Flexible Table Matching):
+1. PRIMARY SOURCES:
+   - Table 1 (Thành phần hồ sơ): Extract from column 'Diễn giải' or 'Tên hồ sơ/bản vẽ'.
+   - Table 2 (Danh mục thay đổi / danh mục bản vẽ): Synthesize from:
+     + The Component Column (named 'Hạng mục thay đổi', 'Tên bản vẽ', 'Hạng mục', or similar).
+     + The Scope/Detail Column (named 'Nội dung thay đổi', 'Diễn giải', 'Chi tiết', or similar).
+2. EXCLUSIONS (MANDATORY):
+   - STRICTLY EXCLUDE procurement/document nouns: 'vật tư', 'vật liệu', 'mẫu vật liệu', 'mẫu vật tư', 'danh mục vật tư', 'bảng kê', 'thiết bị', 'phụ kiện', 'bìa', 'ghi chú'.
+   - IGNORE drawing/sheet codes entirely (e.g., 'BCT2.RFA.SD.NK.00', 'KT13-01', 'N-HD-200E', 'Đ-EL-200', 'KC-01').
+   - IGNORE administrative columns: "Stt", "Lý do", "Trách nhiệm", "Mục đích", signatures, dates, and approvals.
 
-Core Definition of a Valid Output:
-A "Target Construction Category" MUST be a tangible, physical component or a functional system that gets built or installed on-site. It represents the "WHAT" is being built, not the "WHERE" (zones/scopes), the "HOW" (actions), or the "PAPERWORK" (documents/metadata).
+Core Definition:
+A "Target Construction Category" MUST be a tangible, physical component or functional system installed on-site (the "WHAT").
 
-Generative Rules:
-1. CATEGORY LEVEL ABSTRACTION: Group specific instances into their parent architectural/structural family. 
-   - Examples of logic: [Cửa 1, Vách 2, Lan can 3] -> 'Cửa, vách kính và lan can'. [Cây lớn, Thảm cỏ] -> 'Cây lớn và thảm cỏ'. [Kicker K1, Kicker K2] -> 'Kicker sân vườn'.
-2. PURE NOUN EXTRACTION: The output must strictly be the noun phrase of the physical entity itself. Automatically drop all verbs (thay đổi, bỏ, vạt, cập nhật) and document types (mặt bằng, định vị, phần thân, hồ sơ).
+Generative & Normalization Rules:
+1. STRIP DRAWING PREFIXES: Automatically drop all drawing-type prefixes and document words:
+   - 'mặt bằng', 'mặt đứng', 'mặt cắt', 'chi tiết', 'định vị', 'bố trí', 'sơ đồ', 'tổng thể', 'bản vẽ', 'danh mục', 'hồ sơ', 'bìa', 'thống kê'.
+   - Drop generic verbs: 'thay đổi', 'cập nhật', 'điều chỉnh', 'bổ sung', 'bỏ', 'vạt'.
+   - Example: 'Mặt bằng hoàn thiện đường bộ' -> 'Hoàn thiện đường bộ'
+   - Example: 'Mặt bằng định vị kicker sân vườn' -> 'Kicker sân vườn'
+2. PARENT FAMILY GROUPING (ABSTRACTION): Group specific sub-instances or item codes into their parent architectural/structural family:
+   - Door/Glass instances [Vách kính VK1, Chi tiết VK2, Cửa đi C1] -> 'Cửa và vách kính' (hoặc 'Vách kính').
+   - Landscape instances [Cây lớn, Cây bụi, Thảm cỏ] -> 'Cây lớn, cây bụi và thảm'.
+   - Civil/Structural instances [Kicker K1, Kicker K2] -> 'Kicker sân vườn'.
 3. STANDARDIZED NAMING:
-   - For Civil/Architecture/Landscape (XD): Output the direct category name (e.g., 'Hoàn thiện đường bộ').
-   - For MEP/Fire Safety (MEP/PCCC): The output MUST begin with the prefix 'Hệ thống ' followed by the function (e.g., 'Hệ thống thoát nước mưa').
-4. FORMAT: Vietnamese language, 2-7 words per category. NO duplicates.
-5. SORTING: 'XD' items FIRST, then 'MEP'.
+   - Civil / Architectural / Landscape (XD): Output the direct concise category name (2-6 words).
+   - MEP / Fire Safety (MEP/PCCC): MUST start with prefix 'Hệ thống ' followed by function (e.g., 'Hệ thống thoát nước mưa', 'Hệ thống chiếu sáng', 'Hệ thống thông gió').
+4. OUTPUT RESTRICTIONS: Vietnamese language, NO duplicate categories, 'XD' items listed first, then 'MEP'.
 
-Output format: Strict JSON only.
-{"notes":[{"note": "Target Category Name", "dept": "XD/MEP"}]}`;
+Format: Strict JSON only.
+{"notes":[{"note": "Target Category Name", "dept": "XD/MEP"}]}
+
+OCR TEXT INPUT:
+${combinedText}`;
 
     const finalPrompt = (fileType === "PROPOSAL") ? promptProposal : promptOriginalUpdate;
     const payload = {
-      "contents": [{ "parts": [{ "text": finalPrompt }, { "inline_data": { "mime_type": mimeType, "data": base64 } }] }],
-      "generationConfig": { 
-        "response_mime_type": "application/json", 
-        "temperature": 0.1 
+      "contents": [{ "parts": [{ "text": finalPrompt }] }],
+      "generationConfig": {
+        "response_mime_type": "application/json",
+        "temperature": 0.1,
+        "thinkingConfig": {
+          "thinkingBudget": 0
+        }
       }
     };
-    
-    const options = { "method": "post", "contentType": "application/json", "payload": JSON.stringify(payload), "muteHttpExceptions": true };
-    
-    // Chuỗi model tư duy cao (20s - 40s) bảo đảm tuân thủ 100% rules trên
+
+    const options = {
+      "method": "post",
+      "contentType": "application/json",
+      "payload": JSON.stringify(payload),
+      "muteHttpExceptions": true
+    };
+
+    // Chuỗi model ưu tiên phản hồi siêu tốc (< 2s), tắt reasoning ngầm
     const modelChain = [
-      "gemini-3.7-flash",       // Ưu tiên 1: Tối ưu đọc bản vẽ & bóc tách cấu trúc phức tạp
-      "gemini-3.5-flash",       // Dự phòng 1: Bóc tách thực thể xây dựng chuẩn xác
-      "gemini-2.5-pro",         // Dự phòng 2: Phân tích bảng biểu mờ, phức tạp
-      "gemini-pro-latest"       // Chốt chặn cuối
+      "gemini-2.5-flash",
+      "gemini-2.0-flash",
+      "gemini-1.5-flash",
+      "gemini-3.7-flash",
+      "gemini-2.5-pro"
     ];
+    console.log(`[AI Extraction] [2/3] Dựng Prompt ngữ cảnh xong: ${new Date().getTime() - tPromptStart}ms`);
+
+    // --- BƯỚC 3: GEMINI TEXT-ONLY PARSING ---
+    const tGeminiStart = new Date().getTime();
     const responseText = fetchWithRobustFallback(payload, options, modelChain);
-    
+    const tGeminiDuration = ((new Date().getTime() - tGeminiStart) / 1000).toFixed(2);
+
     const cleanText = responseText.replace(/```json/gi, "").replace(/```/g, "").trim();
-    return JSON.parse(cleanText);
-    
-  } catch (e) { 
-    return { error: e.toString() }; 
+    const parsedData = JSON.parse(cleanText);
+    const countItems = (parsedData.notes && Array.isArray(parsedData.notes)) ? parsedData.notes.length : 0;
+
+    const tTotalDuration = ((new Date().getTime() - tTotalStart) / 1000).toFixed(2);
+    console.log(`[AI Extraction] [3/3] Gemini phân tích hoàn tất: ${tGeminiDuration}s | Bóc tách được: ${countItems} hạng mục`);
+    console.log(`[AI Extraction] <<< TỔNG THỜI GIAN BACKEND: ${tTotalDuration}s (Vision: ${tVisionDuration}s + Gemini: ${tGeminiDuration}s)`);
+
+    return parsedData;
+  } catch (e) {
+    console.error(`[AI Extraction Error] Thất bại sau ${((new Date().getTime() - tTotalStart) / 1000).toFixed(2)}s: ${e.message}`);
+    return { error: e.toString() };
   }
+}
+
+function fetchVisionTextBatch_(imagesBase64Array, apiKey) {
+  const url = "https://vision.googleapis.com/v1/images:annotate?key=" + apiKey;
+  const MAX_VISION_BATCH = 16;
+  let allResponses = [];
+
+  for (let i = 0; i < imagesBase64Array.length; i += MAX_VISION_BATCH) {
+    const slice = imagesBase64Array.slice(i, i + MAX_VISION_BATCH);
+    const requests = slice.map(b64 => ({
+      image: { content: String(b64).replace(/^data:image\/\w+;base64,/, "") },
+      features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
+      imageContext: { languageHints: ["vi", "en"] }
+    }));
+
+    const res = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify({ requests: requests }),
+      muteHttpExceptions: true
+    });
+
+    const resJson = JSON.parse(res.getContentText());
+    if (resJson.error) {
+      throw new Error("Vision API Error: " + resJson.error.message);
+    }
+    if (resJson.responses) {
+      allResponses = allResponses.concat(resJson.responses);
+    }
+  }
+
+  return allResponses.map(resp => extractStructuredPageText_(resp));
+}
+
+function extractStructuredPageText_(resp) {
+  if (!resp || !resp.fullTextAnnotation || !resp.fullTextAnnotation.pages || !resp.fullTextAnnotation.pages.length) {
+    return "";
+  }
+
+  const pObj = resp.fullTextAnnotation.pages[0];
+  const imgW = pObj.width || 0;
+  const imgH = pObj.height || 0;
+
+  let angle0 = 0, angle90 = 0, angle180 = 0, angle270 = 0;
+  (pObj.blocks || []).forEach(b => {
+    (b.paragraphs || []).forEach(p => {
+      (p.words || []).forEach(w => {
+        const v = (w.boundingBox && w.boundingBox.vertices) || [];
+        if (v.length >= 2 && v[0] && v[1]) {
+          const dx = (v[1].x || 0) - (v[0].x || 0);
+          const dy = (v[1].y || 0) - (v[0].y || 0);
+          if (Math.abs(dx) >= Math.abs(dy)) {
+            if (dx >= 0) angle0++; else angle180++;
+          } else {
+            if (dy > 0) angle90++; else angle270++;
+          }
+        }
+      });
+    });
+  });
+
+  let pdfRotation = 0;
+  const maxVotes = Math.max(angle0, angle90, angle180, angle270);
+  if (maxVotes > 0) {
+    if (maxVotes === angle90) pdfRotation = 270;
+    else if (maxVotes === angle270) pdfRotation = 90;
+    else if (maxVotes === angle180) pdfRotation = 180;
+  }
+
+  const blockItems = [];
+  (pObj.blocks || []).forEach(b => {
+    const paraTexts = [];
+    (b.paragraphs || []).forEach(p => {
+      let lineBuf = "";
+      (p.words || []).forEach(w => {
+        const syms = w.symbols || [];
+        let wordStr = "";
+        let lastBreak = "";
+        for (let s = 0; s < syms.length; s++) {
+          wordStr += syms[s].text || "";
+          if (s === syms.length - 1 && syms[s].property && syms[s].property.detectedBreak) {
+            lastBreak = syms[s].property.detectedBreak.type || "";
+          }
+        }
+        lineBuf += wordStr;
+        if (lastBreak === "EOL_SURE_SPACE" || lastBreak === "LINE_BREAK") {
+          lineBuf += "\n";
+        } else if (lastBreak !== "HYPHEN") {
+          lineBuf += " ";
+        }
+      });
+      const cleanPara = lineBuf.replace(/[ \t]+\n/g, "\n").trim();
+      if (cleanPara) paraTexts.push(cleanPara);
+    });
+
+    const blockText = paraTexts.join("\n").trim();
+    if (!blockText) return;
+
+    const bv = (b.boundingBox && b.boundingBox.vertices) || [];
+    let minX = null, minY = null, maxX = null, maxY = null;
+    for (let i = 0; i < bv.length; i++) {
+      const vx = bv[i].x || 0;
+      const vy = bv[i].y || 0;
+      if (minX === null || vx < minX) minX = vx;
+      if (minY === null || vy < minY) minY = vy;
+      if (maxX === null || vx > maxX) maxX = vx;
+      if (maxY === null || vy > maxY) maxY = vy;
+    }
+
+    let bx = minX || 0, by = minY || 0;
+    const bw = Math.max(1, (maxX || 0) - bx);
+    const bh = Math.max(1, (maxY || 0) - by);
+
+    if (pdfRotation === 270) {
+      const nx = by;
+      const ny = Math.max(0, imgW - (bx + bw));
+      bx = nx; by = ny;
+    } else if (pdfRotation === 90) {
+      const nx = Math.max(0, imgH - (by + bh));
+      const ny = bx;
+      bx = nx; by = ny;
+    } else if (pdfRotation === 180) {
+      bx = Math.max(0, imgW - (bx + bw));
+      by = Math.max(0, imgH - (by + bh));
+    }
+
+    blockItems.push({ bx, by, text: blockText });
+  });
+
+  if (blockItems.length === 0) return "";
+  blockItems.sort((a, b) => (a.by - b.by) || (a.bx - b.bx));
+
+  const rows = [];
+  let currentRow = [blockItems[0]];
+  let anchorY = blockItems[0].by;
+
+  for (let i = 1; i < blockItems.length; i++) {
+    const item = blockItems[i];
+    if (Math.abs(item.by - anchorY) <= 24) {
+      currentRow.push(item);
+    } else {
+      rows.push(currentRow);
+      currentRow = [item];
+      anchorY = item.by;
+    }
+  }
+  rows.push(currentRow);
+
+  return rows.map(row => {
+    row.sort((a, b) => a.bx - b.bx);
+    return row.map(cell => cell.text).join(" | ");
+  }).join("\n");
 }
 
 /**
@@ -811,4 +1085,22 @@ function getProjectDrawingFullData(projectCode) {
   }
 }
 
-
+function enforceAiGuard_(actionKey, imagesArray, maxImages, maxPerMinute) {
+  if (!Array.isArray(imagesArray) || imagesArray.length === 0) {
+    throw new Error("Dữ liệu ảnh đầu vào không hợp lệ.");
+  }
+  if (imagesArray.length > maxImages) {
+    throw new Error(`Vượt giới hạn số trang cho phép (tối đa ${maxImages} trang/lần).`);
+  }
+  const staff = (typeof GLOBAL_STAFF_NAME === "string" && GLOBAL_STAFF_NAME) ? GLOBAL_STAFF_NAME : "UNKNOWN";
+  if (staff === "UNKNOWN") {
+    throw new Error("UNAUTHORIZED: Yêu cầu xác thực người dùng trước khi gọi AI.");
+  }
+  const cache = CacheService.getScriptCache();
+  const rateKey = `AI_RATE_${actionKey}_${staff}`;
+  const curCount = parseInt(cache.get(rateKey) || "0", 10);
+  if (curCount >= maxPerMinute) {
+    throw new Error(`Bạn đã vượt giới hạn tần suất AI (${maxPerMinute} lượt/phút). Vui lòng đợi 1 phút.`);
+  }
+  cache.put(rateKey, String(curCount + 1), 60);
+}

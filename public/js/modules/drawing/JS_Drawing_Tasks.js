@@ -780,16 +780,128 @@
     );
   }
 
-  // =========================================================================
-  // AI EXTRACTION ENGINE (CHẠY NGẦM KHÔNG CHẶN CHUYỂN NODE)
-  // =========================================================================
-  async function slicePDFEngine(buffer) {
-    const pdfDoc = await PDFLib.PDFDocument.load(buffer);
-    const newDoc = await PDFLib.PDFDocument.create();
-    const pages = Array.from({ length: Math.min(4, pdfDoc.getPageCount()) }, (_, i) => i);
-    const copied = await newDoc.copyPages(pdfDoc, pages);
-    copied.forEach(p => newDoc.addPage(p));
-    return btoa(new Uint8Array(await newDoc.save()).reduce((d, b) => d + String.fromCharCode(b), ""));
+  function isRenderedCanvasBlank(srcCanvas) {
+    const sw = 80, sh = 110;
+    const sample = document.createElement("canvas");
+    sample.width = sw;
+    sample.height = sh;
+    const sCtx = sample.getContext("2d", { willReadFrequently: true });
+    sCtx.drawImage(srcCanvas, 0, 0, sw, sh);
+    const data = sCtx.getImageData(0, 0, sw, sh).data;
+
+    let darkPixels = 0;
+    const total = sw * sh;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      if (gray < 185) darkPixels++;
+    }
+    sample.width = 0;
+    sample.height = 0;
+    return (darkPixels / total) * 100 < 0.1;
+  }
+
+  function countHorizontalGridLines(canvas) {
+    const w = canvas.width, h = canvas.height;
+    if (!w || !h) return 0;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const xProbes = [Math.floor(w * 0.35), Math.floor(w * 0.5), Math.floor(w * 0.65)];
+    let maxLines = 0;
+
+    for (const x of xProbes) {
+      const startY = Math.floor(h * 0.15), endY = Math.floor(h * 0.85);
+      const imgData = ctx.getImageData(x, startY, 1, endY - startY).data;
+      let lines = 0, inLine = false;
+
+      for (let i = 0; i < imgData.length; i += 4) {
+        const isDark = (imgData[i] * 0.299 + imgData[i + 1] * 0.587 + imgData[i + 2] * 0.114) < 180;
+        if (isDark && !inLine) { inLine = true; lines++; }
+        else if (!isDark && inLine) { inLine = false; }
+      }
+      if (lines > maxLines) maxLines = lines;
+    }
+    return maxLines;
+  }
+
+  async function renderPdfPagesToImagesForAI(buffer, fileType = "UPDATE") {
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    const images = [];
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    // PĐX tối đa 3 trang văn bản hành chính; BVCN tối đa 8 trang danh mục
+    const MAX_SAFE_PAGES = (fileType === "PROPOSAL") ? 3 : 8;
+
+    try {
+      for (let p = 1; p <= Math.min(MAX_SAFE_PAGES, pdf.numPages); p++) {
+        const page = await pdf.getPage(p);
+
+        // CHỐT CHẶN 0ms (Trang 1): Kiểm tra text vector nếu file có sẵn layer văn bản số
+        if (p === 1) {
+          try {
+            const tc = await page.getTextContent();
+            if (tc && tc.items && tc.items.length > 15) {
+              const p1Text = tc.items.map(it => it.str || "").join(" ").toLowerCase();
+              const p1Norm = typeof removeVietnameseDiacritics === "function" ? removeVietnameseDiacritics(p1Text) : p1Text;
+              const isUpdateValid = p1Norm.includes("danh muc phan phoi");
+              const isProposalValid = p1Norm.includes("phieu de xuat") || p1Norm.includes("de xuat") || p1Norm.includes("pdx");
+
+              if (fileType === "UPDATE" && !isUpdateValid) {
+                console.warn(`[AI Pipeline] Dừng ngay lập tức tại Trang 1: File không chứa tiêu đề Danh mục phân phối.`);
+                page.cleanup();
+                break;
+              }
+              if (fileType === "PROPOSAL" && !isProposalValid) {
+                console.warn(`[AI Pipeline] Dừng ngay lập tức tại Trang 1: File không chứa tiêu đề Phiếu đề xuất.`);
+                page.cleanup();
+                break;
+              }
+            }
+          } catch (probeErr) {}
+        }
+
+        const vp1 = page.getViewport({ scale: 1.0 });
+
+        // CHỐT CHẶN 1 (0ms): Nếu gặp trang Khổ Ngang (A3/A2/A1 bản vẽ đính kèm) -> Dừng ngay lập tức!
+        if (vp1.width > vp1.height) {
+          console.log(`[AI Pipeline] Dừng quét tại Trang ${p}: Phát hiện bắt đầu sang trang Bản vẽ Khổ Ngang (${Math.round(vp1.width)}x${Math.round(vp1.height)}).`);
+          page.cleanup();
+          break;
+        }
+
+        const longSide = Math.max(vp1.width, vp1.height) || 842;
+        const ocrScale = Math.min(1.8, 1400 / longSide);
+        const viewport = page.getViewport({ scale: ocrScale });
+
+        canvas.width = Math.max(1, Math.floor(viewport.width));
+        canvas.height = Math.max(1, Math.floor(viewport.height));
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        await page.render({ canvasContext: ctx, viewport: viewport, intent: "print" }).promise;
+        page.cleanup();
+
+        if (isRenderedCanvasBlank(canvas)) {
+          continue;
+        }
+
+        // CHỐT CHẶN 2: Với BVCN, kiểm tra vạch kẻ bảng; với PĐX, bỏ qua kiểm tra vạch kẻ
+        if (fileType === "UPDATE" && p > 1) {
+          const gridLineCount = countHorizontalGridLines(canvas);
+          if (gridLineCount < 6) {
+            console.log(`[AI Pipeline] Dừng quét tại Trang ${p}: Không còn phát hiện lưới bảng biểu danh mục (Chỉ có ${gridLineCount} vạch kẻ).`);
+            break;
+          }
+        }
+
+        const b64 = canvas.toDataURL("image/jpeg", 0.72).replace(/^data:image\/\w+;base64,/, "");
+        images.push(b64);
+        console.log(`[AI Pipeline] -> Đã nhận diện Trang hợp lệ: Trang ${p} (${fileType})`);
+      }
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+      try { pdf.destroy(); } catch (e) {}
+    }
+    return images;
   }
 
   function updateAiButtonUI(fileId) {
@@ -819,21 +931,21 @@
   }
 
   async function extractFromCurrentSelected(isConfirmed = false) {
-    const targetFileId = S.currentFileId;
-    const targetProjectCode = S.selectedProjectDrawing;
+    let targetFileId = S.currentFileId;
+    let targetProjectCode = S.selectedProjectDrawing;
     if (!targetFileId || S.activeAiFiles.has(targetFileId)) return;
 
-    const targetNode = S.cyInstance ? S.cyInstance.getElementById(targetFileId) : null;
-    const fileType = (targetNode && targetNode.length > 0) ? targetNode.data("type") : "UPDATE";
-    const targetFileName = (targetNode && targetNode.length > 0) ? (targetNode.data("fullName") || targetNode.data("label") || targetFileId) : targetFileId;
-    const cleanFileName = targetFileName.replace(/\.(pdf|xlsx|xls)$/i, "");
+    let targetNode = S.cyInstance ? S.cyInstance.getElementById(targetFileId) : null;
+    let fileType = (targetNode && targetNode.length > 0) ? targetNode.data("type") : "UPDATE";
+    let targetFileName = (targetNode && targetNode.length > 0) ? (targetNode.data("fullName") || targetNode.data("label") || targetFileId) : targetFileId;
+    let cleanFileName = targetFileName.replace(/\.(pdf|xlsx|xls)$/i, "");
 
-    const hasExistingData = S.drawingTaskCache[targetFileId] && S.drawingTaskCache[targetFileId].length > 0;
+    let hasExistingData = S.drawingTaskCache[targetFileId] && S.drawingTaskCache[targetFileId].length > 0;
 
     if (hasExistingData && !isConfirmed) {
-      const zone = document.getElementById("ai-paste-zone");
-      const mainMsg = document.getElementById("ai-main-msg");
-      const subMsg = document.getElementById("ai-sub-msg");
+      let zone = document.getElementById("ai-paste-zone");
+      let mainMsg = document.getElementById("ai-main-msg");
+      let subMsg = document.getElementById("ai-sub-msg");
       if (zone && mainMsg && subMsg) {
         zone.classList.add("ai-zone-alert");
         mainMsg.style.color = "#fff";
@@ -847,31 +959,32 @@
     updateAiButtonUI(targetFileId);
 
     (async () => {
-      try {
-        if (typeof PDFLib === "undefined" && typeof lazyLoadDrawingLibs === "function") {
-          await lazyLoadDrawingLibs();
-        }
+      let perfStart = performance.now();
+      console.log(`%c[AI Pipeline] 🚀 BẮT ĐẦU: "${cleanFileName}" (${fileType})`, "color: #00BCD4; font-weight: bold; font-size: 12px;");
 
+      try {
         let fileBuffer = null;
 
+        // BƯỚC 1: TẢI FILE NHỊ PHÂN
+        let tBinaryStart = performance.now();
         try {
-          const base64Res = await serverCall("getFileBase64ForAI", targetFileId);
+          let base64Res = await serverCall("getFileBase64ForAI", targetFileId);
           if (base64Res && typeof base64Res === "string" && !base64Res.startsWith("{")) {
-            const binary = atob(base64Res);
-            const bytes = new Uint8Array(binary.length);
+            let binary = atob(base64Res);
+            let bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
             fileBuffer = bytes.buffer;
           }
         } catch (fastErr) {
-          console.warn("[Fast-Path Bypassed]: Chuyển sang luồng Drive Stream.");
+          console.warn("[AI Pipeline] Fast-path thất bại, chuyển tải trực tiếp Stream.");
         }
 
         if (!fileBuffer) {
-          const streamInfo = await serverCall("getDriveFileStreamInfo_Backend", targetFileId);
+          let streamInfo = await serverCall("getDriveFileStreamInfo_Backend", targetFileId);
           if (!streamInfo || !streamInfo.downloadUrl || !streamInfo.token) {
             throw new Error("Không thể kết nối tải tệp từ Google Drive.");
           }
-          const driveResp = await fetch(streamInfo.downloadUrl, {
+          let driveResp = await fetch(streamInfo.downloadUrl, {
             headers: { Authorization: "Bearer " + streamInfo.token }
           });
           if (!driveResp.ok) {
@@ -879,27 +992,42 @@
           }
           fileBuffer = await driveResp.arrayBuffer();
         }
+        let durBinary = ((performance.now() - tBinaryStart) / 1000).toFixed(2);
+        console.log(`%c[AI Pipeline] [1/4] Tải file PDF nhị phân: ${durBinary}s (${(fileBuffer.byteLength / 1048576).toFixed(2)} MB)`, "color: #90CAF9;");
 
-        const sliced = await slicePDFEngine(fileBuffer);
-        const res = await serverCall("extractDataOnly", sliced, "application/pdf", fileType);
+        // BƯỚC 2: RENDER PDF SANG CANVAS ẢNH
+        let tRenderStart = performance.now();
+        let imagesBase64 = await renderPdfPagesToImagesForAI(fileBuffer, fileType);
+        let durRender = ((performance.now() - tRenderStart) / 1000).toFixed(2);
+        console.log(`%c[AI Pipeline] [2/4] Render PDF.js ra ${imagesBase64.length} trang ảnh A4: ${durRender}s`, "color: #80CBC4;");
+
+        // BƯỚC 3: GỌI BACKEND CLOUD VISION + GEMINI TEXT-ONLY
+        let tBackendStart = performance.now();
+        let res = await serverCall("extractDataFromImages", imagesBase64, fileType);
+        let durBackend = ((performance.now() - tBackendStart) / 1000).toFixed(2);
+        console.log(`%c[AI Pipeline] [3/4] Backend Vision OCR + Gemini Text: ${durBackend}s`, "color: #CE93D8; font-weight: bold;");
+
         if (!res || res.error) {
           throw new Error(res?.error || "AI không thể nhận diện dữ liệu bản vẽ.");
         }
 
-        let tasks = res.notes || [];
-        const unique = [];
-        const seen = new Set();
+        // BƯỚC 4: LỌC TRÙNG VÀ LƯU DATABASE SHEET
+        let tSaveStart = performance.now();
+        let tasks = (res && Array.isArray(res.notes)) ? res.notes : [];
+        let unique = [];
+        let seen = new Set();
         tasks.forEach(t => {
-          const n = (t.note || "").trim();
+          let n = (typeof t === "object" && t ? (t.note || "") : String(t || "")).trim();
+          let dept = (typeof t === "object" && t && t.dept) ? t.dept : "XD";
           if (n !== "" && !seen.has(n.toUpperCase())) {
-            unique.push({ note: n, dept: (t.dept || "XD").toUpperCase() === "MEP" ? "MEP" : "XD" });
+            unique.push({ note: n, dept: dept.toUpperCase() === "MEP" ? "MEP" : "XD" });
             seen.add(n.toUpperCase());
           }
         });
 
         await serverCall("batchAddTasksBackend", targetProjectCode, targetFileId, unique, isConfirmed);
 
-        const newTasksList = unique.map((t, idx) => ({
+        let newTasksList = unique.map((t, idx) => ({
           taskId: "T-" + Date.now() + "-" + idx,
           fileId: targetFileId,
           description: t.note,
@@ -907,7 +1035,7 @@
         }));
         S.drawingTaskCache[targetFileId] = newTasksList;
 
-        const projKey = (targetProjectCode || "").toUpperCase().trim();
+        let projKey = (targetProjectCode || "").toUpperCase().trim();
         if (S.projectFullDataCache_Drawing[projKey] && S.projectFullDataCache_Drawing[projKey].tasks) {
           if (isConfirmed) {
             S.projectFullDataCache_Drawing[projKey].tasks = S.projectFullDataCache_Drawing[projKey].tasks.filter(t => t.fileId !== targetFileId);
@@ -915,9 +1043,16 @@
           S.projectFullDataCache_Drawing[projKey].tasks.push(...newTasksList);
         }
 
+        let durSave = ((performance.now() - tSaveStart) / 1000).toFixed(2);
+        let durTotal = ((performance.now() - perfStart) / 1000).toFixed(2);
+
+        console.log(`%c[AI Pipeline] [4/4] Lưu Database Task_Log: ${durSave}s (${unique.length} hạng mục)`, "color: #A5D6A7;");
+        console.log(`%c[AI Pipeline] ✔ HOÀN THÀNH XUẤT SẮC TOÀN TIẾN TRÌNH: ${durTotal}s (Binary: ${durBinary}s | Render: ${durRender}s | AI Backend: ${durBackend}s | Save: ${durSave}s)`, "color: #00E676; font-weight: bold; font-size: 12px;");
+
         showToast_PL(`🚀 Đã trích xuất xong: <b>${cleanFileName}</b>`, "success");
       } catch (err) {
-        console.error(`[AI Error] ${targetFileId}:`, err);
+        let durFailed = ((performance.now() - perfStart) / 1000).toFixed(2);
+        console.error(`%c[AI Pipeline] ❌ THẤT BẠI sau ${durFailed}s: ${err.message || err}`, "color: #FF5252; font-weight: bold;", err);
         showToast_PL(`⚠️ Lỗi AI [${cleanFileName}]: ${err.message || err}`, "error");
       } finally {
         S.activeAiFiles.delete(targetFileId);
