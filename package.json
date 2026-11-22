@@ -1,0 +1,11 @@
+{
+  "name": "ken-edoc",
+  "version": "1.0.0",
+  "private": true,
+  "bin": {
+    "gdp": "./gdp.js"
+  },
+  "scripts": {
+    "gdp": "node gdp.js"
+  }
+}
