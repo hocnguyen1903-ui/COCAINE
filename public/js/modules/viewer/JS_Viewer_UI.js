@@ -1213,10 +1213,6 @@
       return;
     }
 
-    if (typeof showToast_PL === "function") {
-      showToast_PL("🚀 Đang số hóa lại tài liệu bằng AI...", "success");
-    }
-
     S.AUTO_REPAIR_ATTEMPTED.delete(S.currentFileId);
     S.currentSessionEpoch++;
     delete S.SESSION_MANIFEST_CACHE[S.currentFileId];

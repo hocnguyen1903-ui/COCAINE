@@ -48,8 +48,7 @@
     }
 
     const totalHeader = res.headers.get("Content-Length");
-    const totalBytes = totalHeader ? parseInt(totalHeader, 10) : 0;
-    if (!totalBytes) return res;
+    const totalBytes = (totalHeader ? parseInt(totalHeader, 10) : 0) || (S.currentManifest?.pdfByteLength || 0);
 
     const reader = res.body.getReader();
     const chunks = [];
@@ -140,7 +139,11 @@
         token = await getDriveTokenAsync();
         res = await fetchDriveMedia(fileId, token, onProgress);
       }
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      if (!res.ok) {
+        const err = new Error("HTTP " + res.status);
+        if (res.status === 403 || res.status === 404) err.skipRange = true;
+        throw err;
+      }
       const buf = await res.arrayBuffer();
       ST.saveLocalPdfBinary(fileId, buf).catch(() => {});
       return buf;
@@ -148,25 +151,28 @@
       if (err.name === "AbortError" || err.message === "ABORTED_BY_USER") {
         throw new Error("ABORTED_BY_USER");
       }
-      console.warn("CDN lỗi, tải theo dải byte:", err);
-      try {
-        const ranged = await fetchPdfByByteRanges(fileId, onProgress);
-        ST.saveLocalPdfBinary(fileId, ranged).catch(() => {});
-        return ranged;
-      } catch (rangeErr) {
-        if (rangeErr.name === "AbortError" || rangeErr.message === "ABORTED_BY_USER") {
-          throw new Error("ABORTED_BY_USER");
+      if (!err.skipRange) {
+        console.warn("CDN lỗi, tải theo dải byte:", err);
+        try {
+          const ranged = await fetchPdfByByteRanges(fileId, onProgress);
+          ST.saveLocalPdfBinary(fileId, ranged).catch(() => {});
+          return ranged;
+        } catch (rangeErr) {
+          if (rangeErr.name === "AbortError" || rangeErr.message === "ABORTED_BY_USER") {
+            throw new Error("ABORTED_BY_USER");
+          }
+          console.warn("Chuyển làn dự phòng Apps Script:", rangeErr);
         }
-        console.warn("Chuyển làn dự phòng Apps Script:", rangeErr);
-        const fallbackBuf = await fetchPdfBase64Adaptive(fileId, onProgress);
-        ST.saveLocalPdfBinary(fileId, fallbackBuf).catch(() => {});
-        return fallbackBuf;
       }
+      const fallbackBuf = await fetchPdfBase64Adaptive(fileId, onProgress);
+      ST.saveLocalPdfBinary(fileId, fallbackBuf).catch(() => {});
+      return fallbackBuf;
     }
   }
 
   function fetchPdfBase64Adaptive(fileId, onProgress) {
-    if (S.currentFileSizeMB <= S.LARGE_FILE_THRESHOLD_MB) {
+    const effectiveMB = S.currentFileSizeMB || (S.currentManifest?.pdfByteLength ? S.currentManifest.pdfByteLength / 1048576 : 0);
+    if (effectiveMB > 0 && effectiveMB <= S.LARGE_FILE_THRESHOLD_MB) {
       return new Promise(function(resolve, reject) {
         googleScriptRun
           .withSuccessHandler(function(b64) {
@@ -647,11 +653,18 @@
     console.log(`%c🚀 BẮT ĐẦU SỐ HÓA: "${uploadFileName}"`, "color: #FFBA08; font-size: 13px; font-weight: bold;");
     console.log(`%c======================================================`, "color: #FFBA08; font-weight: bold;");
 
-    U.updateProcessProgress(5, "Đang chuẩn bị tài liệu...");
+    U.updateProcessProgress(Math.max(5, Math.round(S.currentLoaderPct)), "Đang chuẩn bị tài liệu...");
 
+    const dlStartPct = Math.max(5, Math.round(S.currentLoaderPct));
     const dataSourcePromise = isLocalUpload
       ? localFileObj.arrayBuffer()
-      : (preloadedBuffer ? Promise.resolve(preloadedBuffer) : fetchPdfDirectOrFallback(fileId));
+      : (preloadedBuffer
+          ? Promise.resolve(preloadedBuffer)
+          : fetchPdfDirectOrFallback(fileId, (loaded, total) => {
+              if (myEpoch !== S.currentSessionEpoch || !total) return;
+              const dlPct = dlStartPct + Math.round((loaded / total) * Math.max(1, 20 - dlStartPct));
+              U.updateProcessProgress(Math.min(20, dlPct), "Đang chuẩn bị tài liệu...");
+            }));
 
     dataSourcePromise
       .then(async function(rawPdfData) {
@@ -969,6 +982,7 @@ async function ensurePdfPreloaded(fileId, endPct = 95) {
       if (!ov || ov.style.display !== "flex") {
         U.showLoading("LOADING DOCUMENT", 5);
       }
+      U.startSoftProgress(Math.max(5, S.currentLoaderPct), 75, 0.015);
 
       let streamStartPct = null;
       pdfData = await fetchPdfDirectOrFallback(fileId, (loaded, total) => {
@@ -977,7 +991,9 @@ async function ensurePdfPreloaded(fileId, endPct = 95) {
         if (streamStartPct === null) {
           streamStartPct = S.currentLoaderPct;
         }
-        const ratio = total > 0 ? Math.min(1, loaded / total) : 0;
+        const ratio = total > 0
+          ? Math.min(1, loaded / total)
+          : Math.min(0.92, 1 - Math.exp(-loaded / (8 * 1024 * 1024)));
         const pct = streamStartPct + ratio * (endPct - streamStartPct);
         if (pct > S.currentLoaderPct) {
           U.updateLoaderProgress(pct);
@@ -1247,7 +1263,7 @@ async function ensurePdfPreloaded(fileId, endPct = 95) {
       return;
     }
 
-    U.startSoftProgress(0, 35, 0.035);
+    U.startSoftProgress(0, 12, 0.035);
     checkDriveCacheWithRetry(fileId, S.currentFileName, 1);
   }
 

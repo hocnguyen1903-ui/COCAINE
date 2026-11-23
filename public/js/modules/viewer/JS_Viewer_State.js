@@ -478,9 +478,10 @@
       ov.style.display = "flex";
     }
 
-    updateLoaderProgress(Math.max(S.currentLoaderPct, p));
+    const syncedPct = isSuccess ? 100 : Math.max(Math.round(S.currentLoaderPct), p);
+    updateLoaderProgress(syncedPct);
     if (sub) {
-      sub.textContent = isSuccess ? `(${stageText})` : `(${stageText} ${p}%)`;
+      sub.textContent = isSuccess ? `(${stageText})` : `(${stageText} ${syncedPct}%)`;
     }
 
     if (isSuccess) {
