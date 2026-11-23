@@ -998,10 +998,12 @@
     const activePage = parseInt(input ? input.value : "1", 10) || 1;
 
     setTimeout(() => {
-      if (!isFull && typeof syncPrvSplitLayout_PL === "function") {
+      const tabPL = document.getElementById("tab-plhd");
+      const isPreviewOpen = Boolean(tabPL && tabPL.classList.contains("split-preview-active") && S.currentFileId);
+      if (!isFull && isPreviewOpen && typeof syncPrvSplitLayout_PL === "function") {
         syncPrvSplitLayout_PL();
       }
-      if (window.BconsViewer && typeof window.BconsViewer.refreshFitWidth === "function") {
+      if (window.BconsViewer && isPreviewOpen && typeof window.BconsViewer.refreshFitWidth === "function") {
         window.BconsViewer.refreshFitWidth(activePage);
       }
     }, 120);
