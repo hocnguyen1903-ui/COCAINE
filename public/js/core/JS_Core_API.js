@@ -419,6 +419,7 @@ async function callBackend(action, data = {}, retries = 1) {
         "callCloudVisionApiBatch",
         "saveDriveCacheFast",
         "overwritePdfFile_Backend",
+        "getPdfOverwriteSession_Backend",        
     ];
 
     if (writeActions.includes(action)) {

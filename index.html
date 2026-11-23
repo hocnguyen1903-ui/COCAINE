@@ -1015,21 +1015,6 @@
             </div>
         </div>
 
-        <!-- THANH TIẾN TRÌNH SỐ HÓA JIT -->
-        <div id="proc-progress-box" style="position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 480px; z-index: 1000; display: none;">
-            <div class="proc-info-row">
-                <span id="proc-stage-text">[1/4] ĐANG ĐỒNG BỘ DỮ LIỆU...</span>
-                <span id="proc-percent-text" style="color: #FFBA08;">0%</span>
-            </div>
-            <div class="proc-bar-track">
-                <div id="proc-bar-fill" class="proc-bar-fill"></div>
-            </div>
-            <div class="proc-warning">
-                <i class="bi bi-exclamation-triangle-fill"></i>
-                <span>Vui lòng không đóng trình duyệt trong lúc hệ thống đang đồng bộ...</span>
-            </div>
-        </div>
-
         <div class="dock-preview-body" style="position: relative; overflow: hidden; display: flex; flex-direction: column;">
             <div id="viewport-container" style="flex: 1; width: 100%; height: 100%;"></div>
 
@@ -1063,7 +1048,10 @@
                             <div id="viewer-progress-fill" class="viewer-progress-fill"></div>
                         </div>
                     </div>
-                    <p id="loading-text" class="loader-text">LOADING DOCUMENT</p>
+                    <div class="viewer-loader-text-group">
+                        <p id="loading-text" class="loader-text">LOADING DOCUMENT</p>
+                        <p id="loading-subtext" class="loader-subtext"></p>
+                    </div>
                 </div>
             </div>
         </div>

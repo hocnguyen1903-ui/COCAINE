@@ -1221,6 +1221,23 @@
     S.currentSessionEpoch++;
     delete S.SESSION_MANIFEST_CACHE[S.currentFileId];
 
+    // Dọn trang trắng cũ & ẩn thanh điều khiển để giao diện giống 100% lần số hóa đầu
+    cancelAllPageRenders();
+    if (S.pageObserver) {
+      S.pageObserver.disconnect();
+      S.pageObserver = null;
+    }
+    SR.clearSearchState();
+
+    const vp = document.getElementById("viewport-container");
+    if (vp) {
+      vp.style.visibility = "hidden";
+      vp.innerHTML = "";
+    }
+    const pageInd = document.getElementById("page-indicator");
+    if (pageInd) pageInd.style.display = "none";
+
+    U.showLoading("LOADING DOCUMENT", 0);
     BV.pipeline.processAndOptimizeFileJIT(S.currentFileId);
   };
 

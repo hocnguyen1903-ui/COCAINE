@@ -597,6 +597,7 @@ function doPost(e) {
     "makeFilePublicAndGetLink": () => makeFilePublicAndGetLink(Array.isArray(payload) ? payload[0] : (payload?.fileId || payload)),
     "markScanDigitized_PL": () => markScanDigitized_PL(payload),
     "overwritePdfFile_Backend": () => overwritePdfFile_Backend(payload?.[0], payload?.[1]),
+    "getPdfOverwriteSession_Backend": () => getPdfOverwriteSession_Backend(payload?.[0], payload?.[1], payload?.[2]),
   };
 
   try {

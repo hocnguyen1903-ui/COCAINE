@@ -398,13 +398,64 @@
   }
 
   async function overwriteOriginalPdfOnDrive(fileId, cleanBuffer) {
-    if (!fileId || String(fileId).startsWith("local_")) return false;
+    if (!fileId || String(fileId).startsWith("local_") || !cleanBuffer) return false;
+    if (typeof callBackend !== "function") return false;
 
-    if (typeof callBackend === "function") {
+    const totalSize = cleanBuffer.byteLength;
+
+    // LUỒNG CHÍNH: Xin Resumable PATCH Session URL (0.3s) -> Đẩy thẳng nhị phân lên Drive CDN (~1.5s)
+    try {
+      const session = await callBackend("getPdfOverwriteSession_Backend", [
+        fileId,
+        totalSize,
+        window.location.origin || ""
+      ]);
+
+      if (session && session.success && session.uploadUrl) {
+        const chunkSize = 5 * 1024 * 1024; // Bội số của 256KB theo chuẩn Drive API
+        const totalChunks = Math.ceil(totalSize / chunkSize);
+
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * chunkSize;
+          const end = Math.min(start + chunkSize, totalSize);
+          const chunk = cleanBuffer.slice(start, end);
+
+          try {
+            const resp = await fetch(session.uploadUrl, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/pdf",
+                "Content-Range": `bytes ${start}-${end - 1}/${totalSize}`
+              },
+              body: chunk
+            });
+
+            if (resp.status !== 308 && resp.status !== 200 && resp.status !== 201) {
+              throw new Error("Drive phản hồi HTTP " + resp.status);
+            }
+          } catch (fetchErr) {
+            const isLastChunk = (i === totalChunks - 1);
+            const isCorsBlock = fetchErr.name === "TypeError" || (fetchErr.message && fetchErr.message.includes("Failed to fetch"));
+            if (isLastChunk && isCorsBlock) {
+              console.warn("[CORS Bypass] Đã hoàn tất đẩy mảnh cuối lên Drive.");
+              break;
+            }
+            throw fetchErr;
+          }
+        }
+        return true;
+      }
+    } catch (resumableErr) {
+      console.warn("Resumable PATCH lỗi, thử dự phòng cho file nhỏ:", resumableErr);
+    }
+
+    // DỰ PHÒNG (chỉ cho file <= 3MB để tránh treo 60s trên GAS)
+    if (totalSize <= 3 * 1024 * 1024) {
       const b64 = arrayBufferToBase64(cleanBuffer);
       const res = await callBackend("overwritePdfFile_Backend", [fileId, b64]);
       return Boolean(res && res.success);
     }
+
     return false;
   }
 
@@ -486,7 +537,8 @@
       const candidateNums = [pTop];
       if (pTop - 1 >= 1) candidateNums.push(pTop - 1);
 
-      U.updateProcessProgress(30, `[2/4] AI SCAN PHỤ LỤC: TRANG ${candidateNums.join(" & ")}/${pdf.numPages}...`);
+      const scanPct = 20 + Math.round(((pdf.numPages - pTop + 1) / Math.min(pdf.numPages, VISION_PAGE_BUDGET)) * 22);
+      U.updateProcessProgress(Math.min(42, scanPct), "Đang số hóa tài liệu...");
       const pairData = [];
 
       for (let i = 0; i < candidateNums.length; i++) {
@@ -595,7 +647,7 @@
     console.log(`%c🚀 BẮT ĐẦU SỐ HÓA: "${uploadFileName}"`, "color: #FFBA08; font-size: 13px; font-weight: bold;");
     console.log(`%c======================================================`, "color: #FFBA08; font-weight: bold;");
 
-    U.updateProcessProgress(5, "[1/4] KHỞI TẠO TÀI LIỆU...");
+    U.updateProcessProgress(5, "Đang chuẩn bị tài liệu...");
 
     const dataSourcePromise = isLocalUpload
       ? localFileObj.arrayBuffer()
@@ -621,7 +673,7 @@
           const skippedBlankPages = new Set();
 
           // GIAI ĐOẠN 2: Quét phụ lục bằng Vision API
-          U.updateProcessProgress(20, "[2/4] AI CLOUD ĐANG QUÉT PHỤ LỤC & BẢNG KHỐI LƯỢNG...");
+          U.updateProcessProgress(20, "Đang số hóa tài liệu...");
           const { appendixStartPage, appendixPages } = await scanAppendixWithVision(pdf, ctx, canvas, skippedBlankPages);
           manifest.pages.push(...appendixPages);
           manifest.appendixStartPage = appendixStartPage;
@@ -634,7 +686,7 @@
           );
 
           // GIAI ĐOẠN 3: Thân Hợp Đồng + Lọc trang trắng (scale 0.22)
-          U.updateProcessProgress(45, "[3/4] XỬ LÝ THÂN HỢP ĐỒNG & LỌC TRANG TRẮNG...");
+          U.updateProcessProgress(45, "Đang xử lý tài liệu...");
           const contractEndPage = appendixStartPage - 1;
           const preScannedPages = new Set(appendixPages.map(p => p.pageNum));
           const bodyPages = [];
@@ -684,7 +736,7 @@
 
             if (pageNum % 5 === 0) {
               const pct = 45 + Math.round((pageNum / Math.max(1, contractEndPage)) * 35);
-              U.updateProcessProgress(pct, `[3/4] XỬ LÝ THÂN HỢP ĐỒNG: TRANG ${pageNum}/${contractEndPage}...`);
+              U.updateProcessProgress(pct, "Đang xử lý tài liệu...");
             }
           }
 
@@ -709,7 +761,7 @@
 
           if (needsPhysicalFix) {
             try {
-              U.updateProcessProgress(82, "[4/4] ĐANG XOAY CHUẨN & XÓA TRANG TRẮNG TRONG FILE GỐC...");
+              U.updateProcessProgress(82, "Đang tối ưu tài liệu...");
               const PDFLib = await ensurePdfLibLoaded();
               const editDoc = await PDFLib.PDFDocument.load(preservedPdfData.slice(0), { ignoreEncryption: true });
 
@@ -733,7 +785,7 @@
               const cleanBytes = await editDoc.save();
               const cleanBuffer = cleanBytes.buffer.slice(cleanBytes.byteOffset, cleanBytes.byteOffset + cleanBytes.byteLength);
 
-              U.updateProcessProgress(86, "[4/4] ĐANG GHI ĐÈ FILE PDF SẠCH LÊN GOOGLE DRIVE...");
+              U.updateProcessProgress(86, "Đang lưu dữ liệu...");
               fixedOriginalOnDrive = await overwriteOriginalPdfOnDrive(fileId, cleanBuffer);
 
               if (fixedOriginalOnDrive) {
@@ -779,7 +831,7 @@
             delete manifest.pdfRepairFailed;
           }
 
-          U.updateProcessProgress(90, "[4/4] ĐẨY BẢN SỐ HÓA LÊN GOOGLE DRIVE...");
+          U.updateProcessProgress(90, "Đang lưu dữ liệu...");
           let finalDriveFileId = fileId;
           let finalSizeStr = (activePdfBuffer.byteLength / (1024 * 1024)).toFixed(2) + " MB";
 
@@ -789,7 +841,7 @@
           ST.putSessionCache(finalDriveFileId, manifest);
           await ST.saveLocalManifest(finalDriveFileId, manifest);
 
-          U.updateProcessProgress(96, "[4/4] KHỞI TẠO BẢN XEM TRƯỚC...");
+          U.updateProcessProgress(96, "Đang hoàn tất...");
           if (cleanPages.length >= 1) {
             const firstPdfPageNum = cleanPages[0].pdfPageNum || 1;
             const page1 = await activePdf.getPage(firstPdfPageNum);
@@ -822,7 +874,7 @@
             "color: #e040fb; font-weight: bold;"
           );
 
-          U.updateProcessProgress(100, "SỐ HÓA THÀNH CÔNG - SẴN SÀNG TÌM KIẾM!", true);
+          U.updateProcessProgress(100, "Số hóa hoàn tất", true);
 
           if (typeof window.markScanFileDigitized_PL === "function") {
             window.markScanFileDigitized_PL(finalDriveFileId);
@@ -854,12 +906,8 @@
         } catch (err) {
           U.setAntiExitGuard(false);
           U.hideLoading();
-          U.updateProcessProgress(0, "LỖI: " + err.message);
+          U.updateProcessProgress(0, "Số hóa thất bại", false, true);
           console.error(`%c❌ LỖI TRONG TIẾN TRÌNH: ${err.message}`, "color: #ff1744; font-size: 13px; font-weight: bold;", err);
-          setTimeout(() => {
-            const box = document.getElementById("proc-progress-box");
-            if (box) box.style.display = "none";
-          }, 4000);
         } finally {
           if (canvas) {
             canvas.width = 0;

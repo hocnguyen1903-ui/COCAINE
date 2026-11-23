@@ -427,15 +427,19 @@
   function showLoading(msg, initialPercent = 0) {
     stopSoftProgress();
     const txt = document.getElementById("loading-text");
+    const sub = document.getElementById("loading-subtext");
     const ov = document.getElementById("loading-overlay");
     if (txt) txt.textContent = msg;
+    if (sub) sub.textContent = "";
     if (initialPercent !== null) updateLoaderProgress(initialPercent);
     if (ov) ov.style.display = "flex";
   }
 
   function hideLoading() {
     stopSoftProgress();
+    const sub = document.getElementById("loading-subtext");
     const ov = document.getElementById("loading-overlay");
+    if (sub) sub.textContent = "";
     if (ov) ov.style.display = "none";
     stopBackgroundKeepAlive();
   }
@@ -451,32 +455,39 @@
     }
   }
 
-  function updateProcessProgress(percent, stageText, isSuccess = false) {
+  function updateProcessProgress(percent, stageText, isSuccess = false, isError = false) {
     stopSoftProgress();
-    const box = document.getElementById("proc-progress-box");
-    const fill = document.getElementById("proc-bar-fill");
-    const txtStage = document.getElementById("proc-stage-text");
-    const txtPercent = document.getElementById("proc-percent-text");
+    const ov = document.getElementById("loading-overlay");
+    const txt = document.getElementById("loading-text");
+    const sub = document.getElementById("loading-subtext");
 
-    if (!box || !fill) return;
-    box.style.display = "flex";
+    if (isError) {
+      setAntiExitGuard(false);
+      hideLoading();
+      if (typeof showToast_PL === "function") {
+        showToast_PL("⚠️ " + (stageText || "Số hóa thất bại"), "error");
+      }
+      return;
+    }
 
     const p = Math.max(0, Math.min(100, Math.round(percent)));
+
+    if (ov && ov.style.display !== "flex") {
+      S.currentLoaderPct = 0;
+      if (txt && !txt.textContent) txt.textContent = "LOADING DOCUMENT";
+      ov.style.display = "flex";
+    }
+
     updateLoaderProgress(Math.max(S.currentLoaderPct, p));
-    fill.style.width = p + "%";
-    if (txtPercent) txtPercent.textContent = p + "%";
-    if (txtStage) txtStage.textContent = stageText;
+    if (sub) {
+      sub.textContent = isSuccess ? `(${stageText})` : `(${stageText} ${p}%)`;
+    }
 
     if (isSuccess) {
-      fill.classList.add("success");
-      if (txtPercent) txtPercent.style.color = "#00e676";
-      if (txtStage) txtStage.textContent = "✔ " + stageText;
       setAntiExitGuard(false);
-      setTimeout(() => {
-        box.style.display = "none";
-        fill.classList.remove("success");
-        if (txtPercent) txtPercent.style.color = "#FFBA08";
-      }, 2500);
+      if (typeof showToast_PL === "function") {
+        showToast_PL("✔ Số hóa tài liệu hoàn tất!", "success");
+      }
     }
   }
 

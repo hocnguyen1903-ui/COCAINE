@@ -918,3 +918,61 @@ function overwritePdfFile_Backend(fileId, base64Data) {
     lock.releaseLock();
   }
 }
+
+/**
+ * Khởi tạo phiên Resumable PATCH dùng 1 lần để Client ghi đè trực tiếp PDF sạch lên Drive
+ * (Không lộ OAuth Token + Kiểm tra IDOR siêu tốc bằng Sheets REST API)
+ */
+function getPdfOverwriteSession_Backend(fileId, fileSize, clientOrigin) {
+  try {
+    if (!fileId || !fileSize) throw new Error("Thiếu fileId hoặc kích thước tệp.");
+    const targetId = String(fileId).trim();
+
+    // 1. CHỐNG IDOR SIÊU TỐC (~150ms) qua Google Sheets REST API v4
+    const resSheets = Sheets.Spreadsheets.Values.batchGet(SHEET_ID, {
+      ranges: ["SO HDTCXD BCONS - NTP!P3:P", "Drawing_Log!B2:B"]
+    });
+    const ranges = resSheets.valueRanges || [];
+    const scanRows = (ranges[0]?.values || []).flat();
+    const drawRows = (ranges[1]?.values || []).flat();
+
+    const isPermitted =
+      scanRows.some(v => v && String(v).includes(targetId + "|")) ||
+      drawRows.some(v => v && String(v).trim() === targetId);
+
+    if (!isPermitted) {
+      throw new Error("BẢO MẬT: Tệp tin không thuộc phạm vi hồ sơ được quản lý!");
+    }
+
+    // 2. Xin phiên Resumable PATCH chỉ áp dụng cho đúng targetId
+    const apiURL = `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(targetId)}?uploadType=resumable&supportsAllDrives=true`;
+    const headers = {
+      Authorization: "Bearer " + ScriptApp.getOAuthToken(),
+      "Content-Type": "application/json; charset=UTF-8",
+      "X-Upload-Content-Type": "application/pdf",
+      "X-Upload-Content-Length": String(fileSize)
+    };
+    if (clientOrigin) {
+      headers["Origin"] = String(clientOrigin).trim();
+    }
+
+    const response = UrlFetchApp.fetch(apiURL, {
+      method: "patch",
+      headers: headers,
+      payload: "{}",
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      throw new Error("Drive từ chối phiên ghi đè (" + response.getResponseCode() + "): " + response.getContentText());
+    }
+
+    const respHeaders = response.getHeaders();
+    const uploadUrl = respHeaders["Location"] || respHeaders["location"];
+    if (!uploadUrl) throw new Error("Không nhận được đường dẫn Resumable PATCH.");
+
+    return { success: true, uploadUrl: uploadUrl };
+  } catch (e) {
+    throw new Error("Lỗi khởi tạo phiên ghi đè PDF: " + e.message);
+  }
+}
