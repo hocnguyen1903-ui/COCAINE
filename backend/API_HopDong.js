@@ -1,0 +1,392 @@
+// =========================================================================
+// 3. LOGIC XUẤT FILE HỢP ĐỒNG GỐC (HDTCXD) & THÔNG BÁO KẾT QUẢ (TBKQ)
+// =========================================================================
+
+// ==========================================
+// --- NHÓM HÀM HỖ TRỢ DÙNG CHUNG (HELPERS) ---
+// ==========================================
+
+function extractYearFromDateString(dateStr) {
+  if (!dateStr) return new Date().getFullYear().toString();
+  const match = dateStr.match(/\b(20\d{2})\b/);
+  if (match) return match[1];
+  return new Date().getFullYear().toString();
+}
+
+function getNextRowAfterLastData_SO(sheet, startRow, colB, colE) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < startRow) return startRow;
+  const maxCol = Math.max(colB, colE);
+  const values = sheet.getRange(startRow, 1, lastRow - startRow + 1, maxCol).getValues();
+  
+  let lastDataRowOffset = -1;
+  for (let i = 0; i < values.length; i++) {
+    const valB = values[i][colB - 1].toString().trim();
+    const valE = values[i][colE - 1].toString().trim();
+    if (valB !== "" || valE !== "") {
+      lastDataRowOffset = i; 
+    }
+  }
+  return lastDataRowOffset === -1 ? startRow : startRow + lastDataRowOffset + 1;
+}
+
+function getContractTemplateId_HD(type) {
+  const ids = {
+    "BCONS": "1DghIQwP3P5YmsHPKjyw1Uw1ZnOskLKAN3yR18TAgkZM",
+    "DBCONS": "1gQ1RqteS09IURX4O63KcQZ1BbpHMBMiEtD7jtO31l3Y"
+  };
+  return ids[type];
+}
+
+function createContractFile_HD(id, name) {
+  let destinationFolder;
+  try {
+    destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
+  } catch(e) {
+    throw new Error("Tài khoản không có quyền truy cập Thư mục xuất file (EXPORT_FOLDER_ID).");
+  }
+
+  let file;
+  try {
+    file = DriveApp.getFileById(id).makeCopy(name, destinationFolder);
+  } catch(e) {
+    throw new Error("Không thể nhân bản File Mẫu Hợp đồng. Kiểm tra quyền truy cập Template: " + e.message);
+  }
+
+  // Bọc an toàn: Bỏ qua lỗi nếu Google Drive chặn quyền bật Link Sharing Public Edit
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+  } catch(shareErr) {
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch(shareErr2) {
+      console.warn("Bỏ qua lỗi setSharing do chính sách bảo mật Google Drive: " + shareErr2.message);
+    }
+  }
+
+  return file;
+}
+
+function escapeSpecialChars(s) { 
+  return s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'); 
+}
+
+// ==========================================
+// --- PHÂN HỆ: HỢP ĐỒNG GỐC (HDTCXD) ---
+// ==========================================
+
+function getLatestContractNumber_TB(targetYear) {
+  const year = String(targetYear || new Date().getFullYear()).trim();
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME_SO_TB);
+  if (!sheet) return "00";
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 3) return "00";
+
+  // Đọc đồng thời Cột B (Ngày ký) và Cột C (Số công văn)
+  const data = sheet.getRange(3, 2, lastRow - 2, 2).getValues(); 
+  let maxStt = 0;
+
+  for (let i = 0; i < data.length; i++) {
+    const rawDate = data[i][0];
+    // Loại bỏ khoảng trắng thừa để tránh lỗi gõ nhầm (vd: "115 / TB" thành "115/TB")
+    const valCV = (data[i][1] || "").toString().replace(/\s+/g, "");
+    
+    // Regex bắt: (Nhóm 1: Số thứ tự) / (Nhóm 2: Năm - nếu có) /
+    // VD 1: "115/2026/TB" -> match[1]="115", match[2]="2026"
+    // VD 2: "114/TB"      -> match[1]="114", match[2]=undefined
+    const match = valCV.match(/^(\d+)\/(?:(\d{4})\/)?/);
+    if (!match) continue;
+
+    const sttStr = match[1];
+    const stringYear = match[2];
+    let isSameYear = false;
+
+    if (stringYear) {
+      // Ưu tiên 1: Lấy số năm trực tiếp trong chuỗi mã số
+      isSameYear = (stringYear === year);
+    } else {
+      // Ưu tiên 2: Nếu mã số không có năm, lấy năm từ cột Ngày ký
+      if (rawDate instanceof Date) {
+        isSameYear = (rawDate.getFullYear().toString() === year);
+      } else if (rawDate) {
+        isSameYear = rawDate.toString().includes(year);
+      }
+    }
+
+    // Nếu xác nhận đúng là của năm mục tiêu thì so sánh tìm số lớn nhất
+    if (isSameYear) {
+      const stt = parseInt(sttStr, 10);
+      if (stt > maxStt) maxStt = stt;
+    }
+  }
+  
+  return String(maxStt).padStart(2, '0');
+}
+
+function handleFullExportProcess_HD(formData) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); 
+    var targetYear = extractYearFromDateString(formData.date);
+    var extractedField2 = formData.field2.includes(" | ") ? formData.field2.split(" | ")[0].trim() : formData.field2;
+    var extractedField3 = formData.field3.includes(" | ") ? formData.field3.split(" | ")[0].trim() : formData.field3;
+    
+    // Đưa ra ngoài để dùng chung cho cả Hợp đồng gốc và Dự thảo
+    var packageNameRaw = formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0;
+
+    if (!formData.draftContract) {
+      var lastNumber = getLatestContractNumber_HD(targetYear); 
+      var nextNo = String(parseInt(lastNumber, 10) + 1).padStart(2, '0');
+
+      formData.field8 = `${nextNo}/${targetYear}/HĐTCXD-${extractedField2}/${formData.location}-${extractedField3}`;
+      
+      var packageName = packageNameRaw.toUpperCase().replace(/[^A-Z0-9\sĐƯÁÀẢÃẠÂẤẦẨẪẬĂẮẰẲẴẶÉÈẺẼẸÊẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴ]/g, "");
+      formData.fileName = `${extractedField2}_${nextNo}_${targetYear}_${packageName}_${extractedField3}`;
+    } else {
+      formData.field8 = `.../${targetYear}/HĐTCXD-${extractedField2}/${formData.location}-${extractedField3}`;
+      // Cấu trúc mới: Mã dự án_Dự thảo hợp đồng_Tên viết tắt của gói thầu
+      formData.fileName = `${extractedField2}_Dự thảo hợp đồng_${packageNameRaw}`;
+    }
+
+    return writeToSheetAndExportDoc_HD(formData);
+  } catch (e) {
+    throw new Error(e.message);
+  } finally {
+    lock.releaseLock(); 
+  }
+}
+
+function writeToSheetAndExportDoc_HD(data) {
+    try {
+        const spreadsheet = SpreadsheetApp.openById(SHEET_ID);
+        const sourceSheet = spreadsheet.getSheetByName("HDTCXD");
+        if (!sourceSheet) throw new Error("Không tìm thấy sheet HDTCXD.");
+
+        // 1. GHI SHEET MỒI
+        const inputValues = [[
+            data.location || "", data.date || "", data.field8 || "", data.field2 || "",
+            data.field0 || "", data.field4 || "", data.field6 || "", data.field5 || "",
+            data.field7 || "", data.field3 || "", data.field1 || ""
+        ]];
+        sourceSheet.getRange("A3:K3").setValues(inputValues);
+
+        const radioValues = [[
+            data.radioOption2 || "", data.pl01 || "", data.radioOption || ""
+        ]];
+        sourceSheet.getRange("BH4:BJ4").setValues(radioValues);
+
+        SpreadsheetApp.flush(); 
+
+        const lastCol = sourceSheet.getLastColumn();
+        const allRow3Values = sourceSheet.getRange(3, 1, 1, lastCol).getValues()[0];
+        const allRow3Displays = sourceSheet.getRange(3, 1, 1, lastCol).getDisplayValues()[0];
+        const placeholders = sourceSheet.getRange(2, 1, 1, lastCol).getDisplayValues()[0];
+
+        // 2. GHI SỔ THEO DÕI VÀ ĐÁNH DẤU SHEET X
+        if (!data.draftContract) {
+            const targetSheet = spreadsheet.getSheetByName("SO HDTCXD BCONS - NTP");
+            const targetRow = getNextRowAfterLastData_SO(targetSheet, 3, 2, 5);
+            const jValue = getCurrentStaffName();
+
+            const valH3 = allRow3Values[7]; 
+            const valBI3 = allRow3Values[60]; 
+            const valBJ3 = allRow3Values[61]; 
+
+            const tickQ = (valH3 !== "" && valH3 !== 0 && valH3 !== "0") ? "x" : "";
+            const tickR = (valBI3 == 303) ? "x" : "";
+            const tickS = (valBJ3 == 309) ? "x" : "";
+
+            // Ghi 18 cột từ cột B (NGÀY KÝ) đến cột S (Checklist S) trên Sổ Gốc
+            const logValues = [[
+                allRow3Values[49], allRow3Values[8], "", data.field8, "",
+                allRow3Values[45], allRow3Values[21], allRow3Values[26], jValue,
+                allRow3Values[5], allRow3Values[6], "", "",
+                "", "", tickQ, tickR, tickS // Cột O (Bàn giao), P (Scan File), Q, R, S
+            ]];
+            targetSheet.getRange(targetRow, 2, 1, 18).setValues(logValues);
+        }
+
+        // 3. TẠO VÀ XỬ LÝ DOCS
+        const docTemplateId = getContractTemplateId_HD(data.location);
+        if (!docTemplateId) throw new Error("Không tìm thấy mẫu hợp đồng: " + data.location);
+
+        const copiedFile = createContractFile_HD(docTemplateId, data.fileName);
+        const doc = DocumentApp.openById(copiedFile.getId());
+        const body = doc.getBody();
+
+        const replaceKeys = placeholders.slice(1);
+        const replaceVals = allRow3Displays.slice(1);
+
+        replaceKeys.forEach((key, i) => {
+            if (key && key.trim().startsWith("[")) {
+                body.replaceText(escapeSpecialChars(key.trim()), replaceVals[i] || "");
+            }
+        });
+
+        const sectionData = allRow3Values.slice(54, 76);
+        const validSections = new Set(sectionData.map(v => v ? v.toString().trim() : null).filter(Boolean));
+        
+        optimizeDocSections(body, validSections);
+
+        doc.saveAndClose();
+                
+        return { link: copiedFile.getUrl() };
+
+    } catch (error) {
+        throw new Error("Hệ thống không thể xuất file: " + error.message);
+    }
+}
+
+// ==========================================
+// --- PHÂN HỆ: THÔNG BÁO KẾT QUẢ (TBKQ) ---
+// ==========================================
+
+function getLatestContractNumber_TB(targetYear) {
+  const year = String(targetYear || new Date().getFullYear()).trim();
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME_SO_TB);
+  if (!sheet) return "00";
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 3) return "00";
+
+  // SỬ DỤNG getDisplayValues() ĐỂ ÉP ĐỌC ĐÚNG CHUỖI KÝ TỰ HIỂN THỊ (TRÁNH LỖI ĐỊNH DẠNG DATE)
+  const data = sheet.getRange(3, 2, lastRow - 2, 2).getDisplayValues(); 
+  let maxStt = 0;
+
+  for (let i = 0; i < data.length; i++) {
+    const strDate = (data[i][0] || "").toString().trim(); // Ví dụ: "24/11/2026"
+    const valCV = (data[i][1] || "").toString().replace(/\s+/g, ""); // Ví dụ: "115/TB/..."
+    
+    // Bắt số thứ tự ở ngay đầu chuỗi (Ví dụ: lấy "115" từ "115/TB/...")
+    const match = valCV.match(/^(\d+)\//);
+    if (!match) continue;
+    const stt = parseInt(match[1], 10);
+
+    let isSameYear = false;
+
+    // ƯU TIÊN 1: Kiểm tra xem trong mã có chứa số năm không (Ví dụ bắt "2026" từ "112/2026/TB/...")
+    const yearMatchInCV = valCV.match(/^\d+\/(\d{4})\//);
+
+    if (yearMatchInCV) {
+      // Nếu có năm trong mã số, bắt buộc phải khớp với năm mục tiêu (year)
+      isSameYear = (yearMatchInCV[1] === year);
+    } else {
+      // ƯU TIÊN 2: Nếu mã số KHÔNG có năm (Ví dụ: "115/TB/..."), đối chiếu với cột Ngày ký
+      isSameYear = strDate.includes(year);
+    }
+
+    // Nếu dòng này thuộc đúng năm mục tiêu, so sánh để tìm số lớn nhất
+    if (isSameYear && stt > maxStt) {
+      maxStt = stt;
+    }
+  }
+  
+  return String(maxStt).padStart(2, '0');
+}
+
+function handleFullExportProcess_TB(formData) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000); 
+    const targetYear = extractYearFromDateString(formData.date);
+    const lastNumber = getLatestContractNumber_TB(targetYear);
+    const nextNo = String(parseInt(lastNumber, 10) + 1).padStart(2, '0');
+
+    formData.field6 = `${nextNo}/${targetYear}/TB/KĐT-BCONS`;
+    
+    // Tách Mã dự án và Tên viết tắt gói thầu
+    const projectName = formData.field1.includes(" | ") ? formData.field1.split(" | ")[0].trim() : formData.field1.trim();
+    const packageNameRaw = formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0.trim();
+    
+    // Cấu trúc mới: Mã dự án_TBKQGT_Tên viết tắt gói thầu
+    formData.fileName = `${projectName}_TBKQGT_${packageNameRaw}`;
+
+    return writeToSheetAndExportDoc_TB(formData);
+  } catch (e) { 
+    throw new Error(e.message); 
+  } finally {
+    lock.releaseLock(); 
+  }
+}
+
+function writeToSheetAndExportDoc_TB(data) {
+  try {
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sourceSheet = ss.getSheetByName(SHEET_NAME_TBKQ);
+    
+    sourceSheet.getRange("A3:I3").setValues([[
+      data.location, data.date, data.field6, data.field1, 
+      data.field2, data.field3, data.field0, data.field4, data.field5
+    ]]);
+    
+    sourceSheet.getRange("K3").setValue(data.fieldPkgName);
+
+    SpreadsheetApp.flush(); 
+
+    const lastCol = sourceSheet.getLastColumn();
+    const batchData = sourceSheet.getRange(2, 2, 2, lastCol - 1).getDisplayValues();
+    const placeholders = batchData[0];
+    const rowValues = batchData[1];
+
+    // GHI SỔ THEO DÕI (SO THONG BAO)
+    const targetSheet = ss.getSheetByName(SHEET_NAME_SO_TB);
+    const targetRow = getNextRowAfterLastData_SO(targetSheet, 3, 2, 3);
+    const sender = getCurrentStaffName();
+
+    const combinedProjects = [rowValues[15], rowValues[18], rowValues[21]].filter(Boolean).join(", ");
+    const logContent = "TB TRÚNG THẦU + THƯ CẢM ƠN VÀ THÔNG BÁO KẾT QUẢ GÓI THẦU: " + rowValues[8];
+
+    targetSheet.getRange(targetRow, 2, 1, 5).setValues([[
+      rowValues[13],
+      data.field6,
+      combinedProjects,
+      logContent,
+      sender
+    ]]);
+
+    // TẠO VÀ XỬ LÝ DOCS (BỌC BẢO VỆ QUYỀN TRUY CẬP)
+    const docTemplateId = "1oyp4fMSu-AJuLY6Dvb7zZX6R1FjYLDreLBaoOsEDhEc";
+    
+    let destinationFolder;
+    try {
+        destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
+    } catch(e) {
+        throw new Error("Tài khoản không có quyền chỉnh sửa Thư mục đích (EXPORT_FOLDER).");
+    }
+
+    let copiedFile;
+    try {
+        copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(data.fileName, destinationFolder);
+    } catch(e) {
+        throw new Error("Không thể nhân bản File Mẫu Thông báo. Kiểm tra lại quyền truy cập.");
+    }
+    
+    // Bỏ qua lỗi nếu Google Workspace chặn quyền bật Link Sharing Public
+    try {
+        copiedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+    } catch(shareErr) {
+        console.warn("Bỏ qua lỗi setSharing do chính sách bảo mật nội bộ Workspace chặn: " + shareErr.message);
+    }
+    
+    const doc = DocumentApp.openById(copiedFile.getId());
+    const body = doc.getBody();
+
+    placeholders.forEach((key, i) => {
+      if (key && key.trim().startsWith("[")) {
+        body.replaceText(escapeSpecialChars(key.trim()), rowValues[i] || "");
+      }
+    });
+
+    const validSectionsArray = rowValues.slice(24, 28).map(v => v ? v.toString().trim() : null).filter(Boolean);
+    const validSections = new Set(validSectionsArray);
+    
+    if (validSections.size > 0) {
+      optimizeDocSections(body, validSections);
+    }
+
+    doc.saveAndClose();
+    return { link: copiedFile.getUrl() };
+
+  } catch (e) { 
+    throw new Error("Lỗi Backend TBKQ: " + e.message); 
+  }
+}

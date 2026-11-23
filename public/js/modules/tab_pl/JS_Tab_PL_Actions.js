@@ -1,0 +1,352 @@
+
+// ==========================================================================
+// 3. HỆ THỐNG MENU CHUỘT PHẢI (CONTEXT MENU)
+// ==========================================================================
+
+/**
+ * Hiển thị Menu chuột phải tùy chỉnh tại vị trí click
+ */
+function showContextMenu_PL(event, element, maHD, isTransferred) {
+    event.preventDefault(); 
+    event.stopPropagation();
+    
+    // 1. Tắt Tooltip Note nếu đang hiện
+    if (typeof globalTooltip !== 'undefined') globalTooltip.classList.remove('show-tooltip');
+
+    // 2. Nạp dữ liệu & Highlight dòng đang chọn
+    currentTransferData_PL = { maHD, isTransferred };
+    if (currentTransferElement_PL) currentTransferElement_PL.classList.remove("context-menu-active");
+    currentTransferElement_PL = element;
+    currentTransferElement_PL.classList.add("context-menu-active");
+
+    const ctxMenu = document.getElementById("customContextMenu-pl");
+    
+    // 3. Tính toán tọa độ hiển thị chuẩn theo tỷ lệ zoom 0.8
+    const z = 0.8;
+    let x = event.clientX / z;
+    let y = event.clientY / z;
+    const maxW = window.innerWidth / z;
+    const maxH = window.innerHeight / z;
+    const menuWidth = 230;
+    const menuHeight = 160;
+
+    if (x + menuWidth > maxW) x = maxW - (menuWidth + 10);
+    if (y + menuHeight > maxH) y = maxH - (menuHeight + 10);
+    
+    ctxMenu.style.left = x + "px"; 
+    ctxMenu.style.top = y + "px";
+
+    // 4. Kiểm tra trạng thái File Scan để hiển thị nhãn menu tương ứng (Mở trực tiếp trên web)
+    const itemData = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === maHD);
+    const hasScan = !!(itemData && itemData.scanId);
+    
+    const statusClass = isTransferred ? 'ctx-danger' : 'ctx-success';
+    const statusText = isTransferred ? 'Cancel Transfer' : 'Transfer Records';
+
+    // KHÔI PHỤC BÁNH RĂNG GỐC (<i class="bi bi-gear-fill"></i>) VÀ THẲNG HÀNG 100% VỚI CÁC DÒNG TRÊN
+    ctxMenu.innerHTML = `
+        <div class="ctx-menu-item ${statusClass}" onclick="confirmTransfer_PL()"><span>${statusText}</span></div>
+        <div class="ctx-menu-item ctx-edit" onclick="openEditPanel_PL('${escapeStr(maHD)}')"><span>Edit Data</span></div>
+        <div class="ctx-menu-item ctx-gear-item" onclick="openScanPanel_PL('${escapeStr(maHD)}')">
+            <i class="bi bi-gear-fill"></i>
+            <span>Manage Files</span>
+        </div>
+    `;
+
+    // 5. Kích hoạt hiệu ứng hiển thị
+    ctxMenu.classList.add("active");
+}
+
+/**
+ * Đóng Menu chuột phải và gỡ highlight
+ */
+function closeContextMenu_PL() {
+    const ctx = document.getElementById("customContextMenu-pl");
+    if (ctx) ctx.classList.remove("active");
+    if (currentTransferElement_PL) currentTransferElement_PL.classList.remove("context-menu-active");
+}
+
+// ==========================================================================
+// 4. LOGIC BẢNG CHỈNH SỬA DỮ LIỆU (EDIT PANEL)
+// ==========================================================================
+
+/**
+ * Mở bảng chọn mục cần chỉnh sửa
+ */
+function openEditPanel_PL(maHD) {
+    closeContextMenu_PL();
+    editingMaHD_PL = maHD;
+    
+    // Tìm dữ liệu chi tiết của dòng
+    currentEditItemData = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === maHD) || {};
+    
+    // Quay về màn hình chọn mục
+    backToSelector_PL();
+    
+    const panel = document.getElementById('edit-panel-pl');
+    if (panel) {
+        panel.classList.add('active');
+        panel.style.display = "flex";
+    }
+    
+    // Làm mờ Dashboard phía sau để tập trung xử lý
+    const list = document.getElementById('dropdown-field0-pl');
+    if(list) list.classList.add('list-dashboard-locked');
+}
+
+function closeEditPanel_PL() {
+    const panel = document.getElementById('edit-panel-pl');
+    if (panel) panel.classList.remove('active');
+    
+    const list = document.getElementById('dropdown-field0-pl');
+    if(list) list.classList.remove('list-dashboard-locked');
+    document.getElementById('main-search-container-pl').style.zIndex = "1000";
+}
+
+/**
+ * Hiển thị giao diện chọn hạng mục sửa (Mã, Ngày, Gói thầu, Giá trị)
+ */
+function backToSelector_PL() {
+    const headerTitle = document.getElementById('ep-header-title');
+    if (headerTitle) {
+        headerTitle.innerHTML = `
+            <span style="color: #95A1AF; font-size: 10px; font-weight: 500; letter-spacing: 0.5px;">CHỌN NỘI DUNG CẦN ĐIỀU CHỈNH:</span><br>
+            <span style="color: #FFBA08; font-size: 13px; font-weight: 700;">${editingMaHD_PL}</span>
+        `;
+    }
+    document.getElementById('ep-view-selector').style.display = "flex";
+    document.getElementById('ep-view-editor').style.display = "none";
+}
+
+/**
+ * Chuyển sang màn hình nhập liệu cho hạng mục đã chọn
+ */
+function selectEditCategory_PL(type, labelName) {
+    currentEditType = type;
+    document.getElementById('ep-header-title').innerHTML = `
+        <span style="color: #95A1AF; font-size: 10px; font-weight: 500; letter-spacing: 0.5px;">SỬA ${labelName.toUpperCase()}:</span><br>
+        <span style="color: #FFBA08; font-size: 13px; font-weight: 700;">${editingMaHD_PL}</span>
+    `;
+    document.getElementById('ep-editor-label').textContent = `Nhập ${labelName} mới:`;
+    
+    const input = document.getElementById('ep-input-val');
+    const updateBtn = document.querySelector('#ep-footer-normal .btn-primary-luxury');
+
+    // Đổ dữ liệu cũ vào để sếp sửa
+    if (type === "CONTRACT_NO") input.value = editingMaHD_PL;
+    else if (type === "DATE") input.value = currentEditItemData.dateH || "";
+    else if (type === "PACKAGE") input.value = currentEditItemData.packageI || "";
+    else if (type === "VALUE") {
+        let val = (currentEditItemData.valueK || "").toString().replace(/\D/g, "");
+        input.value = val.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
+
+    originalEditValue = input.value;
+
+    // Ban đầu khóa nút Update cho đến khi có thay đổi thực sự
+    if (updateBtn) {
+        updateBtn.disabled = true;
+        updateBtn.style.opacity = "0.3";
+    }
+
+    input.oninput = function() {
+        if (currentEditType === 'VALUE') formatInput_PL(this);
+        if (updateBtn) {
+            const isChanged = this.value.trim() !== originalEditValue && this.value.trim() !== "";
+            updateBtn.disabled = !isChanged;
+            updateBtn.style.opacity = isChanged ? "1" : "0.3";
+        }
+    };
+
+    document.getElementById('ep-view-selector').style.display = "none";
+    document.getElementById('ep-view-editor').style.display = "flex";
+    input.focus();
+    input.select();
+}
+
+/**
+ * Gửi dữ liệu cập nhật lên Server (Sheet)
+ */
+function submitEdit_PL() {
+    const val = document.getElementById('ep-input-val').value.trim();
+    const oldMaHD = editingMaHD_PL;
+
+    // 1. Sao lưu dữ liệu cũ của dòng để phục vụ Rollback nếu gặp lỗi mạng
+    const originalValues = {
+        maHD: currentEditItemData.maHD,
+        dateH: currentEditItemData.dateH,
+        packageI: currentEditItemData.packageI,
+        note: currentEditItemData.note,
+        valueK: currentEditItemData.valueK,
+        c: currentEditItemData.c,
+        display: currentEditItemData.display
+    };
+
+    // 2. CẬP NHẬT GIẢ ĐỊNH (Optimistic UI Update) trên RAM
+    if (currentEditType === "CONTRACT_NO") {
+        currentEditItemData.maHD = val;
+    } else if (currentEditType === "DATE") {
+        currentEditItemData.dateH = val;
+    } else if (currentEditType === "PACKAGE") {
+        currentEditItemData.packageI = val; 
+        currentEditItemData.note = val;
+    } else if (currentEditType === "VALUE") {
+        currentEditItemData.valueK = val; 
+        currentEditItemData.c = val;
+    }
+
+    // Định dạng lại hiển thị dòng tiền tệ tương thích
+    let formattedMoney = (currentEditItemData.valueK || "").toString().replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    currentEditItemData.display = `${currentEditItemData.maHD} | ${currentEditItemData.packageI} | ${formattedMoney}`;
+
+    // 3. Cập nhật Dashboard giao diện lập tức và đóng biểupanel nhập liệu
+    PRECOMPUTED_PL_DATA = null; 
+    executeFilter_PL(false); 
+    closeEditPanel_PL();
+
+    showToast_PL(`🟢 Đã lưu thay đổi!`, 'success');
+
+    // 4. Gửi lệnh xử lý ngầm lên máy chủ
+    callBackend("updateContractData_PL", [oldMaHD, currentEditType, val])
+        .then(res => {
+            if (res) {
+                // Nếu đổi mã số hợp đồng, cập nhật lại tham chiếu toàn cục
+                if (currentEditType === "CONTRACT_NO") {
+                    editingMaHD_PL = val;
+                }
+                loadSystemData(true); // đồng bộ ngầm dữ liệu sạch
+            } else {
+                throw new Error("Không có phản hồi xác thực từ máy chủ.");
+            }
+        })
+        .catch(err => {
+            // Khôi phục dữ liệu gốc nếu cập nhật ngầm xảy ra lỗi
+            Object.assign(currentEditItemData, originalValues);
+            PRECOMPUTED_PL_DATA = null;
+            executeFilter_PL(false);
+            showToast_PL(`⚠️ Đồng bộ chỉnh sửa dữ liệu ${oldMaHD} thất bại! Đã khôi phục dữ liệu gốc.`, "error");
+            loadSystemData(true);
+        });
+}
+
+// ==========================================================================
+// 5. LOGIC BÀN GIAO HỒ SƠ (TRANSFER LOGIC)
+// ==========================================================================
+
+/**
+ * Mở bảng Checklist bàn giao hồ sơ
+ */
+function openCancelTransferModal_PL(maHD) {
+    const overlay = document.getElementById('cancel-transfer-confirm-overlay');
+    const dialog = overlay ? overlay.querySelector('.scan-delete-dialog') : null;
+    const maText = document.getElementById('cancel-transfer-mahd');
+    if (overlay && maText) {
+        maText.textContent = maHD;
+        overlay.style.display = 'flex';
+        setTimeout(() => {
+            overlay.style.opacity = '1';
+            if (dialog) dialog.style.transform = 'scale(1)';
+        }, 10);
+    }
+}
+
+function closeCancelTransferModal_PL() {
+    const overlay = document.getElementById('cancel-transfer-confirm-overlay');
+    const dialog = overlay ? overlay.querySelector('.scan-delete-dialog') : null;
+    if (overlay) {
+        overlay.style.opacity = '0';
+        if (dialog) dialog.style.transform = 'scale(0.9)';
+        setTimeout(() => { overlay.style.display = 'none'; }, 200);
+    }
+}
+
+function executeActualCancelTransfer_PL() {
+    closeCancelTransferModal_PL();
+    if (!currentTransferData_PL || !currentTransferData_PL.isTransferred) return;
+    executeTransferScript_PL("");
+}
+
+function confirmTransfer_PL() {
+    if (!currentTransferData_PL) return;
+    const { maHD, isTransferred } = currentTransferData_PL;
+
+    // Nếu đã bàn giao rồi -> Hiển thị hộp thoại xác nhận Yes/No trước khi Hủy bàn giao
+    if (isTransferred) { 
+        closeContextMenu_PL(); 
+        openCancelTransferModal_PL(maHD);
+        return;
+    }
+
+    closeContextMenu_PL(); 
+    
+    const title = document.getElementById('tp-header-title');
+    if (title) {
+        title.innerHTML = `
+            <span style="color: #95A1AF; font-size: 10px;">BÀN GIAO HỒ SƠ:</span><br>
+            <span style="color: #FFBA08; font-size: 13px; font-weight: 700;">${maHD}</span>
+        `;
+    }
+    
+    document.getElementById('transfer-panel-pl').classList.add('active');
+    document.getElementById('transfer-panel-pl').style.display = 'flex';
+
+    const list = document.getElementById('dropdown-field0-pl');
+    if(list) list.classList.add('list-dashboard-locked');
+    document.getElementById('main-search-container-pl').style.zIndex = "2000";
+
+    // Xử lý tự động tick checkbox dựa trên loại hồ sơ (HĐ hay PL)
+    const checkboxes = document.querySelectorAll('#checklistOptions-pl input'); 
+    const isPL = (maHD || "").toUpperCase().startsWith("PL");
+    const itemData = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === maHD) || {};
+    
+    // Tính toán xem có giá trị tiền không
+    const hasValue = (parseFloat((itemData.c || "0").toString().replace(/\./g, '').replace(/[^\d-]/g, '')) || 0) !== 0;
+
+    checkboxes.forEach(cb => {
+        const row = cb.closest('.check-row');
+        cb.checked = false; 
+        cb.disabled = false; 
+        if (row) row.classList.remove("disabled");
+
+        if (!isPL) { 
+            // Nếu là Hợp đồng gốc
+            if (cb.value === "HĐ" || cb.value === "PDG") cb.checked = true;
+            if (cb.value === "PLHĐ") { cb.disabled = true; row?.classList.add("disabled"); }
+            if (cb.value === "DNTU" && itemData.hasQ) cb.checked = true; 
+            if (cb.value === "BLTU" && itemData.hasR) cb.checked = true; 
+            if (cb.value === "BLHĐ" && itemData.hasS) cb.checked = true; 
+        } else {
+            // Nếu là Phụ lục
+            if (cb.value === "PLHĐ") cb.checked = true;
+            if (cb.value === "PDG" && hasValue) cb.checked = true;
+            if (!["PLHĐ", "PDG", "KHÁC"].includes(cb.value)) {
+                cb.disabled = true;
+                if (row) row.classList.add("disabled");
+            }
+        }
+    });
+}
+
+function closeChecklist_PL() {
+    document.getElementById('transfer-panel-pl').classList.remove('active');
+    const list = document.getElementById('dropdown-field0-pl');
+    if(list) list.classList.remove('list-dashboard-locked');
+    document.getElementById('main-search-container-pl').style.zIndex = "1000";
+}
+
+/**
+ * Thu thập dữ liệu các hồ sơ đã chọn và gửi lệnh bàn giao
+ */
+function finalSubmitTransfer_PL() {
+    let selected = []; 
+    document.querySelectorAll('#checklistOptions-pl input:checked').forEach(cb => selected.push(cb.value));
+    
+    if (selected.length === 0) {
+        alert("Sếp phải chọn ít nhất 1 thành phần hồ sơ để bàn giao!");
+        return;
+    }
+
+    const docTypes = selected.join(" - "); 
+    closeChecklist_PL(); 
+    executeTransferScript_PL(docTypes);
+}

@@ -1,0 +1,1566 @@
+// Quản lý hàng chờ duyệt gom lô 3 giây
+let pendingApprovalBatch_PL = [];
+let approvalBatchTimer_PL = null;
+let countdownInterval_PL = null;
+let countdownSeconds_PL = 3;
+let ablyRealtime = null;
+let ablyChannel = null;
+// ==========================================================================
+// 1. NHÓM CORE / GLOBAL UI LOGIC
+// ==========================================================================
+
+const serverCall = async (serverMethodName, ...args) => {
+    try {
+        // Gom các tham số thành 1 biến payload duy nhất nếu có nhiều hơn 1 tham số
+        const payload = args.length === 1 ? args[0] : args;
+        return await callBackend(serverMethodName, payload);
+    } catch (error) {
+        throw error;
+    }
+};
+
+/**
+ * Hàm tạo ID an toàn từ Email (Tránh lỗi Crash btoa khi gặp Tiếng Việt/Ký tự đặc biệt)
+ */
+function getSafeId_PL(mail) {
+    if (!mail) return "unknown";
+    return mail.toLowerCase().replace(/[^a-z0-9]/g, ""); // Lọc sạch chỉ giữ lại chữ cái và số
+}
+
+async function openTab(tabId, triggerIntro = true) {
+    if (tabId === activeTabId && !isInitialLoad) return;
+
+    if (tabTimeout) {
+        clearTimeout(tabTimeout);
+        tabTimeout = null;
+    }
+
+    localStorage.setItem('bcons_hub_last_tab', tabId);
+    const targetTab = document.getElementById(tabId);
+    if (!targetTab) return;
+
+    // ĐỒNG BỘ: Tự động lướt tắt Dock Preview nếu đang mở khi chuyển sang tab khác
+    if (tabId !== 'tab-plhd' && typeof closePreviewModal_PL === 'function') {
+        closePreviewModal_PL(true);
+    }
+
+    // 🚀 XIN SẴN DRIVE TOKEN NGẦM KHI MỞ TAB PL (TRỊ KHỰNG 0% / 15%)
+    if (tabId === 'tab-plhd') {
+        const warmDelay = isInitialLoad ? 2000 : 450;
+        setTimeout(() => {
+            if (localStorage.getItem('bcons_session_token') && window.BconsViewer && typeof window.BconsViewer.warmToken === 'function') {
+                window.BconsViewer.warmToken();
+            }
+        }, warmDelay);
+    }
+
+    // 🚀 KHỞI TẠO ĐỒNG BỘ TỨC THÌ CHO TAB DRAWING
+    if (tabId === 'tab-drawing') {
+        const projInput = document.getElementById("drawing-project-search");
+        if (projInput) {
+            projInput.disabled = false;
+            projInput.placeholder = "Project"; // Luôn hiển thị Project, không hiện Loading
+        }
+
+        // Chỉ kích hoạt cập nhật ngầm danh sách dự án khi đã có phiên đăng nhập hợp lệ
+        const sessionTok = localStorage.getItem('bcons_session_token');
+        if (sessionTok && sessionTok.startsWith("BCONS2.") && typeof fetchActiveProjectsForDrawing === 'function') {
+            fetchActiveProjectsForDrawing();
+        }
+
+        setTimeout(async () => {
+            if (typeof lazyLoadDrawingLibs === 'function' && !isDrawingLibsLoaded) {
+                try {
+                    await lazyLoadDrawingLibs();
+                } catch (e) {
+                    console.error("Lỗi nạp thư viện khi mở Tab Drawing:", e);
+                }
+            }
+            if (typeof loadDrawingModule === 'function') {
+                loadDrawingModule(); 
+            }
+            initDrawingUploadZone();
+        }, 150);
+    }
+
+    const allTabs = document.querySelectorAll('.tab-content');
+    const currentTab = document.getElementById(activeTabId);
+
+    if (currentTab && !isInitialLoad) {
+        const currentIndex = TAB_MAP[activeTabId] || 0;
+        const targetIndex = TAB_MAP[tabId] || 0;
+
+        allTabs.forEach(t => {
+            t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
+            if (t.id !== activeTabId && t.id !== tabId) {
+                t.style.display = 'none';
+            }
+        });
+
+        if (currentIndex < targetIndex) {
+            currentTab.classList.add('slide-out-left');
+            targetTab.classList.add('slide-in-right');
+        } else {
+            currentTab.classList.add('slide-out-right');
+            targetTab.classList.add('slide-in-left');
+        }
+
+        targetTab.style.display = 'flex';
+
+        tabTimeout = setTimeout(() => {
+            allTabs.forEach(t => {
+                if (t.id !== tabId) {
+                    t.style.display = 'none';
+                    t.classList.remove('slide-out-left', 'slide-out-right');
+                }
+            });
+            tabTimeout = null;
+        }, 400);
+
+    } else {
+        allTabs.forEach(t => {
+            t.style.display = 'none';
+            t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
+        });
+        targetTab.classList.add('instant-fade');
+        targetTab.style.display = 'flex';
+    }
+
+    activeTabId = tabId;
+    
+    document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
+    const btnId = tabId === 'tab-hdtcxd' ? 'btn-hd' : tabId === 'tab-plhd' ? 'btn-pl' : tabId === 'tab-tbkq' ? 'btn-tbkq' : tabId === 'tab-drawing' ? 'btn-drawing' : 'btn-about';
+    const menuBtn = document.getElementById(btnId);
+    if (menuBtn) menuBtn.classList.add('active');
+
+    if (isInitialLoad) isInitialLoad = false;
+
+    allTabs.forEach(t => {
+        if (t.id !== tabId) {
+            const otherContainer = t.querySelector('.location-date-container');
+            if (otherContainer) otherContainer.classList.remove('active-intro');
+        }
+    });
+    const currentLocDateContainer = targetTab.querySelector('.location-date-container');
+    if (currentLocDateContainer) {
+        setTimeout(() => { currentLocDateContainer.classList.add('active-intro'); }, 150);
+    }
+
+    if (typeof updateAppScrollState === 'function') {
+        updateAppScrollState();
+    }
+}
+
+async function loadSystemData(isSilent = false) {
+    let token = localStorage.getItem('bcons_session_token');
+    if (token && !token.startsWith("BCONS2.")) {
+        localStorage.removeItem('bcons_session_token');
+        token = null;
+    }
+
+    const loading = document.getElementById("loadingSystem");
+
+    // Nếu chưa đăng nhập: không đọc cache nội bộ, không gọi getSystemData lên Server
+    if (!token) {
+        if (loading && !isSilent) {
+            loading.style.display = "flex";
+            loading.style.opacity = "1";
+            setTimeout(() => {
+                loading.style.opacity = "0";
+                setTimeout(() => {
+                    loading.style.display = "none";
+                    showLoginUI();
+                }, 350);
+            }, 2500);
+        } else {
+            showLoginUI();
+        }
+        return;
+    }
+
+    // Nếu đang mở các panel chỉnh sửa/bàn giao/scan thì không can thiệp ngầm
+    const isPanelActive = document.getElementById('edit-panel-pl')?.classList.contains('active') ||
+                          document.getElementById('transfer-panel-pl')?.classList.contains('active') ||
+                          document.getElementById('scan-panel-pl')?.classList.contains('active');
+    if (isPanelActive && isSilent) return;
+
+    const name = localStorage.getItem('bcons_staff_identity');
+    const displayEl = document.getElementById('staffNameDisplay');
+    if (displayEl && name) displayEl.textContent = name;
+
+    // 1. NẠP DỮ LIỆU TỪ CACHE MỚI NHẤT TRONG LOCALSTORAGE LẬP TỨC (0ms)
+    try {
+        const cachedRaw = localStorage.getItem('bcons_cached_system_data');
+        if (cachedRaw) {
+            const cachedData = JSON.parse(cachedRaw);
+            SYSTEM_DATA = cachedData;
+            PRECOMPUTED_PL_DATA = null;
+            pendingUsersList_PL = cachedData.pendingUsers || [];
+
+            if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
+                executeFilter_PL(false, false, true);
+            }
+            if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
+                updateContractNo_PL();
+            }
+
+            if (name) {
+                const bellContainer = document.getElementById('bellNotificationContainer');
+                if (bellContainer) {
+                    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
+                    if (currentRole.toUpperCase() === "ADMIN") {
+                        bellContainer.style.setProperty('display', 'flex', 'important');
+                    } else {
+                        bellContainer.style.setProperty('display', 'none', 'important');
+                    }
+                }
+                updateBellBadge();
+            }
+        }
+    } catch (cacheErr) {
+        console.warn("Lỗi đọc cache khởi động:", cacheErr);
+    }
+
+    // 2. KHÓA MÀN HÌNH CHỜ ĐÚNG NHỊP RỒI TỰ ĐỘNG HẠ MÀN CHE
+    if (loading && !isSilent) {
+        loading.style.display = "flex";
+        loading.style.opacity = "1";
+
+        setTimeout(() => {
+            loading.style.opacity = "0";
+            setTimeout(() => { 
+                loading.style.display = "none"; 
+            }, 350);
+        }, 2500);
+    }
+
+    // Nếu đang ở Tab Drawing (ví dụ vừa đăng nhập xong tại tab này), kích hoạt tải dự án Drawing
+    if (activeTabId === 'tab-drawing' && typeof fetchActiveProjectsForDrawing === 'function') {
+        fetchActiveProjectsForDrawing();
+    }
+
+    // 3. TẢI DỮ LIỆU TƯƠI MỚI NGẦM TRONG NỀN TỪ MÁY CHỦ (ĐÃ ĐÍNH KÈM TOKEN)
+    try {
+        const sysData = await callBackend('getSystemData');
+        if (sysData) {
+            SYSTEM_DATA = sysData;
+            PRECOMPUTED_PL_DATA = null;
+            pendingUsersList_PL = sysData.pendingUsers || [];
+
+            localStorage.setItem('bcons_cached_system_data', JSON.stringify(sysData));
+
+            if (sysData.currentUserRole) {
+                localStorage.setItem('bcons_staff_role', sysData.currentUserRole);
+            }
+
+            if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
+                executeFilter_PL(false, false, true);
+            }
+            if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
+                updateContractNo_PL();
+            }
+
+            if (name) {
+                const bellContainer = document.getElementById('bellNotificationContainer');
+                if (bellContainer) {
+                    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
+                    if (currentRole.toUpperCase() === "ADMIN") {
+                        bellContainer.style.setProperty('display', 'flex', 'important');
+                    } else {
+                        bellContainer.style.setProperty('display', 'none', 'important');
+                    }
+                }
+                updateBellBadge();
+                initAblyRealtimeConnection();
+            }
+        }
+    } catch (error) {
+        console.error("Lỗi đồng bộ ngầm máy chủ:", error);
+        const hasCache = !!localStorage.getItem('bcons_cached_system_data');
+        if (!hasCache && (!error.message || !error.message.includes("UNAUTHORIZED"))) {
+            showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng kiểm tra mạng!", "error");
+        }
+    }
+}
+
+function showFieldSmoothly(id) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.style.display = el.classList.contains('radio-container') ? 'flex' : 'block';
+        el.classList.remove('field-closing');
+        el.classList.add('field-opening');
+    }
+}
+
+function closeSmoothly(id) {
+    const el = document.getElementById(id);
+    if (el && id !== 'dropdown-field0-pl' && el.style.display !== 'none') {
+        if (el.classList.contains('smooth-dropdown')) {
+            el.style.display = 'none'; 
+        } else {
+            el.classList.remove('field-opening');
+            el.classList.add('field-closing');
+            setTimeout(() => { if(el.classList.contains('field-closing')) el.style.display = 'none'; }, 500); 
+        }
+    }
+}
+
+function closeAllDropdowns() {
+    document.querySelectorAll('#tab-hdtcxd .smooth-dropdown, #tab-tbkq .smooth-dropdown').forEach(dd => {
+        dd.classList.remove('show');
+        dd.innerHTML = ""; 
+    });
+}
+
+function showToast_PL(message, type) {
+    let toast = document.getElementById("toastNotification-pl");
+    if (!toast) { 
+        toast = document.createElement("div"); toast.id = "toastNotification-pl"; 
+        toast.style.cssText = `position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #222831; color: white; padding: 12px 25px; border-radius: 8px; font-size: 14.5px; font-weight: 500; z-index: 100000005 !important; opacity: 0; visibility: hidden; transition: all 0.3s ease-in-out; text-align: center;`;
+        document.body.appendChild(toast); 
+    }
+    toast.innerHTML = message; 
+    if (type === 'success') { toast.style.border = "1px solid #2ECC71"; toast.style.boxShadow = "0 0 15px rgba(46, 204, 113, 0.3)"; }
+    else { toast.style.border = "1px solid #ff4d4d"; toast.style.boxShadow = "0 0 15px rgba(255, 77, 77, 0.3)"; }
+    setTimeout(() => { toast.style.opacity = "1"; toast.style.visibility = "visible"; toast.style.bottom = "50px"; }, 10);
+    setTimeout(() => { toast.style.opacity = "0"; toast.style.visibility = "hidden"; toast.style.bottom = "20px"; }, 5000);
+}
+
+function showSearchGuide_PL() {
+    const modal = document.getElementById('infoModal-pl');
+    if (modal) { modal.style.display = 'flex'; setTimeout(() => modal.classList.add('show'), 10); }
+}
+
+function closeSearchGuide_PL() {
+    const modal = document.getElementById('infoModal-pl');
+    if (modal) { modal.classList.remove('show'); setTimeout(() => modal.style.display = 'none', 300); }
+}
+
+function updateAppScrollState() {
+    const activeTab = document.querySelector('.tab-content[style*="display: flex"]');
+    if (!activeTab || activeTab.id === 'tab-about') { 
+        document.body.style.overflowY = "hidden"; 
+        return; 
+    }
+    const form = activeTab.querySelector('.form-container');
+    if (form) {
+        const contentHeight = form.offsetHeight + 120; 
+        const viewportHeight = window.innerHeight;
+        
+        // 🚀 THIẾT LẬP VÙNG ĐỆM TRỄ 25PX CHỐNG RUNG LẮC (HYSTERESIS)
+        const threshold = 25; 
+        const currentOverflow = document.body.style.overflowY;
+
+        if (contentHeight > viewportHeight) {
+            // Chỉ đổi trạng thái nếu thực sự cần cuộn và trạng thái cũ chưa phải là auto
+            if (currentOverflow !== "auto") {
+                document.body.style.overflowY = "auto";
+            }
+        } else if (contentHeight < (viewportHeight - threshold)) {
+            // Chỉ ẩn thanh cuộn nếu chiều cao Form hụt hẳn dưới màn hình quá 25px
+            if (currentOverflow !== "hidden") {
+                document.body.style.overflowY = "hidden";
+                window.scrollTo(0, 0);
+            }
+        }
+    }
+}
+
+// ==========================================================================
+// 2. NHÓM API HELPERS (SERVER COMMUNICATION)
+// ==========================================================================
+
+/**
+ * 2. TẢI DỮ LIỆU BẤT ĐỒNG BỘ SONG SONG (PARALLEL FETCH)
+ */
+/* --- public/JS_Core_API.js --- */
+
+// --- CẤU HÌNH LIÊN KẾT BACKEND API ---
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0kGCpcGHAX2WgC9qQ6Mdh6eCXA4hwzbHCfhkmphOf-uxYKg0/exec";
+
+/**
+ * Thực thi gọi API đính kèm bảo mật Token
+ */
+async function callBackend(action, data = {}, retries = 1) {
+    const token = localStorage.getItem('bcons_session_token');
+
+    const publicActions = [
+        "loginUser",
+        "registerUser",
+        "forgotPassword"
+    ];
+
+    // Chỉ chặn ở Client nếu là hành động GHI mà chưa đăng nhập
+    if (!token && !publicActions.includes(action)) {
+        showLoginUI();
+        throw new Error("UNAUTHORIZED: Yêu cầu đăng nhập!");
+    }
+
+    const writeActions = [
+        "handleFullExportProcess_HD", 
+        "handleFullExportProcess_TB",
+        "writeToSheetAndExportDoc_PL", 
+        "exportToNewSpreadsheet_PL",
+        "uploadScanToDrive", 
+        "updateContractData_PL", 
+        "updateTransferStatus_PL",
+        "deleteContractRow_Backend", 
+        "deleteScanFilePermanently",
+        "batchAddTasksBackend", 
+        "updateTasksOrderBackend", 
+        "renameAndRouteDrawingFile_Backend",
+        "deleteDrawingFileAndTasks_Backend", 
+        "approveUser_InApp", 
+        "rejectUser_InApp",
+        "getDrawingUploadSession_Backend", 
+        "extractDataOnly",
+        "extractDataFromImages",
+        "forgotPassword",
+        "callCloudVisionApiBatch",
+        "saveDriveCacheFast",
+        "overwritePdfFile_Backend",
+        "getPdfOverwriteSession_Backend",        
+    ];
+
+    if (writeActions.includes(action)) {
+        retries = 0; 
+    }
+
+    const timeoutDuration = (action === "extractDataFromImages" || action === "extractDataOnly" || action === "callCloudVisionApiBatch") 
+        ? 90000 
+        : (writeActions.includes(action) ? 60000 : 30000);
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
+
+        try {
+            const resp = await fetch(GAS_API_URL, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                redirect: 'follow',
+                body: JSON.stringify({ action, data, token }),
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+
+            const rawText = await resp.text();
+            let res;
+            try {
+                res = JSON.parse(rawText);
+            } catch (jsonErr) {
+                throw new Error("Máy chủ Google đang khởi động lại hoặc trả về phản hồi không hợp lệ.");
+            }
+            
+            if (res.status === "error") {
+                if (res.message && res.message.includes("UNAUTHORIZED")) {
+                    localStorage.removeItem('bcons_session_token');
+                    localStorage.removeItem('bcons_staff_identity');
+                    localStorage.removeItem('bcons_staff_role');
+                    localStorage.removeItem('bcons_cached_system_data');
+                    localStorage.removeItem('bcons_cached_drawing_projects');
+                    showLoginUI();
+                }
+                throw new Error(res.message);
+            }
+            return res.data;
+            
+        } catch (err) {
+            clearTimeout(timeoutId);
+
+            const isAbort = err.name === 'AbortError';
+            const isUnauthorized = err.message && err.message.includes("UNAUTHORIZED");
+            const isServerLogicError = !err.message.includes("Máy chủ Google") && 
+                                       !err.message.includes("Failed to fetch") && 
+                                       !err.message.includes("NetworkError") && 
+                                       !isAbort;
+            
+            if (isUnauthorized || isServerLogicError || attempt === retries) {
+                if (isAbort) {
+                    throw new Error(`Quá thời gian kết nối máy chủ (${timeoutDuration / 1000}s). Vui lòng thử lại!`);
+                }
+                throw err;
+            }
+
+            await new Promise(r => setTimeout(r, 800 * Math.pow(1.5, attempt)));
+        }
+    }
+}
+
+/**
+ * Xử lý sự kiện nhấn nút SIGN IN (Đồng bộ tên và quyền lên Client)
+ */
+function clearUnregisteredNotice() {
+    const notice = document.getElementById('unregisteredNotice');
+    if (notice) notice.style.display = 'none';
+}
+
+async function performLogin() {
+    const mailEl = document.getElementById('loginEmail');
+    const passEl = document.getElementById('loginPassword');
+    const mail = mailEl ? mailEl.value.trim() : "";
+    const password = passEl ? passEl.value : "";
+    
+    if (!mail || !password) {
+        alert("Sếp vui lòng điền đầy đủ thông tin đăng nhập!");
+        return;
+    }
+
+    const loginBtn = document.getElementById('loginSubmitBtn');
+    if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.textContent = "VERIFYING...";
+    }
+
+    try {
+        const res = await callBackend("loginUser", { mail, password });
+        if (res && res.token) {
+            localStorage.setItem('bcons_session_token', res.token);
+            localStorage.setItem('bcons_staff_identity', res.name);
+            localStorage.setItem('bcons_staff_role', res.role || "USER");
+            
+            const displayEl = document.getElementById('staffNameDisplay');
+            if (displayEl) displayEl.textContent = res.name;
+            
+            document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
+            showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
+            
+            loadSystemData();
+        }
+    } catch (err) {
+        if (err.message && err.message.includes("chưa được đăng ký")) {
+            if (!isRegisterMode) toggleLoginMode();
+            const notice = document.getElementById('unregisteredNotice');
+            if (notice) notice.style.display = 'block';
+            document.getElementById('registerName')?.focus();
+        } else {
+            alert(err.message || "Xác thực thất bại!");
+        }
+    } finally {
+        if (loginBtn) {
+            loginBtn.disabled = false;
+            if (!isRegisterMode && !isForgotPasswordMode) {
+                loginBtn.textContent = "SIGN IN";
+            }
+        }
+    }
+}
+
+/**
+ * Hiển thị khung đăng nhập chặn tương tác
+ */
+function showLoginUI() {
+    const overlay = document.getElementById('loginOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        // Khắc phục xung đột CSS mặc định opacity: 0 của lớp .form-container
+        const formContainer = overlay.querySelector('.form-container');
+        if (formContainer) {
+            formContainer.style.setProperty('opacity', '1', 'important');
+        }
+        // Tắt loading hệ thống nếu có để nhường không gian tương tác
+        const loader = document.getElementById('loadingSystem');
+        if (loader) loader.style.display = 'none';
+    }
+}
+
+
+/**
+ * Xử lý sự kiện ĐĂNG XUẤT TÀI KHOẢN (LOG OUT)
+ */
+function performLogout() {
+    localStorage.removeItem('bcons_session_token');
+    localStorage.removeItem('bcons_staff_identity');
+    localStorage.removeItem('bcons_staff_role');
+    localStorage.removeItem('bcons_cached_system_data');
+    localStorage.removeItem('bcons_cached_drawing_projects');
+    window.location.reload();
+}
+
+// Biến trạng thái đăng ký của giao diện
+let isRegisterMode = false;
+
+let isForgotPasswordMode = false;
+
+function backToSignInMode() {
+    isRegisterMode = false;
+    isForgotPasswordMode = false;
+    clearNameWarning();
+    clearUnregisteredNotice();
+
+    document.getElementById('loginTitle').textContent = "MEMBER SIGN IN";
+    document.getElementById('passwordFieldContainer').style.setProperty('display', 'flex', 'important');
+    document.getElementById('forgotPasswordLink').style.display = 'inline';
+    document.getElementById('passwordHintText').style.display = 'none';
+    document.getElementById('nameFieldContainer').style.setProperty('display', 'none', 'important');
+    document.getElementById('forgotPasswordNote').style.display = 'none';
+
+    const submitBtn = document.getElementById('loginSubmitBtn');
+    submitBtn.textContent = "SIGN IN";
+    submitBtn.setAttribute('onclick', 'performLogin()');
+
+    const toggleLink = document.getElementById('toggleLoginView');
+    toggleLink.textContent = "Chưa có tài khoản? Đăng ký ngay";
+    toggleLink.setAttribute('onclick', 'toggleLoginMode()');
+}
+
+function openForgotPasswordMode() {
+    isRegisterMode = false;
+    isForgotPasswordMode = true;
+    clearNameWarning();
+    clearUnregisteredNotice();
+
+    document.getElementById('loginTitle').textContent = "RESET PASSWORD";
+    document.getElementById('passwordFieldContainer').style.setProperty('display', 'none', 'important');
+    document.getElementById('nameFieldContainer').style.setProperty('display', 'none', 'important');
+    document.getElementById('forgotPasswordNote').style.display = 'block';
+
+    const submitBtn = document.getElementById('loginSubmitBtn');
+    submitBtn.textContent = "SEND NEW PASSWORD";
+    submitBtn.setAttribute('onclick', 'performForgotPassword()');
+
+    const toggleLink = document.getElementById('toggleLoginView');
+    toggleLink.textContent = "Quay lại đăng nhập";
+    toggleLink.setAttribute('onclick', 'backToSignInMode()');
+
+    document.getElementById('loginEmail')?.focus();
+}
+
+function toggleLoginMode() {
+    if (isForgotPasswordMode || isRegisterMode) {
+        backToSignInMode();
+        return;
+    }
+
+    isRegisterMode = true;
+    isForgotPasswordMode = false;
+    clearNameWarning();
+    clearUnregisteredNotice();
+
+    document.getElementById('loginTitle').textContent = "CREATE AN ACCOUNT";
+    document.getElementById('passwordFieldContainer').style.setProperty('display', 'flex', 'important');
+    document.getElementById('forgotPasswordLink').style.display = 'none';
+    document.getElementById('passwordHintText').style.display = 'block';
+    document.getElementById('nameFieldContainer').style.setProperty('display', 'flex', 'important');
+    document.getElementById('forgotPasswordNote').style.display = 'none';
+
+    const submitBtn = document.getElementById('loginSubmitBtn');
+    submitBtn.textContent = "REGISTER";
+    submitBtn.setAttribute('onclick', 'performRegister()');
+
+    const toggleLink = document.getElementById('toggleLoginView');
+    toggleLink.textContent = "Đã có tài khoản? Đăng nhập ngay";
+}
+
+async function performRegister() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    const name = document.getElementById('registerName').value.trim().toUpperCase();
+    const password = document.getElementById('loginPassword').value;
+
+    if (!mail || !name || !password) {
+        alert("Sếp vui lòng điền đầy đủ Email, Name và Password!");
+        return;
+    }
+
+    if (password.length < 4) {
+        alert("Mật khẩu đăng ký phải chứa tối thiểu 4 ký tự!");
+        return;
+    }
+
+    const registerBtn = document.getElementById('loginSubmitBtn');
+    registerBtn.disabled = true;
+    registerBtn.textContent = "REGISTERING...";
+
+    try {
+        const res = await callBackend("registerUser", { mail, name, password });
+        if (res) {
+            showToast_PL("🚀 Gửi yêu cầu đăng ký thành công! Hãy liên hệ với Admin để được duyệt!", "success");
+            document.getElementById('registerName').value = "";
+            document.getElementById('loginPassword').value = "";
+            backToSignInMode();
+        }
+    } catch (err) {
+        if (err.message && err.message.includes("đã tồn tại")) {
+            showNameWarning(name);
+        } else {
+            alert(err.message || "Đăng ký thất bại!");
+        }
+    } finally {
+        registerBtn.disabled = false;
+        if (isRegisterMode) {
+            registerBtn.textContent = "REGISTER";
+        }
+    }
+}
+
+async function performForgotPassword() {
+    const mail = document.getElementById('loginEmail').value.trim();
+    if (!mail) {
+        alert("Vui lòng nhập Email đã đăng ký!");
+        return;
+    }
+
+    const btn = document.getElementById('loginSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = "SENDING...";
+
+    try {
+        await callBackend("forgotPassword", { mail });
+        showToast_PL("📧 Mật khẩu mới đã được gửi về Email của bạn!", "success");
+        document.getElementById('loginPassword').value = "";
+        backToSignInMode();
+        document.getElementById('loginPassword')?.focus();
+    } catch (err) {
+        alert(err.message || "Không thể gửi yêu cầu cấp lại mật khẩu!");
+    } finally {
+        btn.disabled = false;
+        if (isForgotPasswordMode) {
+            btn.textContent = "SEND NEW PASSWORD";
+        }
+    }
+}
+
+/**
+ * Xử lý hiển thị cảnh báo trùng tên ngay dưới ô nhập và đổi màu viền input sang đỏ
+ */
+function showNameWarning(name) {
+    const warningEl = document.getElementById('nameWarningText');
+    if (warningEl) {
+        warningEl.textContent = `(Tên "${name}" đã được đăng ký, vui lòng chọn tên khác)`;
+        warningEl.style.display = 'block';
+    }
+    const inputEl = document.getElementById('registerName');
+    if (inputEl) {
+        inputEl.style.setProperty('border-color', '#ff4d4d', 'important');
+    }
+}
+
+/**
+ * Xóa bỏ cảnh báo đỏ và trả lại màu viền mặc định cho ô nhập
+ */
+function clearNameWarning() {
+    const warningEl = document.getElementById('nameWarningText');
+    if (warningEl) {
+        warningEl.style.display = 'none';
+        warningEl.textContent = '';
+    }
+    const inputEl = document.getElementById('registerName');
+    if (inputEl) {
+        inputEl.style.setProperty('border-color', 'rgba(255, 186, 8, 0.4)', 'important');
+    }
+}
+
+function submitData_HD() {
+    const btn = document.getElementById("submitButton-hd");
+    const loading = document.getElementById("contractLoading");
+    const f0 = document.getElementById("field0-hd").value; 
+    
+    if (!f0) {
+        showToast_PL("⚠️ Sếp chưa chọn tên gói thầu!", "error");
+        return;
+    }
+
+    const f2Raw = document.getElementById("field2-hd").value;
+    const f2 = f2Raw.includes(" | ") ? f2Raw.split(" | ")[0].trim() : f2Raw.trim(); 
+    const f1 = document.getElementById("field1-hd").value; 
+    const f3Raw = document.getElementById("field3-hd").value;
+    const f3 = f3Raw.includes(" | ") ? f3Raw.split(" | ")[0].trim() : f3Raw.trim(); 
+    const f4Raw = document.getElementById("field4-hd").value; 
+
+    if (f2 && f1 && f3 && f4Raw && SYSTEM_DATA.pl && SYSTEM_DATA.pl.field0) {
+        const currentCategory = f1.trim().toUpperCase();
+        const currentProj = f2.toUpperCase();
+        const currentContractor = f3.toUpperCase();
+        const currentValClean = f4Raw.replace(/\D/g, ""); 
+
+        const duplicateContract = SYSTEM_DATA.pl.field0.find(item => {
+            const isMatchProj = item.maHD.toUpperCase().includes("HĐTCXD-" + currentProj);
+            const isMatchCategory = (item.packageI || "").trim().toUpperCase() === currentCategory;
+            const itemValClean = (item.valueK || item.c || "").toString().replace(/\D/g, "");
+            const isMatchValue = (itemValClean === currentValClean);
+            const isMatchContractor = item.maHD.toUpperCase().endsWith("-" + currentContractor) || 
+                                      item.maHD.toUpperCase().includes("-" + currentContractor + "/") ||
+                                      (item.searchK || "").toUpperCase().includes(currentContractor);
+            return isMatchProj && isMatchCategory && isMatchValue && isMatchContractor;
+        });
+
+        if (duplicateContract) {
+            showToast_PL("⚠️ Hợp đồng này đã được tạo trước đó, vui lòng kiểm tra lại DATA!", "error");
+            return; 
+        }
+    }
+
+    btn.disabled = true; loading.style.display = "flex";
+    const formData = {
+        location: document.getElementById("locationDropdown-hd").value,
+        date: document.getElementById("draftContractCheckbox-hd").checked ? "ngày ... tháng ... năm ..." : document.getElementById("dateDisplay-hd").textContent,
+        field0: f0, field1: document.getElementById("field1-hd").value, field2: document.getElementById("field2-hd").value, field3: document.getElementById("field3-hd").value, field4: document.getElementById("field4-hd").value, field5: document.getElementById("field5-hd").value, field6: document.getElementById("field6-hd").value, field7: document.getElementById("field7-hd").value, field8: document.getElementById("field8-hd").value, draftContract: document.getElementById("draftContractCheckbox-hd").checked, radioOption: document.querySelector('input[name="option-hd"]:checked')?.value || "", radioOption2: document.querySelector('input[name="option2-hd"]:checked')?.value || "", pl01: document.getElementById("pl01Checkbox-hd").checked ? "PL01" : ""
+    };
+    callBackend("handleFullExportProcess_HD", formData).then(res => {
+        loading.style.display = "none"; btn.disabled = false;
+        if (res && res.link) window.open(res.link, "_blank");
+        if (!formData.draftContract) {
+            SYSTEM_DATA.pl.field0.unshift({ display: `${formData.field8} | ${formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0} | ${formData.field4}`, note: formData.field0, transferred: false, scanId: "", hasQ: (formData.field5 && formData.field5 !== "0"), hasR: (formData.radioOption === "BLTU"), hasS: (formData.radioOption === "BLHD") });
+            PRECOMPUTED_PL_DATA = null;
+            if (activeTabId === 'tab-plhd') executeFilter_PL();
+            
+            // Kích hoạt phát tin cập nhật ngay tại Client
+            publishAblyContractUpdate_Client("CREATE_HD", formData.field8);
+            
+            loadSystemData(true);
+        }
+    }).catch(err => {
+        loading.style.display = "none"; btn.disabled = false; alert(err.message || err);
+    });
+}
+
+function submitData_PL() {
+    const loading = document.getElementById("contractLoading");
+    const f8 = document.getElementById("field8-pl")?.value;
+    if (!f8) return alert("Sếp chưa chọn hợp đồng gốc!");
+    loading.style.display = "flex";
+    const formData = { field0: document.getElementById("field0-pl")?.value || "", field2: document.getElementById("field2-pl")?.value || "", field8: f8, field9: document.getElementById("field9-pl")?.value || "", date: document.getElementById("dateDisplay-pl")?.innerText || "", selectedBF3: selectedAdjustmentLabels.map(label => label.replace(/điều chỉnh\s*/gi, "").trim()).join(" | "), adjustmentIds: selectedAdjustmentIds.join(", ") };
+    
+    callBackend("writeToSheetAndExportDoc_PL", formData).then(res => {
+        loading.style.display = "none"; 
+        if (res && res.link) window.open(res.link, "_blank"); 
+
+        // Kế thừa thông tin từ hợp đồng mẹ để PL mới luôn hiển thị đúng trong bộ lọc
+        const parentContract = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim().toUpperCase() === selectedContractMaHD_PL.toUpperCase());
+
+        SYSTEM_DATA.pl.field0.unshift({ 
+            maHD: formData.field8,
+            display: `${formData.field8} | ${formData.selectedBF3 || 'Phụ lục'} | ${formData.field2 || formData.field9 || ''}`, 
+            note: formData.selectedBF3 || "Phụ lục", 
+            packageI: parentContract ? parentContract.packageI : (formData.selectedBF3 || ""),
+            searchK: parentContract ? parentContract.searchK : "",
+            searchM: parentContract ? parentContract.searchM : "",
+            dateH: formData.date || "",
+            valueK: formData.field2 || formData.field9 || "",
+            c: formData.field2 || "",
+            transferred: false, 
+            scanId: "", 
+            hasQ: (formData.field2 && formData.field2 !== "0" && formData.field2 !== ""), 
+            hasR: false, 
+            hasS: false 
+        }); 
+
+        PRECOMPUTED_PL_DATA = null; 
+        executeFilter_PL(false, false, true); 
+        
+        selectedAdjustmentIds = []; 
+        selectedAdjustmentLabels = []; 
+        const f5 = document.getElementById("field5-pl"); 
+        if (f5) f5.value = ""; 
+        renderAdjustmentOptions_PL(); 
+        ["label-field2-pl", "label-field9-pl", "label-field10-pl"].forEach(id => { 
+            const el = document.getElementById(id); 
+            if (el) el.style.display = "none"; 
+        }); 
+        updateContractNo_PL();
+        
+        // Kích hoạt phát tin cập nhật Ably
+        publishAblyContractUpdate_Client("CREATE_PL", formData.field8);
+        
+        loadSystemData(true);
+    }).catch(err => {
+        loading.style.display = "none"; 
+        alert("Lỗi xuất file: " + (err.message || err));
+    });
+}
+
+// Khai báo bộ nhớ tạm để khóa các yêu cầu bàn giao đang xử lý ngầm (Client-side Race Lock)
+let activeTransferRequests_PL = new Set();
+
+function executeTransferScript_PL(docTypesString) {
+    const { maHD, isTransferred } = currentTransferData_PL;
+    
+    if (activeTransferRequests_PL.has(maHD)) {
+        showToast_PL("⚠️ Hệ thống đang xử lý yêu cầu trước đó, vui lòng đợi trong giây lát!", "error");
+        return;
+    }
+    
+    activeTransferRequests_PL.add(maHD); 
+    const newStatus = !isTransferred;
+    const targetItem = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === maHD);
+    
+    if (targetItem) { 
+        targetItem.transferred = newStatus; 
+        PRECOMPUTED_PL_DATA = null; 
+        executeFilter_PL(); 
+    }
+    
+    if (!newStatus) showToast_PL(`🔴 Đã hủy bàn giao: <b style="color:white">${maHD}</b>`, 'error'); 
+    else showToast_PL(`🟢 Đã bàn giao: <b style="color:#FFC000">${maHD}</b>`, 'success'); 
+    
+    callBackend("updateTransferStatus_PL", [maHD, newStatus, docTypesString]).then(res => {
+        activeTransferRequests_PL.delete(maHD); 
+        if (res !== true) { 
+            alert(`⚠️ LỖI DATA: Backend không tìm thấy mã [${maHD}]!`); 
+            if(targetItem) targetItem.transferred = isTransferred; 
+            PRECOMPUTED_PL_DATA = null; 
+            executeFilter_PL(); 
+        } else {
+            // Kích hoạt phát tin cập nhật ngay tại Client khi hoàn thành
+            publishAblyContractUpdate_Client("TRANSFER_STATUS", maHD);
+        }
+    }).catch(err => {
+        activeTransferRequests_PL.delete(maHD); 
+        alert("🚨 LỖI KẾT NỐI SERVER: " + (err.message || err)); 
+        if(targetItem) targetItem.transferred = isTransferred; 
+        PRECOMPUTED_PL_DATA = null; 
+        executeFilter_PL();
+    });
+}
+
+function updateContractNo_TB() {
+    const f6 = document.getElementById("field6-tb");
+    if (f6) {
+        const dateText = document.getElementById("dateDisplay-tb")?.textContent || "";
+        const yearMatch = dateText.match(/\b(20\d{2})\b/);
+        const year = yearMatch ? yearMatch[1] : new Date().getFullYear();
+        f6.value = `.../${year}/TB/KĐT-BCONS`;
+    }
+}
+
+function submitData_TB() {
+    const f0 = document.getElementById("field0-tb").value; if (!f0) return alert("Sếp chưa nhập tên gói thầu!");
+    const btn = document.getElementById("submitButton-tb"); const loading = document.getElementById("contractLoading");
+    btn.disabled = true; loading.style.display = "flex";
+    const formData = { location: document.getElementById("locationDropdown-tb").value, date: document.getElementById("dateDisplay-tb").textContent, field0: f0, fieldPkgName: document.getElementById("field-pkg-name-tb").value, field1: document.getElementById("field1-tb").value, field2: document.getElementById("field2-tb").value, field3: document.getElementById("field3-tb").value, field4: document.getElementById("field4-tb").value, field5: document.getElementById("field5-tb").value, field6: document.getElementById("field6-tb").value };
+    callBackend("handleFullExportProcess_TB", formData).then(res => {
+        loading.style.display = "none"; btn.disabled = false; 
+        if (res && res.link) window.open(res.link, "_blank");
+    }).catch(err => {
+        loading.style.display = "none"; btn.disabled = false; alert(err.message || err);
+    });
+}
+
+
+/**
+ * Biến lưu trữ tạm thời danh sách mã cần xuất
+ */
+/**
+ * Biến lưu trữ tạm thời danh sách mã cần xuất
+ */
+let exportDataCache_PL = {
+    allCodes: [],
+    parentCodes: []
+};
+
+function toggleExportOption_UI(event) {
+    const cb = document.getElementById("exportContractsOnlyCheckbox-pl");
+    if (cb && event.target !== cb) {
+        cb.checked = !cb.checked;
+        updateExportSummary_PL();
+    }
+}
+
+function toggleExportGroupByProject_UI(event) {
+    const cb = document.getElementById("exportGroupByProjectCheckbox-pl");
+    if (cb && event.target !== cb) {
+        cb.checked = !cb.checked;
+    }
+}
+
+function updateExportSummary_PL() {
+    const cb = document.getElementById("exportContractsOnlyCheckbox-pl");
+    const isContractsOnly = cb ? cb.checked : false;
+    const targetCount = isContractsOnly ? exportDataCache_PL.parentCodes.length : exportDataCache_PL.allCodes.length;
+
+    let estimatedTime = "5 giây";
+    if (targetCount > 50 && targetCount <= 100) estimatedTime = "6 giây";
+    else if (targetCount > 100 && targetCount <= 150) estimatedTime = "7 giây";
+    else if (targetCount > 150 && targetCount <= 250) estimatedTime = "8 giây";
+    else if (targetCount > 250) estimatedTime = "9 giây";
+
+    const countEl = document.getElementById("export-row-count");
+    const timeEl = document.getElementById("export-estimated-time");
+    if (countEl) countEl.textContent = targetCount.toLocaleString('vi-VN');
+    if (timeEl) timeEl.textContent = estimatedTime;
+}
+
+function exportFilteredToNewSheet_PL() {
+    const inputField = document.getElementById("field0-pl");
+    if (!inputField) return;
+
+    let query = "";
+    if (selectedContractMaHD_PL && inputField.value.trim().toUpperCase() === selectedContractMaHD_PL.toUpperCase()) {
+        query = (activeSearchQuery_PL || "").toLowerCase().trim();
+    } else {
+        query = inputField.value.toLowerCase().trim();
+    }
+
+    if (typeof precomputePLData === 'function') precomputePLData();
+
+    let finalData = [];
+    if (typeof filterAndSortData_PL === 'function') {
+        const result = filterAndSortData_PL(query);
+        finalData = result.finalData || [];
+    }
+
+    const filteredA = finalData.map(item => item.maHD).filter(Boolean);
+
+    if (filteredA.length === 0) {
+        showToast_PL("⚠️ Không có dữ liệu nào để xuất!", "error");
+        return;
+    }
+
+    // Bóc tách danh sách HĐ gốc duy nhất
+    const uniqueParentMap = new Map();
+    filteredA.forEach(code => {
+        let parentCode = code.trim();
+        const plMatch = parentCode.match(/^PL\d+\s*-\s*(.*)$/i);
+        if (plMatch && plMatch[1]) {
+            parentCode = plMatch[1].trim();
+        }
+        if (!uniqueParentMap.has(parentCode)) {
+            uniqueParentMap.set(parentCode, true);
+        }
+    });
+
+    exportDataCache_PL.allCodes = filteredA;
+    exportDataCache_PL.parentCodes = Array.from(uniqueParentMap.keys());
+
+    const modal = document.getElementById("confirmExportModal");
+    if (!modal) return;
+
+    // Reset mặc định 2 checkbox khi mở modal
+    const cbContractsOnly = document.getElementById("exportContractsOnlyCheckbox-pl");
+    const cbGroupByProject = document.getElementById("exportGroupByProjectCheckbox-pl");
+    if (cbContractsOnly) cbContractsOnly.checked = false;
+    if (cbGroupByProject) cbGroupByProject.checked = false;
+
+    updateExportSummary_PL();
+
+    modal.style.display = 'flex';
+    setTimeout(() => modal.classList.add('show'), 10);
+
+    window.cancelExport = () => {
+        modal.classList.remove('show');
+        setTimeout(() => modal.style.display = 'none', 300);
+    };
+
+    document.getElementById("confirmExportBtn").onclick = () => {
+        const isContractsOnly = cbContractsOnly ? cbContractsOnly.checked : false;
+        const isGroupByProject = cbGroupByProject ? cbGroupByProject.checked : false;
+        window.cancelExport();
+
+        const loading = document.getElementById("contractLoading");
+        if (loading) {
+            loading.style.display = "flex";
+            loading.querySelector('p').textContent = "SYSTEM EXPORTING DATA SPREADSHEET...";
+        }
+
+        callBackend("exportToNewSpreadsheet_PL", {
+            codes: filteredA,
+            contractsOnly: isContractsOnly,
+            groupByProject: isGroupByProject
+        })
+        .then(url => {
+            if (loading) loading.style.display = "none";
+            if (url) window.open(url, "_blank");
+        })
+        .catch(err => {
+            if (loading) loading.style.display = "none";
+            showToast_PL("⚠️ Lỗi xuất dữ liệu: " + (err.message || err), "error");
+        });
+    };
+}
+
+// ==========================================================================
+// TÍNH NĂNG VUỐT (SWIPE) CHUYỂN TAB TRÊN MOBILE
+// ==========================================================================
+let touchStartX = 0;
+let touchStartY = 0;
+let touchEndX = 0;
+let touchEndY = 0;
+let isSwipeAllowed = true;
+
+document.addEventListener('touchstart', function(e) {
+    const t = e.target;
+    
+    // BỘ LỌC AN TOÀN: KHÔNG CHO PHÉP CHUYỂN TAB NẾU ĐANG CHẠM VÀO:
+    // 1. Bản đồ Mindmap (#cy)
+    // 2. Các danh sách đang cuộn (.smooth-dropdown)
+    // 3. Các bảng Modal đang mở (.active, .info-modal-content, .scan-delete-dialog)
+    if (t.closest('#cy') || 
+        t.closest('.smooth-dropdown') || 
+        t.closest('#edit-panel-pl.active') || 
+        t.closest('#transfer-panel-pl.active') || 
+        t.closest('#scan-panel-pl.active') || 
+        t.closest('.info-modal-content') || 
+        t.closest('.scan-delete-dialog')) {
+        
+        isSwipeAllowed = false;
+        return;
+    }
+
+    isSwipeAllowed = true;
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+}, {passive: true});
+
+document.addEventListener('touchend', function(e) {
+    if (!isSwipeAllowed) return;
+    
+    touchEndX = e.changedTouches[0].screenX;
+    touchEndY = e.changedTouches[0].screenY;
+    handleMobileSwipe();
+}, {passive: true});
+
+function handleMobileSwipe() {
+    const diffX = touchEndX - touchStartX;
+    const diffY = touchEndY - touchStartY;
+
+    // Chỉ kích hoạt nếu vuốt NGANG dài hơn vuốt DỌC (tránh nhầm khi người dùng cuộn lên xuống)
+    // Khoảng cách vuốt phải lớn hơn 50px (chống chạm nhầm)
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+        
+        // Trình tự các Tab theo ý mày
+        const swipeSequence =['tab-hdtcxd', 'tab-plhd', 'tab-tbkq', 'tab-drawing'];
+        let currentIndex = swipeSequence.indexOf(activeTabId);
+
+        if (diffX < 0) {
+            // ---> VUỐT SANG TRÁI (Đi tới Tab tiếp theo)
+            if (activeTabId === 'tab-about') {
+                openTab('tab-hdtcxd'); // Từ About vuốt trái -> Vào Hợp đồng
+            } else if (currentIndex !== -1 && currentIndex < swipeSequence.length - 1) {
+                openTab(swipeSequence[currentIndex + 1]);
+            }
+        } else {
+            // <--- VUỐT SANG PHẢI (Quay lại Tab trước đó)
+            if (currentIndex > 0) {
+                openTab(swipeSequence[currentIndex - 1]);
+            } else if (currentIndex === 0) {
+                openTab('tab-about'); // Đang ở Hợp đồng vuốt phải -> Trở về About
+            }
+        }
+    }
+}
+
+// --- KHAI BÁO KEY KẾT NỐI ABLY PHÍA CLIENT (DÙNG CHUNG KHÓA Ở BƯỚC 2) ---
+const ABLY_CLIENT_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8RU";
+
+/**
+ * Trình dựng danh sách chờ duyệt (Chỉ hiện nút APPROVE/REJECT đối với quyền ADMIN)
+ */
+function renderBellList() {
+    const listContainer = document.getElementById('bellListContent');
+    if (!listContainer) return;
+    
+    if (pendingUsersList_PL.length === 0) {
+        listContainer.innerHTML = `<div style="color: #505966; font-size: 11px; font-style: italic; text-align: center; padding: 25px 0;">Không có yêu cầu chờ duyệt</div>`;
+        return;
+    }
+    
+    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
+    const isAdmin = (currentRole.toUpperCase() === "ADMIN");
+
+    let html = "";
+    pendingUsersList_PL.forEach(u => {
+        const safeId = getSafeId_PL(u.mail); 
+        
+        // Kiểm tra xem user này có đang nằm trong hàng chờ đếm ngược hay không
+        const queuedItem = pendingApprovalBatch_PL.find(item => item.mail === u.mail);
+        
+        let cardStyle = "background: rgba(255,255,255,0.02); border: 1px solid rgba(255,186,8,0.15);";
+        let buttonHTML = "";
+
+        if (queuedItem) {
+            // Nếu đang trong hàng chờ, đổi viền sang Xanh (Approve) hoặc Đỏ (Reject)
+            const borderCol = queuedItem.action === "APPROVE" ? "#2ECC71" : "#E74C3C";
+            const actionText = queuedItem.action === "APPROVE" ? "Đang chờ Duyệt" : "Đang chờ Từ chối";
+            cardStyle = `background: rgba(255,255,255,0.01); border: 1.5px solid ${borderCol}; opacity: 0.75;`;
+            
+            buttonHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 4px;">
+                    <span class="batch-status-text" style="color: ${borderCol}; font-size: 11px; font-style: italic; font-weight: bold;">${actionText} (3s)...</span>
+                    <button type="button" onclick="undoBatchAction_PL('${u.mail}')" 
+                            style="padding: 2px 10px; border: 1px solid #95A1AF; background: transparent; color: #95A1AF; font-size: 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;">UNDO</button>
+                </div>
+            `;
+        } else if (isAdmin) {
+            buttonHTML = `
+                <div class="action-buttons-wrapper" style="display: flex; gap: 8px; margin-top: 4px;">
+                    <button type="button" class="btn-bell-approve" onclick="queueBatchAction_PL('${u.mail}', '${u.name}', 'APPROVE')" 
+                            style="flex: 1; height: 26px; border: none; background: #2ECC71; color: white; font-weight: bold; font-size: 10.5px; border-radius: 4px; cursor: pointer; transition: all 0.2s ease-in-out;">APPROVE</button>
+                    <button type="button" class="btn-bell-reject" onclick="queueBatchAction_PL('${u.mail}', '${u.name}', 'REJECT')" 
+                            style="flex: 1; height: 26px; border: none; background: #E74C3C; color: white; font-weight: bold; font-size: 10.5px; border-radius: 4px; cursor: pointer; transition: all 0.2s ease-in-out;">REJECT</button>
+                </div>
+            `;
+        } else {
+            buttonHTML = `
+                <div style="color: #95A1AF; font-size: 10.5px; font-style: italic; text-align: center; margin-top: 4px; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px;">Đang chờ phê duyệt...</div>
+            `;
+        }
+
+        html += `
+            <div id="user-card-${safeId}" class="pending-user-card" 
+                 style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); transform-origin: top; ${cardStyle}">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #FFFFFF; font-size: 12.5px; font-weight: bold;">${u.name}</span>
+                    <span style="color: #95A1AF; font-size: 10.5px; font-family: monospace;">${u.mail}</span>
+                </div>
+                ${buttonHTML}
+            </div>
+        `;
+    });
+    listContainer.innerHTML = html;
+}
+
+/**
+ * Đóng mở Dropdown quả chuông và tự động đóng các dropdown khác để tránh đè giao diện
+ */
+function toggleBellDropdown(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('bellDropdown');
+    const isShowing = dropdown.style.display === 'flex';
+    
+    // Đóng toàn bộ menu dropdown khác
+    document.querySelectorAll('.smooth-dropdown').forEach(d => d.classList.remove('show'));
+    
+    if (isShowing) {
+        dropdown.style.display = 'none';
+    } else {
+        dropdown.style.display = 'flex';
+        renderBellList();
+    }
+}
+
+/**
+ * Cập nhật số đỏ hiển thị trên quả chuông báo
+ */
+function updateBellBadge() {
+    const badge = document.getElementById('bellBadge');
+    const count = pendingUsersList_PL.length;
+    
+    if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'block';
+        // Tạo hiệu ứng lắc nhẹ quả chuông để sếp chú ý
+        const icon = document.getElementById('bellIcon');
+        if (icon) {
+            icon.style.transform = 'scale(1.2) rotate(15deg)';
+            setTimeout(() => { icon.style.transform = 'scale(1) rotate(0deg)'; }, 300);
+        }
+    } else {
+        badge.style.display = 'none';
+    }
+
+    // 🚀 THÊM MỚI: Tự động cập nhật thông báo lên Tiêu đề Tab & Favicon
+    updateTabNotification(count);
+}
+
+
+/**
+ * Thêm hành động duyệt/từ chối vào hàng chờ đếm ngược 3 giây
+ */
+function queueBatchAction_PL(mail, name, action) {
+    const safeId = getSafeId_PL(mail);
+
+    // 1. Thêm hành động hoặc cập nhật nếu đã tồn tại trong hàng chờ
+    const existingIndex = pendingApprovalBatch_PL.findIndex(item => item.mail === mail);
+    if (existingIndex > -1) {
+        pendingApprovalBatch_PL[existingIndex].action = action;
+    } else {
+        pendingApprovalBatch_PL.push({ mail, name, action, safeId }); // Lưu kèm safeId để can thiệp thẻ card
+    }
+
+    // Vẽ lại giao diện quả chuông ngay lập tức để hiện viền màu trạng thái chờ duyệt
+    renderBellList();
+
+    // 2. KHỞI CHẠY / RESET THỜI GIAN ĐẾM NGƯỢC 3 GIÂY (DEBOUNCE)
+    clearTimeout(approvalBatchTimer_PL);
+    clearInterval(countdownInterval_PL);
+    countdownSeconds_PL = 3;
+
+    // ĐỒNG BỘ: Đã xóa hoàn toàn thông báo Toast gây nhiễu tại đây theo yêu cầu của sếp
+
+    // 🚀 ĐẾM NGƯỢC GIÂY TRỰC TIẾP TRÊN THẺ CARD
+    countdownInterval_PL = setInterval(() => {
+        countdownSeconds_PL--;
+        if (countdownSeconds_PL > 0) {
+            // Duyệt qua toàn bộ hàng chờ để giảm giây hiển thị trên màn hình
+            pendingApprovalBatch_PL.forEach(item => {
+                const card = document.getElementById(`user-card-${item.safeId}`);
+                if (card) {
+                    const statusText = card.querySelector('.batch-status-text');
+                    if (statusText) {
+                        const actionLabel = item.action === "APPROVE" ? "Đang chờ Duyệt" : "Đang chờ Từ chối";
+                        statusText.textContent = `${actionLabel} (${countdownSeconds_PL}s)...`;
+                    }
+                }
+            });
+        } else {
+            clearInterval(countdownInterval_PL);
+        }
+    }, 1000);
+
+    // Kích hoạt gửi lệnh hàng loạt sau 3 giây nếu sếp dừng không bấm gì thêm
+    approvalBatchTimer_PL = setTimeout(async () => {
+        await commitApprovalBatch_PL();
+    }, 3000);
+}
+
+/**
+ * Hàm rút lại quyết định (Hủy hàng chờ) cho một tài khoản cụ thể
+ */
+function undoBatchAction_PL(mail) {
+    // Xóa khỏi hàng chờ
+    pendingApprovalBatch_PL = pendingApprovalBatch_PL.filter(item => item.mail !== mail);
+    
+    // Khôi phục lại giao diện mặc định
+    renderBellList();
+
+    // Nếu hàng chờ trống rỗng hoàn toàn, tắt bộ đếm ngược
+    if (pendingApprovalBatch_PL.length === 0) {
+        clearTimeout(approvalBatchTimer_PL);
+        clearInterval(countdownInterval_PL);
+    } else {
+        // Nếu vẫn còn người khác, gia hạn lại thời gian đếm ngược về 3 giây
+        const firstItem = pendingApprovalBatch_PL[0];
+        queueBatchAction_PL(firstItem.mail, firstItem.name, firstItem.action);
+    }
+}
+
+/**
+ * Thực thi gửi lô phê duyệt tuần tự lên Server (Khi hết thời gian chờ 3 giây)
+ */
+async function commitApprovalBatch_PL() {
+    if (pendingApprovalBatch_PL.length === 0) return;
+
+    // Sao lưu lại mảng hàng chờ và danh sách gốc để đề phòng lỗi mạng cần phục hồi (Rollback)
+    const currentBatch = [...pendingApprovalBatch_PL];
+    const originalPendingUsers = [...pendingUsersList_PL];
+    
+    pendingApprovalBatch_PL = []; // Dọn sạch hàng chờ toàn cục ngay để sẵn sàng nhận đợt mới
+
+    // 1. XÓA GIẢ ĐỊNH CÁC THẺ CARD TRÊN UI NGAY LẬP TỨC (0-DELAY)
+    currentBatch.forEach(item => {
+        // Xóa khỏi danh sách bộ nhớ tạm thời của máy khách
+        pendingUsersList_PL = pendingUsersList_PL.filter(u => u.mail !== item.mail);
+        
+        // Kích hoạt hoạt ảnh bay thẻ mượt mà sang 2 bên màn hình
+        const safeId = getSafeId_PL(item.mail);
+        const card = document.getElementById(`user-card-${safeId}`);
+        if (card) {
+            card.style.transform = item.action === "APPROVE" ? "translateX(80px)" : "translateX(-80px)";
+            card.style.opacity = "0";
+        }
+    });
+
+    // Cập nhật số lượng chuông thông báo lập tức
+    updateBellBadge();
+
+    // Đợi hiệu ứng trượt bay thẻ 300ms rồi render lại danh sách và tự động đóng dropdown nếu trống
+    setTimeout(() => {
+        renderBellList();
+        if (pendingUsersList_PL.length === 0) {
+            const bellDropdown = document.getElementById('bellDropdown');
+            if (bellDropdown) bellDropdown.style.display = 'none';
+        }
+    }, 300);
+
+    // 🚀 ĐÃ GOM: Chỉ hiển thị duy nhất 1 thông báo thành công tức thời ở đây
+    showToast_PL(`🚀 Đã phê duyệt ${currentBatch.length} tài khoản thành công!`, "success");
+
+    // 2. GỌI BACKEND TUẦN TỰ TRONG NỀN (LẶNG LẼ)
+    try {
+        for (const item of currentBatch) {
+            const action = item.action === "APPROVE" ? "approveUser_InApp" : "rejectUser_InApp";
+            
+            const success = await callBackend(action, item.mail);
+            if (!success) {
+                throw new Error(`Duyệt tài khoản ${item.mail} thất bại!`);
+            }
+        }
+        
+        // Đồng bộ lặng lẽ danh sách sau cùng trong nền
+        loadSystemData(true);
+
+    } catch (e) {
+        console.error("Lỗi xử lý duyệt lô ngầm:", e);
+        showToast_PL("⚠️ Gặp lỗi khi duyệt tài khoản ngầm! Đang khôi phục lại dữ liệu...", "error");
+        
+        // ROLLBACK: Khôi phục lại danh sách cũ nếu xảy ra lỗi mạng thực tế
+        pendingUsersList_PL = originalPendingUsers;
+        updateBellBadge();
+        renderBellList();
+        loadSystemData(true);
+    }
+}
+
+// Lắng nghe sự kiện click ngoài màn hình để tự động đóng dropdown Quả chuông báo
+document.addEventListener('click', () => {
+    const dropdown = document.getElementById('bellDropdown');
+    if (dropdown) dropdown.style.display = 'none';
+});
+
+function initAblyRealtimeConnection() {
+    try {
+        if (typeof Ably === 'undefined') return;
+        if (ablyRealtime) return; // Đã kết nối, không khởi tạo lại
+
+        ablyRealtime = new Ably.Realtime(ABLY_CLIENT_KEY);
+        ablyChannel = ablyRealtime.channels.get('bcons_notification');
+        
+        // 1. Đăng ký nhận thông báo Đăng ký Nhân viên mới
+        ablyChannel.subscribe('new_registration', (message) => {
+            const newUser = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
+            if (newUser && newUser.mail) {
+                const exists = pendingUsersList_PL.some(u => u.mail === newUser.mail);
+                if (!exists) {
+                    pendingUsersList_PL.push(newUser);
+                    updateBellBadge();
+                    const dropdown = document.getElementById('bellDropdown');
+                    if (dropdown && dropdown.style.display === 'flex') {
+                        renderBellList();
+                    }
+                    showToast_PL(`🔔 <b>${newUser.name}</b> vừa đăng ký tài khoản mới!`, "success");
+                }
+            }
+        });
+
+        // 2. Đăng ký nhận thông báo Cập nhật Hợp đồng / Phụ lục Realtime
+        ablyChannel.subscribe('contract_update', (message) => {
+            const updateInfo = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
+            const localStaffName = localStorage.getItem('bcons_staff_identity');
+            
+            // Chỉ xử lý nếu hành động này được thực thi bởi một user khác
+            if (updateInfo && updateInfo.staffName !== localStaffName) {
+                loadSystemData(true); // tải ngầm dữ liệu
+                
+                let actionText = "cập nhật";
+                if (updateInfo.actionType === "CREATE_HD") actionText = "tạo";
+                else if (updateInfo.actionType === "CREATE_PL") actionText = "tạo";
+                else if (updateInfo.actionType === "DELETE_DATA") actionText = "xóa";
+                else if (updateInfo.actionType === "TRANSFER_STATUS") actionText = "thay đổi trạng thái bàn giao";
+
+                showToast_PL(`📢 <b>${updateInfo.staffName}</b> vừa <b>${actionText}</b> hồ sơ <b>${updateInfo.contractNo}</b>.`, "success");
+            }
+        });
+        
+        console.log("⚡ [Realtime] Cổng kết nối WebSockets Ably đã sẵn sàng!");
+    } catch (e) {
+        console.error("[Realtime Error] Lỗi kết nối hệ thống thời gian thực Ably: " + e.message);
+    }
+}
+
+/**
+ * Phát tin cập nhật Ably trực tiếp từ Client (Triệt tiêu độ trễ mạng ngầm trên Apps Script)
+ */
+function publishAblyContractUpdate_Client(actionType, contractNo) {
+    if (ablyChannel) {
+        const staffName = localStorage.getItem('bcons_staff_identity') || "UNKNOWN";
+        ablyChannel.publish('contract_update', {
+            "actionType": actionType,
+            "contractNo": contractNo,
+            "staffName": staffName
+        });
+        console.log(`[Ably-Client] Broadcasted ${actionType} for ${contractNo}`);
+    }
+}
+
+/**
+ * Xử lý cập nhật số lượng thông báo dạng (1) hoặc (2) lên Tiêu đề và Favicon của Tab
+ */
+function updateTabNotification(count) {
+    const baseTitle = "KEN";
+    
+    // 1. CẬP NHẬT TIÊU ĐỀ TAB DẠNG (Count) KEN
+    if (count > 0) {
+        document.title = `(${count}) ${baseTitle}`;
+    } else {
+        document.title = baseTitle;
+    }
+
+    // 2. CẬP NHẬT CHẤM ĐỎ TRÊN FAVICON
+    const favicon = document.querySelector('link[rel="icon"]');
+    if (!favicon) return;
+
+    const originalSrc = "https://i.postimg.cc/W4v0Vv2C/logo.png";
+
+    if (count <= 0) {
+        favicon.href = originalSrc;
+        return;
+    }
+
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+
+        const img = new Image();
+        img.crossOrigin = "anonymous"; // Cho phép tải ảnh an toàn nếu máy chủ hỗ trợ CORS
+        img.src = originalSrc;
+
+        img.onload = function() {
+            try {
+                // Vẽ logo gốc
+                ctx.drawImage(img, 0, 0, 32, 32);
+                // Vẽ thêm chấm đỏ thông báo
+                drawFaviconBadge(ctx, count);
+                // Cập nhật lại liên kết Icon
+                favicon.href = canvas.toDataURL('image/png');
+            } catch (err) {
+                // Dự phòng vẽ tay hoàn toàn bằng Canvas nếu dính lỗi bảo mật CORS từ nhà cung cấp ảnh
+                drawFallbackFavicon(favicon, count);
+            }
+        };
+        img.onerror = function() {
+            drawFallbackFavicon(favicon, count);
+        };
+    } catch (e) {
+        drawFallbackFavicon(favicon, count);
+    }
+}
+
+/**
+ * Hàm hỗ trợ vẽ chấm tròn đỏ chứa số lượng thông báo
+ */
+function drawFaviconBadge(ctx, count) {
+    ctx.beginPath();
+    ctx.arc(24, 8, 7, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ff4d4d'; // Màu đỏ thông báo chuẩn
+    ctx.fill();
+
+    ctx.font = 'bold 9px Arial';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(count > 9 ? '9+' : count, 24, 8);
+}
+
+/**
+ * Hàm vẽ favicon dự phòng (Vẽ tay trực tiếp, không sử dụng tài nguyên ảnh ngoài)
+ */
+function drawFallbackFavicon(favicon, count) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+
+    // Vẽ hình tròn nền tối màu của hệ thống
+    ctx.fillStyle = '#031c35';
+    ctx.beginPath();
+    ctx.arc(16, 16, 15, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = '#FFBA08';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Vẽ chữ K màu vàng đại diện thương hiệu
+    ctx.font = 'bold 15px Arial';
+    ctx.fillStyle = '#FFBA08';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('K', 15, 16);
+
+    // Vẽ chấm đỏ thông báo
+    drawFaviconBadge(ctx, count);
+
+    favicon.href = canvas.toDataURL('image/png');
+}
