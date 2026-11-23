@@ -87,26 +87,58 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
 .existing-file-action { width: 45px; display: flex; align-items: center; justify-content: center; position: relative; border-left: none !important; }
 
 .file-note-pop, .trash-note-pop {
-    position: absolute; bottom: -35px; left: 50%; transform: translateX(-50%); background: #031c35; padding: 4px 10px; border-radius: 5px;
-    font-size: 10px; font-weight: 700; white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; border: 1.5px solid #FFBA08; color: #FFBA08;
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(1, 15, 28, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    line-height: 1.2;
+    color: #FFBA08;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+    z-index: 100;
 }
-.file-note-pop::after, .trash-note-pop::after { content: ""; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); border-width: 5px; border-style: solid; border-color: transparent transparent #FFBA08 transparent; }
+.file-note-pop::after, .trash-note-pop::after { display: none; }
 
-.existing-file-info:hover .file-note-pop, .existing-file-action:hover .trash-note-pop { opacity: 1; visibility: visible; bottom: -32px; }
+.existing-file-info:hover .file-note-pop, .existing-file-action:hover .trash-note-pop {
+    opacity: 1;
+    visibility: visible;
+}
 
-.note-download-cyan { color: #00BCD4 !important; border-color: #00BCD4 !important; }
-.note-download-cyan::after { border-color: transparent transparent #00BCD4 !important; }
-.note-remove-red { color: #ff4d4d !important; border-color: #ff4d4d !important; }
-.note-remove-red::after { border-color: transparent transparent #ff4d4d !important; }
+.note-download-cyan { color: #00BCD4 !important; border-color: rgba(255, 255, 255, 0.12) !important; }
+.note-remove-red { color: #ff4d4d !important; border-color: rgba(255, 255, 255, 0.12) !important; }
 
-.btn-download-cyan i { color: #00BCD4 !important; font-size: 19px !important; transition: all 0.15s ease; }
-.btn-download-cyan:hover i { filter: drop-shadow(0 0 8px rgba(0, 188, 212, 0.9)) !important; transform: scale(1.1); }
+.btn-trash-simple {
+    background: none !important;
+    border: none !important;
+    padding: 4px 5px !important;
+    border-radius: 4px !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    outline: none !important;
+    transition: background-color 0.2s ease !important;
+}
 
-.btn-trash-red i { color: #ff4d4d !important; font-size: 14px !important; transition: all 0.15s ease; }
-.btn-trash-red:hover i { filter: drop-shadow(0 0 8px rgba(255, 77, 77, 0.9)) !important; transform: scale(1.1); }
+.btn-download-cyan i { color: rgba(0, 188, 212, 0.72) !important; font-size: 18px !important; transition: color 0.2s ease; }
+.btn-download-cyan:hover { background: rgba(0, 188, 212, 0.12) !important; }
+.btn-download-cyan:hover i { color: #00BCD4 !important; filter: none !important; transform: none !important; }
 
-.btn-trash-simple { background: none !important; border: none !important; padding: 0 !important; cursor: pointer !important; display: flex !important; align-items: center; justify-content: center; outline: none !important; }
+.btn-trash-red i { color: rgba(255, 77, 77, 0.72) !important; font-size: 14.5px !important; transition: color 0.2s ease; }
+.btn-trash-red:hover { background: rgba(255, 77, 77, 0.12) !important; }
+.btn-trash-red:hover i { color: #ff4d4d !important; filter: none !important; transform: none !important; }
 
 /* --- 3. SYSTEM LOADERS, PROGRESS BARS & DROP ZONES --- */
 .luxury-loader {

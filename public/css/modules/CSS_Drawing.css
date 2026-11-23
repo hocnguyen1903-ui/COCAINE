@@ -342,22 +342,40 @@
     filter: drop-shadow(0 0 5px rgba(255, 77, 77, 0.4));
 }
 
-/* 2. Thiết lập kích cỡ chữ nhỏ gọn lỳ, KHÔNG IN ĐẬM cho toàn bộ chú thích */
-.trash-note-pop {
-    font-weight: 500 !important; /* Chữ lỳ không in đậm */
-    font-size: 9.5px !important; /* Nhỏ gọn vừa đủ nhìn */
-    letter-spacing: 0.5px;
-    padding: 3px 8px !important;
+/* 2. Đồng bộ Micro-Chip Tooltip bên Drawing giống 100% note HD | PDG */
+#tab-drawing .trash-note-pop {
+    top: calc(100% + 5px) !important;
+    bottom: auto !important;
+    background: rgba(1, 15, 28, 0.96) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+    padding: 4px 10px !important;
     border-radius: 4px !important;
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.3px !important;
+    line-height: 1.2 !important;
+    color: #FFBA08 !important;
+    transition: opacity 0.15s ease, visibility 0.15s ease !important;
 }
 
-/* 3. Phân lớp màu xám sáng mờ sương dành riêng cho nút ĐÓNG X */
-.note-close-grey {
-    color: #E0E0E0 !important;
-    border-color: rgba(224, 224, 224, 0.4) !important;
+#tab-drawing .existing-file-action:hover .trash-note-pop {
+    top: calc(100% + 5px) !important;
+    bottom: auto !important;
 }
-.note-close-grey::after {
-    border-color: transparent transparent rgba(224, 224, 224, 0.4) !important;
+
+#tab-drawing .trash-note-pop::after {
+    display: none !important;
+}
+
+#tab-drawing .trash-note-pop.note-remove-red {
+    color: #ff4d4d !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+#tab-drawing .trash-note-pop.note-close-grey {
+    color: #95A1AF !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
 /* ==========================================================================

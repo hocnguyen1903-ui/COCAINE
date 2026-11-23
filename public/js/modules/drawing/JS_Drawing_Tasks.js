@@ -61,20 +61,20 @@
           <button type="button" class="btn-icon-edit" onclick="triggerEditDrawing_Client('${nodeData.fileId}', '${escapeStr(nodeData.fullName || fileNameWithExt)}')">
             <i class="bi bi-pencil-square"></i>
           </button>
-          <div class="trash-note-pop" style="bottom: -30px !important;">Rename</div>
+          <div class="trash-note-pop">Rename</div>
         </div>
         <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative;">
           <button type="button" class="btn-icon-delete" onclick="triggerDeleteDrawing_Client('${nodeData.fileId}', '${escapeStr(nodeData.fullName || fileNameWithExt)}')">
             <i class="bi bi-trash3"></i>
           </button>
-          <div class="trash-note-pop note-remove-red" style="bottom: -30px !important;">Delete</div>
+          <div class="trash-note-pop note-remove-red">Delete</div>
         </div>
         <div style="width: 1px; height: 24px; background: rgba(255, 255, 255, 0.12); align-self: center; margin: 0 4px; flex-shrink: 0;"></div>
         <div class="existing-file-action" style="width: 32px; display: flex; align-items: center; justify-content: center; position: relative; margin-right: 5px;">
-          <button type="button" class="btn-close-x" onclick="closeFileDetail()" title="Đóng">
+          <button type="button" class="btn-close-x" onclick="closeFileDetail()">
             <i class="bi bi-x-lg"></i>
           </button>
-          <div class="trash-note-pop note-close-grey" style="bottom: -30px !important;">Close</div>
+          <div class="trash-note-pop note-close-grey">Close</div>
         </div>
       </div>
       ${aiZoneHTML}`;
