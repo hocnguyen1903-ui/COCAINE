@@ -8,6 +8,17 @@ function initTabPL() {
     setupLuxuryCalendar("#field9-pl", "field9-pl", null);
     setupLocation("locationDropdown-pl", () => updateContractNo_PL());
     if (typeof filterField0_PL === 'function') filterField0_PL();
+
+    const inp0 = document.getElementById("field0-pl");
+    if (inp0) {
+        inp0.addEventListener("focus", () => {
+            const tok = localStorage.getItem('bcons_session_token');
+            const idxApi = window.__BconsViewer && window.__BconsViewer.pl01Index;
+            if (tok && idxApi && !idxApi.state.ready && !idxApi.state.syncing) {
+                idxApi.sync(false);
+            }
+        });
+    }
 }
 
 /**
@@ -89,9 +100,18 @@ function clearForm_PL() {
 // 2. SEARCH ENGINE: XỬ LÝ DỮ LIỆU & LỌC DASHBOARD PL
 // ==========================================================================
 
-/**
- * Tiền xử lý dữ liệu để Search nhanh (Regex, Nhân sự, Phân loại PL)
- */
+function normalizeText_PL(str) {
+    if (!str) return "";
+    return str.toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/Đ/g, "D")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
 function precomputePLData() {
     if (PRECOMPUTED_PL_DATA || !SYSTEM_DATA.pl.field0) return;
     
@@ -115,8 +135,8 @@ function precomputePLData() {
             isPL: isPL,
             parentCode: isPL ? plMatch[2].trim() : ma,
             plNo: isPL ? parseInt(plMatch[1], 10) : 0,
-            searchStr: `${ma} ${goiThau} ${nhaThauK}`.toLowerCase(),
-            staffStr: nhanSuM.toLowerCase(),
+            searchStr: normalizeText_PL(`${ma} ${goiThau} ${nhaThauK}`),
+            staffStr: normalizeText_PL(nhanSuM),
             numericValue: numericValue,
             maHD: ma,
             rightParts: parts.slice(1).filter(p => p.trim() !== "")
@@ -161,10 +181,8 @@ function executeFilter_PL(allowAnim = true, isLoadMore = false, preserveScroll =
     const drop = document.getElementById("dropdown-field0-pl");
     if (!input || !drop || !PRECOMPUTED_PL_DATA) return;
 
-    // Lưu vị trí cuộn trước khi vẽ lại
     const savedScrollTop = drop.scrollTop;
 
-    // Xác định từ khóa lọc
     let query = "";
     if (selectedContractMaHD_PL && input.value.trim().toUpperCase() === selectedContractMaHD_PL.toUpperCase()) {
         query = (activeSearchQuery_PL || "").toLowerCase().trim();
@@ -177,77 +195,199 @@ function executeFilter_PL(allowAnim = true, isLoadMore = false, preserveScroll =
         document.getElementById('field8-pl').value = '';
     }
 
+    const idxApi = window.__BconsViewer && window.__BconsViewer.pl01Index;
+    if (query.includes("#") && idxApi && !idxApi.state.ready) {
+        const tok = localStorage.getItem('bcons_session_token');
+        if (tok && !idxApi.state.syncing) {
+            idxApi.sync(false).then(() => {
+                if (activeTabId === 'tab-plhd') executeFilter_PL(false, false, true);
+            });
+        }
+    }
+
     const currentInputVal = selectedContractMaHD_PL ? selectedContractMaHD_PL.toUpperCase() : input.value.trim().toUpperCase();
 
     if (!isLoadMore) currentRenderLimit_PL = Math.max(currentRenderLimit_PL, 50); 
 
-    // 1. Lọc và sắp xếp
     const { finalData, sumHDPL, sumPL } = filterAndSortData_PL(query);
 
-    // 2. Render Header
     const headerHTML = buildHeaderHTML_PL(sumHDPL, sumPL);
 
-    // 3. Render DOM
     while (drop.firstChild) drop.removeChild(drop.lastChild);
     drop.insertAdjacentHTML('beforeend', headerHTML);
 
     if (finalData.length === 0) {
-        drop.insertAdjacentHTML('beforeend', `<div class="disable-hover" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 280px;"><i class="bi bi-search" style="font-size: 40px; margin-bottom: 15px; color: #505966; opacity: 0.8;"></i><span style="font-size: 14px; font-style: italic; color: #7A828E;">Vui lòng nhập từ khóa để tìm kiếm...</span></div>`);
+        const isSyncingHash = query.includes("#") && idxApi && idxApi.state.syncing;
+        const emptyText = isSyncingHash ? "Đang đồng bộ chỉ mục Phụ lục 01..." : "Vui lòng nhập từ khóa để tìm kiếm...";
+        drop.insertAdjacentHTML('beforeend', `<div class="disable-hover" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 280px;"><i class="bi bi-search" style="font-size: 40px; margin-bottom: 15px; color: #505966; opacity: 0.8;"></i><span style="font-size: 14px; font-style: italic; color: #7A828E;">${emptyText}</span></div>`);
     } else {
-        // 4. Render từng dòng
         const listHTML = finalData.slice(0, currentRenderLimit_PL)
             .map((item, index) => buildSingleItemHTML_PL(item, index, currentInputVal, allowAnim))
             .join("");
         
         drop.insertAdjacentHTML('beforeend', listHTML);
 
-        // Nút Load More
         if (finalData.length > currentRenderLimit_PL) {
             const remaining = finalData.length - currentRenderLimit_PL;
             drop.insertAdjacentHTML('beforeend', `<div class="disable-hover" onmousedown="loadMoreData_PL(event)" onmouseover="this.style.background='rgba(255, 186, 8, 0.08)';" onmouseout="this.style.background='transparent';" style="display: flex; align-items: center; justify-content: center; padding: 16px; cursor: pointer; border-top: 1px solid rgba(255,255,255,0.04); background: transparent; transition: background 0.2s ease;"><span style="color: #95A1AF; font-size: 12px; font-weight: 400; letter-spacing: 0.3px;">Đang còn <b style="color: #FFBA08; font-weight: 700; font-size: 13px;">${remaining}</b> kết quả. Nhấn để tải thêm ... <i class="bi bi-chevron-double-down" style="color: #FFFFFF; font-size: 13px; position: relative; top: 1px; margin-left: 2px;"></i></span></div>`);
         }
     }
     
-    // NẾU có cờ preserveScroll hoặc đang loadMore thì giữ vị trí cuộn cũ;
-    // NẾU KHÔNG (như bấm Cancel, gõ tìm kiếm mới) thì cuộn về đỉnh (top = 0)
     drop.scrollTop = (isLoadMore || preserveScroll) ? savedScrollTop : 0;
 }
 
-/**
- * Hàm lọc & sắp xếp dữ liệu chuẩn
- */
+function findPl01RecordForItem_PL(item) {
+    const idxApi = window.__BconsViewer && window.__BconsViewer.pl01Index;
+    if (!idxApi || !idxApi.state || !idxApi.state.ready || item.isPL) return null;
+
+    const byMa = idxApi.state.byMaHD.get((item.maHD || "").toUpperCase());
+    if (byMa) return byMa;
+
+    if (item.scanId && item.scanId.includes("|")) {
+        const entries = item.scanId.split(";;");
+        for (let i = 0; i < entries.length; i++) {
+            const fId = (entries[i].split("|")[0] || "").trim();
+            if (!fId) continue;
+            const byId = idxApi.state.byFileId.get(fId);
+            if (byId) return byId;
+        }
+    }
+    return null;
+}
+
+function mergePl01Matches_PL(matchList) {
+    if (!matchList || matchList.length === 0) return null;
+    if (matchList.length === 1) return matchList[0];
+
+    let bestPct = 100;
+    let bestCount = 0;
+    let totalScore = 0;
+    let hasLowerTier = false;
+    const allGroups = [];
+
+    matchList.forEach(m => {
+        if (m.bestPct < bestPct) bestPct = m.bestPct;
+        bestCount += m.bestCount;
+        totalScore += m.totalScore;
+        if (m.hasLowerTier) hasLowerTier = true;
+        allGroups.push(...m.groups);
+    });
+
+    allGroups.sort((a, b) => (b.pct - a.pct) || (b.count - a.count) || (a.firstPage - b.firstPage));
+    return {
+        ...matchList[0],
+        bestPct: bestPct,
+        bestCount: bestCount,
+        hasLowerTier: hasLowerTier,
+        totalScore: totalScore,
+        groups: allGroups
+    };
+}
+
 function filterAndSortData_PL(query) {
     let filtered = PRECOMPUTED_PL_DATA;
+    let hasActiveHashSearch = false;
+    const hashContextByFileId = new Map();
+    const hashContextByMaHD = new Map();
+    let firstRawHashQuery = "";
 
-    // Lọc theo biểu thức: Phân tách nhóm bằng '|' (OR), trong mỗi nhóm bắt buộc đủ từ khóa bằng '+' (AND)
+    const idxApi = window.__BconsViewer && window.__BconsViewer.pl01Index;
+
     if (query) {
         const orGroups = query.split('|').map(g => g.trim()).filter(g => g !== "");
         if (orGroups.length > 0) {
-            filtered = filtered.filter(item => {
-                // Thỏa mãn ít nhất một trong các nhóm OR
-                return orGroups.some(group => {
-                    const andKeywords = group.split('+').map(k => k.trim()).filter(k => k !== "");
-                    if (andKeywords.length === 0) return false;
-                    
-                    // Thỏa mãn toàn bộ từ khóa AND trong nhóm đó
-                    return andKeywords.every(kw => {
-                        if (kw.startsWith("'")) {
-                            const staffQuery = kw.substring(1).trim();
-                            return staffQuery === "" || item.staffStr.includes(staffQuery);
-                        }
-                        return item.searchStr.includes(kw);
-                    });
+            const parsedGroups = orGroups.map(group => {
+                const andKeywords = group.split('+').map(k => k.trim()).filter(k => k !== "");
+                const hashTerms = [];
+                const staffTerms = [];
+                const normalTerms = [];
+
+                andKeywords.forEach(kw => {
+                    if (kw.startsWith("#")) {
+                        hasActiveHashSearch = true;
+                        const hq = kw.substring(1).trim();
+                        if (hq && !firstRawHashQuery) firstRawHashQuery = hq;
+                        hashTerms.push(hq);
+                    } else if (kw.startsWith("'")) {
+                        staffTerms.push(normalizeText_PL(kw.substring(1)));
+                    } else {
+                        normalTerms.push(normalizeText_PL(kw));
+                    }
                 });
-            });
+                return { hashTerms, staffTerms, normalTerms };
+            }).filter(pg => (pg.hashTerms.length + pg.staffTerms.length + pg.normalTerms.length) > 0);
+
+            if (parsedGroups.length > 0) {
+                const matchedRows = [];
+                for (let idx = 0; idx < filtered.length; idx++) {
+                    const item = filtered[idx];
+                    let bestItemMatch = null;
+                    let groupMatched = false;
+
+                    for (let gIdx = 0; gIdx < parsedGroups.length; gIdx++) {
+                        const pg = parsedGroups[gIdx];
+                        const staffOk = pg.staffTerms.every(sq => sq === "" || item.staffStr.includes(sq));
+                        if (!staffOk) continue;
+                        const normOk = pg.normalTerms.every(nq => nq === "" || item.searchStr.includes(nq));
+                        if (!normOk) continue;
+
+                        if (pg.hashTerms.length === 0) {
+                            groupMatched = true;
+                            break;
+                        }
+
+                        if (item.isPL || !idxApi || !idxApi.state.ready) continue;
+                        const record = findPl01RecordForItem_PL(item);
+                        if (!record) continue;
+
+                        const termMatches = [];
+                        let allHashOk = true;
+                        for (let h = 0; h < pg.hashTerms.length; h++) {
+                            const hTerm = pg.hashTerms[h];
+                            if (!hTerm) { allHashOk = false; break; }
+                            const mRes = idxApi.matchContract(record, hTerm);
+                            if (!mRes) { allHashOk = false; break; }
+                            termMatches.push(mRes);
+                        }
+
+                        if (allHashOk && termMatches.length > 0) {
+                            groupMatched = true;
+                            const merged = mergePl01Matches_PL(termMatches);
+                            if (!bestItemMatch || merged.totalScore > bestItemMatch.totalScore) {
+                                bestItemMatch = merged;
+                            }
+                        }
+                    }
+
+                    if (groupMatched) {
+                        if (bestItemMatch) {
+                            hashContextByFileId.set(bestItemMatch.fileId, bestItemMatch);
+                            hashContextByMaHD.set(item.maHD.toUpperCase(), bestItemMatch);
+                            matchedRows.push({ ...item, _pl01Match: bestItemMatch });
+                        } else {
+                            matchedRows.push(item);
+                        }
+                    }
+                }
+                filtered = matchedRows;
+            }
         }
     }
 
-    // Lọc theo trạng thái Bàn giao / File đính kèm (ALL, DONE, PENDING, HAS_FILE)
+    if (hasActiveHashSearch) {
+        window.activeHashContext_PL = {
+            query: firstRawHashQuery,
+            byFileId: hashContextByFileId,
+            byMaHD: hashContextByMaHD
+        };
+    } else {
+        window.activeHashContext_PL = null;
+    }
+
     if (currentFilterState_PL === 'DONE') filtered = filtered.filter(i => i.transferred === true);
     else if (currentFilterState_PL === 'PENDING') filtered = filtered.filter(i => !i.transferred);
     else if (currentFilterState_PL === 'HAS_FILE') filtered = filtered.filter(i => Boolean(i.scanId && i.scanId.includes("|")));
 
-    // Tính tổng tiền & Nhóm quan hệ Cha-Con
     let sumHDPL = 0, sumPL = 0;   
     const parentMap = new Map();
     const orphans = [];
@@ -265,9 +405,27 @@ function filterAndSortData_PL(query) {
         }
     });
     
-    // Ghép mảng cuối cùng (Hợp đồng cha đứng trước, các Phụ lục con xếp ngay dưới)
     let finalData = [];
-    const sortedParents = Array.from(parentMap.values()).sort((a, b) => b.parent.originalIndex - a.parent.originalIndex);
+    const sortedParents = Array.from(parentMap.values()).sort((a, b) => {
+        if (hasActiveHashSearch) {
+            const mA = a.parent._pl01Match;
+            const mB = b.parent._pl01Match;
+            if (mA && mB) {
+                const tierDiff = mB.bestPct - mA.bestPct;
+                if (tierDiff !== 0) return tierDiff;
+                const scoreDiff = mB.totalScore - mA.totalScore;
+                if (scoreDiff !== 0) return scoreDiff;
+                const cntDiff = mB.bestCount - mA.bestCount;
+                if (cntDiff !== 0) return cntDiff;
+            } else if (mB && !mA) {
+                return 1;
+            } else if (mA && !mB) {
+                return -1;
+            }
+        }
+        return b.parent.originalIndex - a.parent.originalIndex;
+    });
+
     sortedParents.forEach(group => {
         finalData.push(group.parent);
         group.children.sort((a, b) => a.plNo - b.plNo).forEach(c => finalData.push(c));
@@ -449,6 +607,38 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
     let noteParts = [i.dateH, cleanedPackage, i.searchM].filter(Boolean);
     let hoverText = noteParts.join(" -- ");
 
+    let matchBadgeHTML = "";
+    if (i._pl01Match) {
+        const m = i._pl01Match;
+        let badgeColor = "#FF4D4D";
+        let badgeBg = "rgba(255, 77, 77, 0.14)";
+        let badgeBorder = "rgba(255, 77, 77, 0.45)";
+
+        if (m.bestPct === 100) {
+            badgeColor = "#2ECC71";
+            badgeBg = "rgba(46, 204, 113, 0.14)";
+            badgeBorder = "rgba(46, 204, 113, 0.45)";
+        } else if (m.bestPct === 75) {
+            badgeColor = "#FFBA08";
+            badgeBg = "rgba(255, 186, 8, 0.14)";
+            badgeBorder = "rgba(255, 186, 8, 0.45)";
+        } else if (m.bestPct === 60) {
+            badgeColor = "#FF7A00";
+            badgeBg = "rgba(255, 122, 0, 0.14)";
+            badgeBorder = "rgba(255, 122, 0, 0.45)";
+        }
+
+        const targetMatchFileId = fileIdH || m.fileId;
+        const badgeClick = targetMatchFileId ? `onmousedown="openDirectFile_PL('${escapeStr(targetMatchFileId)}', event);"` : "";
+        matchBadgeHTML = `<span ${badgeClick} onmouseover="this.style.opacity='1'; this.style.filter='brightness(1.35) saturate(1.2)';" onmouseout="this.style.opacity='0.6'; this.style.filter='none';" style="flex-shrink: 0; margin-left: 8px; padding: 2.5px 7px; border-radius: var(--badge-radius, 4px); font-size: 9.5px; font-weight: 700; letter-spacing: 0.2px; color: ${badgeColor}; background: ${badgeBg}; border: 1px solid ${badgeBorder}; line-height: 1.4; cursor: pointer; opacity: 0.6; transition: opacity 0.15s ease, filter 0.15s ease;">${m.bestPct}% · x${m.bestCount}${m.hasLowerTier ? '+' : ''}</span>`;
+    }
+
+    const uploadHintHTML = window.activeHashContext_PL ? "" : `
+                <div class="row-upload-hint" onmousedown="if(event.button === 0) { event.stopPropagation(); openScanPanel_PL('${escapeStr(i.maHD)}'); }">
+                    <i class="bi bi-cloud-arrow-up"></i>
+                    <span>Up file here</span>
+                </div>`;
+
     return `<div class="${isTransferredClass} ${animationClass} ${selectedClass} ${previewClass} ${plRowClass} hoc-tooltip" 
                  ${animationDelay} 
                  data-display="${escapeStr(i.display)}" 
@@ -461,13 +651,9 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
                 <div style="display: flex; align-items: center; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px;">
                     ${icon} 
                     <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${formattedMa}</span>
+                    ${matchBadgeHTML}
                 </div>
-
-                <div class="row-upload-hint" onmousedown="if(event.button === 0) { event.stopPropagation(); openScanPanel_PL('${escapeStr(i.maHD)}'); }">
-                    <i class="bi bi-cloud-arrow-up"></i>
-                    <span>Up file here</span>
-                </div>
-
+                ${uploadHintHTML}
                 <div class="money-column-container" style="display: flex; align-items: center; justify-content: flex-end;">
                     ${giaTriHTML}
                     ${fileStatusHTML}

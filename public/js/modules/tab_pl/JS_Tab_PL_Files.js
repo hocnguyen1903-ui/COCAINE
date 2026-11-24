@@ -319,11 +319,19 @@ function viewScanFile_PL(id, name, targetRowElement = null) {
         closePreviewTimer_PL = null;
     }
 
+    let pl01Context = null;
+    if (window.activeHashContext_PL && window.activeHashContext_PL.byFileId) {
+        pl01Context = window.activeHashContext_PL.byFileId.get(targetId) || null;
+    }
+
     const wasAlreadyOpen = Boolean(tabPL && tabPL.classList.contains("split-preview-active"));
 
     if (currentPreviewFileId_PL === targetId && wasAlreadyOpen) {
         document.querySelectorAll('#dropdown-field0-pl .hoc-tooltip').forEach(r => r.classList.remove('is-previewing-row'));
         if (targetRowElement) targetRowElement.classList.add('is-previewing-row');
+        if (window.BconsViewer && typeof window.BconsViewer.applyPl01Context === "function") {
+            window.BconsViewer.applyPl01Context(pl01Context);
+        }
         return;
     }
 
@@ -378,7 +386,7 @@ function viewScanFile_PL(id, name, targetRowElement = null) {
         }
 
         if (window.BconsViewer) {
-            window.BconsViewer.loadFile(targetId, targetName);
+            window.BconsViewer.loadFile(targetId, targetName, undefined, pl01Context);
         }
 
         requestAnimationFrame(() => {
@@ -392,7 +400,7 @@ function viewScanFile_PL(id, name, targetRowElement = null) {
             if (typeof window.BconsViewer.setTransitionGate === "function") {
                 window.BconsViewer.setTransitionGate(Promise.resolve());
             }
-            window.BconsViewer.loadFile(targetId, targetName);
+            window.BconsViewer.loadFile(targetId, targetName, undefined, pl01Context);
         }
     }
 }

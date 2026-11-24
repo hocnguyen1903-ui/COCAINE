@@ -9,6 +9,7 @@
     --peak-gold: #FFBA08;
     --metallic-glow: rgba(209, 160, 84, 0.15);
     --peak-glow: rgba(255, 192, 0, 0.35);
+    --badge-radius: 4px;
 }
 
 html, body {

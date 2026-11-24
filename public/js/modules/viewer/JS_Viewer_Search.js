@@ -45,7 +45,9 @@
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
+      .replace(/(\d)[.,](?=\d)/g, "$1\uE001")
+      .replace(/[^a-z0-9\uE001]/g, "")
+      .replace(/\uE001/g, ".");
   }
 
   function cleanSentenceNatural(str) {
@@ -61,7 +63,9 @@
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/(\d)[.,](?=\d)/g, "$1\uE001")
+      .replace(/[^a-z0-9\s\uE001]/g, " ")
+      .replace(/\uE001/g, ".")
       .replace(/\s+/g, " ")
       .trim();
   }
@@ -95,6 +99,7 @@
   function isSoftOcrTokenMatch(strToken, queryToken) {
     if (!strToken || !queryToken) return false;
     if (strToken === queryToken) return true;
+    if (strToken.includes(".") !== queryToken.includes(".")) return false;
 
     // Bắt buộc chữ cái đầu tiên khớp chính xác
     if (strToken[0] !== queryToken[0]) return false;
@@ -109,15 +114,20 @@
     return isEditDistanceOne(strToken, queryToken);
   }
 
-  async function executeSearch() {
+  async function executeSearch(options = {}) {
     const rawQuery = document.getElementById("ai-search-input").value;
     if (!rawQuery || !rawQuery.trim() || !S.currentFileId || !S.currentManifest) return;
+
+    const preferPl01 = Boolean(options && options.preferPl01);
+    const silentNotFound = Boolean(options && options.silentNotFound);
 
     S.lastSearchedQuery = rawQuery.trim();
     clearSearchState();
 
     const qTokens = rawQuery
+      .replace(/(\d)[.,](?=\d)/g, "$1\uE001")
       .replace(/[\(\)\[\]\{\}\-\|\/\\,;:\.\?\!\<\>+=_]/g, " ")
+      .replace(/\uE001/g, ".")
       .split(/\s+/)
       .map(cleanNaturalToken)
       .filter(Boolean);
@@ -157,6 +167,7 @@
     }
     function isFuzzyTokenMatch(strToken, queryToken) {
       if (strToken === queryToken) return true;
+      if (strToken.includes(".") !== queryToken.includes(".")) return false;
       const qLen = queryToken.length;
       const sLen = strToken.length;
       if (qLen >= 2 && /[0-9]/.test(queryToken) && /[0-9]/.test(strToken)) {
@@ -251,10 +262,11 @@
             let startIdx = 0;
             while ((startIdx = solidPure.indexOf(targetWord, startIdx)) !== -1) {
               const isNumeric = /[0-9]/.test(solidPure);
+              const prevSolidChar = startIdx > 0 ? solidPure[startIdx - 1] : "";
               const beforeChar = startIdx > 0 ? it[0][startIdx - 1] : " ";
               const isStartOfWord = !(/[a-zA-Z]/.test(beforeChar));
 
-              if (isStartOfWord || isNumeric) {
+              if ((isStartOfWord || isNumeric) && prevSolidChar !== ".") {
                 const startRatio = startIdx / Math.max(1, solidPure.length);
                 let widthRatio = targetWord.length / Math.max(1, solidPure.length);
                 if (isAppendixPage && isNumeric && startIdx + targetWord.length === solidPure.length) {
@@ -577,14 +589,18 @@
 
     if (matches.length > 0) {
       S.searchResults = matches;
-      onSearchReady();
+      onSearchReady(preferPl01);
+      return matches;
     } else {
       document.getElementById("search-counter").textContent = "0/0";
-      if (typeof showToast_PL === "function") {
-        showToast_PL('Không tìm thấy từ khóa: "' + rawQuery + '"', "error");
-      } else {
-        alert('Không tìm thấy từ khóa: "' + rawQuery + '"');
+      if (!silentNotFound) {
+        if (typeof showToast_PL === "function") {
+          showToast_PL('Không tìm thấy từ khóa: "' + rawQuery + '"', "error");
+        } else {
+          alert('Không tìm thấy từ khóa: "' + rawQuery + '"');
+        }
       }
+      return [];
     }
   }
 
@@ -604,11 +620,19 @@
     }
   }
 
-  function onSearchReady() {
+  function onSearchReady(preferPl01 = false) {
     document.getElementById("btn-prev").disabled = false;
     document.getElementById("btn-next").disabled = false;
     redrawAllHighlights();
-    S.currentMatchIndex = 0;
+
+    let startIdx = 0;
+    if (preferPl01 && S.currentManifest && S.currentManifest.appendixStartPage) {
+      const apStart = S.currentManifest.appendixStartPage;
+      const pl01Idx = S.searchResults.findIndex(m => m.page >= apStart);
+      if (pl01Idx !== -1) startIdx = pl01Idx;
+    }
+
+    S.currentMatchIndex = startIdx;
     updateNavigationUI();
     jumpToMatch(S.currentMatchIndex);
   }

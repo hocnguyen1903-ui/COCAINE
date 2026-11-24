@@ -1164,6 +1164,230 @@
   // =========================================================================
   // ĐĂNG KÝ NỘI BỘ & PUBLIC FACADE CHO TOÀN HỆ THỐNG
   // =========================================================================
+  // =========================================================================
+  // MỨC 2: DROPDOWN GỢI Ý 2 DÒNG & ĐIỀU HƯỚNG PL01 DƯỚI #ai-search-input
+  // =========================================================================
+  let isPl01DropdownBound = false;
+  let activePl01VariantCards = [];
+
+  function escapePl01Html(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function highlightPl01ContextHtml(line, matchedWords, rawQuery) {
+    const cleanQ = BV.pl01Index ? BV.pl01Index.normalize(rawQuery) : "";
+    const qWords = cleanQ ? cleanQ.split(" ").filter(Boolean) : [];
+    const targetWords = Array.from(new Set([...(matchedWords || []), ...qWords])).filter(Boolean);
+    if (targetWords.length === 0) return escapePl01Html(line);
+
+    const isSingleWord = qWords.length <= 1;
+    const parts = String(line || "").split(/((?:[A-Za-zÀ-ỹ0-9]|(?<=\d)[.,](?=\d))+)/);
+    return parts.map(part => {
+      if (!/[A-Za-zÀ-ỹ0-9]/.test(part)) return escapePl01Html(part);
+      const normPart = BV.pl01Index ? BV.pl01Index.normalize(part) : part.toLowerCase();
+      const hit = targetWords.some(tw => isSingleWord ? normPart.startsWith(tw) : (normPart === tw));
+      return hit
+        ? `<mark class="pl01-ctx-hl">${escapePl01Html(part)}</mark>`
+        : escapePl01Html(part);
+    }).join("");
+  }
+
+  function ensurePl01DropdownElement() {
+    const panel = document.getElementById("pl-dock-preview-panel");
+    if (!panel) return null;
+
+    let dropEl = document.getElementById("pl01-variants-dropdown");
+    if (!dropEl) {
+      dropEl = document.createElement("div");
+      dropEl.id = "pl01-variants-dropdown";
+      dropEl.className = "pl01-variants-dropdown";
+      dropEl.addEventListener("click", (e) => e.stopPropagation());
+      panel.appendChild(dropEl);
+    }
+
+    if (!isPl01DropdownBound) {
+      isPl01DropdownBound = true;
+
+      document.addEventListener("click", (e) => {
+        const drop = document.getElementById("pl01-variants-dropdown");
+        const btn = document.getElementById("btn-pl01-variants");
+        if (!drop || !drop.classList.contains("show")) return;
+        if (!drop.contains(e.target) && (!btn || !btn.contains(e.target))) {
+          closePl01VariantsDropdown();
+        }
+      });
+
+      const vp = document.getElementById("viewport-container");
+      if (vp) {
+        vp.addEventListener("pointerdown", () => closePl01VariantsDropdown());
+      }
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" || e.key === "Esc") {
+          const drop = document.getElementById("pl01-variants-dropdown");
+          if (drop && drop.classList.contains("show")) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            closePl01VariantsDropdown();
+          }
+        }
+      }, true);
+    }
+
+    return dropEl;
+  }
+
+  function syncPl01DropdownPosition(dropEl) {
+    const panel = document.getElementById("pl-dock-preview-panel");
+    const searchWrap = panel ? panel.querySelector(".search-box-wrap") : null;
+    if (!panel || !searchWrap || !dropEl) return;
+
+    const panelRect = panel.getBoundingClientRect();
+    const wrapRect = searchWrap.getBoundingClientRect();
+    if (!panelRect.width || !wrapRect.width) return;
+
+    const snap5 = (v) => Math.round(v / 5) * 5;
+    const scaleX = panel.clientWidth / Math.max(1, panelRect.width);
+    const scaleY = panel.clientHeight / Math.max(1, panelRect.height);
+    const wrapBottomY = (wrapRect.bottom - panelRect.top) * scaleY;
+    const wrapCenterX = ((wrapRect.left + wrapRect.width / 2) - panelRect.left) * scaleX;
+    const dropW = Math.max(240, Math.floor(Math.min(480, panel.clientWidth - 24) / 5) * 5);
+    const clampedLeft = Math.max(10, Math.min(snap5(wrapCenterX - dropW / 2), Math.floor((panel.clientWidth - 10 - dropW) / 5) * 5));
+
+    dropEl.style.top = `${snap5(wrapBottomY + 8)}px`;
+    dropEl.style.left = `${clampedLeft}px`;
+    dropEl.style.width = `${dropW}px`;
+  }
+
+  function renderPl01VariantsDropdown(ctx) {
+    const dropEl = ensurePl01DropdownElement();
+    if (!dropEl) return;
+
+    if (!ctx || !Array.isArray(ctx.groups) || ctx.groups.length === 0) {
+      activePl01VariantCards = [];
+      dropEl.innerHTML = "";
+      return;
+    }
+
+    const dedupMap = new Map();
+    ctx.groups.forEach(g => {
+      if (!dedupMap.has(g.normKey)) {
+        dedupMap.set(g.normKey, g);
+      }
+    });
+    activePl01VariantCards = Array.from(dedupMap.values()).slice(0, 8);
+
+    dropEl.innerHTML = activePl01VariantCards.map((g, idx) => {
+      const tierClass = g.pct === 100 ? "tier-100" : (g.pct === 75 ? "tier-75" : (g.pct === 60 ? "tier-60" : "tier-50"));
+      const extraHTML = g.extraLocations > 0
+        ? `<span class="pl01-extra-loc">(+${g.extraLocations} vị trí khác)</span>`
+        : "";
+      const ctxHtml = highlightPl01ContextHtml(g.bestContextLine, g.matchedWords, ctx.rawQuery);
+
+      return `
+        <div class="pl01-variant-card" onclick="selectPl01VariantCard(${idx})">
+          <div class="pl01-card-row1">
+            <span class="pl01-tier-badge ${tierClass}">${g.pct}%</span>
+            <span class="pl01-key-text">${escapePl01Html(g.keyText)}</span>
+            <span class="pl01-meta-text">· x${g.count} · Tr. ${g.firstPage}</span>
+          </div>
+          <div class="pl01-card-row2">${ctxHtml}${extraHTML}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function openPl01VariantsDropdown() {
+    const dropEl = ensurePl01DropdownElement();
+    const btn = document.getElementById("btn-pl01-variants");
+    if (!dropEl || activePl01VariantCards.length === 0) return;
+    syncPl01DropdownPosition(dropEl);
+    dropEl.classList.add("show");
+    if (btn) btn.classList.add("open");
+  }
+
+  function closePl01VariantsDropdown() {
+    const dropEl = document.getElementById("pl01-variants-dropdown");
+    const btn = document.getElementById("btn-pl01-variants");
+    if (dropEl) dropEl.classList.remove("show");
+    if (btn) btn.classList.remove("open");
+  }
+
+  function togglePl01VariantsDropdown(e) {
+    if (e) e.stopPropagation();
+    const dropEl = document.getElementById("pl01-variants-dropdown");
+    if (dropEl && dropEl.classList.contains("show")) {
+      closePl01VariantsDropdown();
+    } else {
+      if (S.activePl01Context) renderPl01VariantsDropdown(S.activePl01Context);
+      openPl01VariantsDropdown();
+    }
+  }
+
+  async function selectPl01VariantCard(idx) {
+    const card = activePl01VariantCards[idx];
+    if (!card) return;
+    const inp = document.getElementById("ai-search-input");
+    if (inp) inp.value = card.keyText;
+    closePl01VariantsDropdown();
+    await SR.executeSearch({ preferPl01: true });
+  }
+
+  function resetPl01VariantsUI() {
+    const btn = document.getElementById("btn-pl01-variants");
+    if (btn) {
+      btn.style.display = "none";
+      btn.classList.remove("open");
+    }
+    activePl01VariantCards = [];
+    const dropEl = document.getElementById("pl01-variants-dropdown");
+    if (dropEl) {
+      dropEl.classList.remove("show");
+      dropEl.innerHTML = "";
+    }
+  }
+
+  async function applyPl01SearchContextIfAny() {
+    const ctx = S.pendingPl01Context;
+    S.pendingPl01Context = null;
+    S.activePl01Context = ctx || null;
+
+    if (!ctx || !ctx.rawQuery) {
+      resetPl01VariantsUI();
+      return;
+    }
+
+    const inp = document.getElementById("ai-search-input");
+    if (inp) inp.value = ctx.rawQuery;
+
+    const foundMatches = await SR.executeSearch({ preferPl01: true, silentNotFound: true });
+    const hasGroups = Array.isArray(ctx.groups) && ctx.groups.length > 0;
+    const btn = document.getElementById("btn-pl01-variants");
+
+    if (foundMatches && foundMatches.length > 0) {
+      closePl01VariantsDropdown();
+      const showCaret = Boolean(ctx.hasLowerTier || ctx.groups.some(g => g.pct < 100));
+      if (btn) btn.style.display = (showCaret && hasGroups) ? "inline-flex" : "none";
+      if (showCaret && hasGroups) renderPl01VariantsDropdown(ctx);
+    } else {
+      if (btn) btn.style.display = hasGroups ? "inline-flex" : "none";
+      if (hasGroups) {
+        renderPl01VariantsDropdown(ctx);
+        openPl01VariantsDropdown();
+      }
+    }
+  }
+
+  window.togglePl01VariantsDropdown = togglePl01VariantsDropdown;
+  window.selectPl01VariantCard = selectPl01VariantCard;
+
+  // =========================================================================
+  // ĐĂNG KÝ NỘI BỘ & PUBLIC FACADE CHO TOÀN HỆ THỐNG
+  // =========================================================================
   BV.ui = {
     buildTextLayerForWrapper,
     renderPageToCanvas,
@@ -1173,7 +1397,9 @@
     setupHandToolPanning,
     setupCtrlWheelZoom,
     setupTouchPinchZoom,
-    setupSmartClipboardCopy
+    setupSmartClipboardCopy,
+    applyPl01SearchContextIfAny,
+    resetPl01VariantsUI
   };
 
   window.handleSmartScrollUp = handleSmartScrollUp;
@@ -1202,7 +1428,6 @@
     S.currentSessionEpoch++;
     delete S.SESSION_MANIFEST_CACHE[S.currentFileId];
 
-    // Dọn trang trắng cũ & ẩn thanh điều khiển để giao diện giống 100% lần số hóa đầu
     cancelAllPageRenders();
     if (S.pageObserver) {
       S.pageObserver.disconnect();
@@ -1223,6 +1448,14 @@
   };
 
   window.BconsViewer = {
+    pl01Index: BV.pl01Index,
+    getActivePl01Context: function() {
+      return S.activePl01Context || null;
+    },
+    applyPl01Context: function(ctx) {
+      S.pendingPl01Context = ctx || null;
+      return applyPl01SearchContextIfAny();
+    },
     setTransitionGate: function(promise) {
       S.isPanelTransitioning = true;
       S.transitionWaitPromise = Promise.resolve(promise).finally(() => {
@@ -1245,8 +1478,8 @@
         BV.pipeline.getDriveTokenAsync().catch(() => {});
       }
     },
-    loadFile: function(fileId, fileName, sizeMB) {
-      BV.pipeline.loadFile(fileId, fileName, sizeMB);
+    loadFile: function(fileId, fileName, sizeMB, pl01Context) {
+      BV.pipeline.loadFile(fileId, fileName, sizeMB, pl01Context);
     },
     search: function(keyword) {
       const input = document.getElementById("ai-search-input");
@@ -1297,6 +1530,9 @@
     },
     close: function() {
       if (closeFaviconNoteFn) closeFaviconNoteFn();
+      resetPl01VariantsUI();
+      S.pendingPl01Context = null;
+      S.activePl01Context = null;
       S.currentSessionEpoch++;
       if (S.activeFetchAbortController) {
         S.activeFetchAbortController.abort();

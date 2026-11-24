@@ -288,6 +288,9 @@
           try {
             await ensurePdfPreloaded(fileId, 95);
             await BV.ui.renderSlicedDocument();
+            if (BV.ui.applyPl01SearchContextIfAny) {
+              await BV.ui.applyPl01SearchContextIfAny();
+            }
           } catch (e) {
             if (e.message !== "ABORTED" && e.message !== "REPAIR_OLD_MANIFEST") U.hideLoading();
           }
@@ -951,9 +954,16 @@
             window.markScanFileDigitized_PL(finalDriveFileId);
           }
 
+          if (!isLocalUpload && !isPlOrPdgFile(uploadFileName) && BV.pl01Index && typeof BV.pl01Index.sync === "function") {
+            setTimeout(() => BV.pl01Index.sync(true), 300);
+          }
+
           if (myEpoch === S.currentSessionEpoch) {
             S.currentManifest = manifest;
             await BV.ui.renderSlicedDocument();
+            if (BV.ui.applyPl01SearchContextIfAny) {
+              await BV.ui.applyPl01SearchContextIfAny();
+            }
           }
 
           const listBlank = Array.from(skippedBlankPages).sort((a, b) => a - b);
@@ -1135,8 +1145,12 @@
     }
   }
 
-  async function loadFile(fileId, fileName, sizeMB, isProcessed, jsonId) {
-    if (S.currentFileId === fileId && S.currentManifest) return;
+  async function loadFile(fileId, fileName, sizeMB, pl01Context = null) {
+    if (S.currentFileId === fileId && S.currentManifest) {
+      S.pendingPl01Context = pl01Context || null;
+      if (BV.ui.applyPl01SearchContextIfAny) await BV.ui.applyPl01SearchContextIfAny();
+      return;
+    }
 
     BV.ui.setupSearchFaviconNote();
     BV.ui.setupHandToolPanning();
@@ -1163,11 +1177,17 @@
     S.currentFileName = fileName || "Document.pdf";
     S.currentFileSizeMB = (sizeMB !== undefined) ? sizeMB : 0;
     S.currentScale = 1.0;
+    S.pendingPl01Context = pl01Context || null;
+    S.activePl01Context = null;
+
+    if (BV.ui.resetPl01VariantsUI) BV.ui.resetPl01VariantsUI();
 
     const fnEl = document.getElementById("preview-file-name") || document.getElementById("prv-file-name");
     if (fnEl) fnEl.textContent = S.currentFileName;
 
     SR.clearSearchState();
+    const searchInp = document.getElementById("ai-search-input");
+    if (searchInp && !S.pendingPl01Context) searchInp.value = "";
     const inp = document.getElementById("jump-page-input");
     if (inp) inp.value = "1";
 
@@ -1204,6 +1224,9 @@
       try {
         await ensurePdfPreloaded(fileId, 95, true);
         await BV.ui.renderSlicedDocument();
+        if (BV.ui.applyPl01SearchContextIfAny) {
+          await BV.ui.applyPl01SearchContextIfAny();
+        }
       } catch (e) {
         if (e.message !== "ABORTED" && e.message !== "REPAIR_OLD_MANIFEST") {
           U.hideLoading();

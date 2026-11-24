@@ -598,6 +598,14 @@ function doPost(e) {
     "markScanDigitized_PL": () => markScanDigitized_PL(payload),
     "overwritePdfFile_Backend": () => overwritePdfFile_Backend(payload?.[0], payload?.[1]),
     "getPdfOverwriteSession_Backend": () => getPdfOverwriteSession_Backend(payload?.[0], payload?.[1], payload?.[2]),
+    "getPl01IndexMeta": () => getPl01IndexMeta(),
+    "getPl01IndexByYear": () => getPl01IndexByYear(Array.isArray(payload) ? payload[0] : (payload?.year || payload)),
+    "backfillPl01IndexFromDrive": () => {
+      if (GLOBAL_STAFF_ROLE !== "ADMIN") {
+        throw new Error("BẢO MẬT: Chỉ ADMIN mới có quyền chạy Backfill Index!");
+      }
+      return backfillPl01IndexFromDrive(payload);
+    },
   };
 
   try {

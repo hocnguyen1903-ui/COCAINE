@@ -48,6 +48,7 @@
   const PAGE_STORE = "page_bitmaps";
   const PDF_STORE = "pdf_binaries";
   const STORE_NAME = "manifests_v13_vision";
+  const PL01_INDEX_STORE = "pl01_indexes";
   const MAX_LOCAL_FILES = 3;
   const MAX_RAM_FILES = 5;
 
@@ -145,7 +146,7 @@
   function openDB() {
     if (S.dbPromise) return S.dbPromise;
     S.dbPromise = new Promise(function(resolve, reject) {
-      const req = indexedDB.open(DB_NAME, 13);
+      const req = indexedDB.open(DB_NAME, 14);
       req.onupgradeneeded = function(e) {
         const db = e.target.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -156,6 +157,9 @@
         }
         if (!db.objectStoreNames.contains(PAGE_STORE)) {
           db.createObjectStore(PAGE_STORE);
+        }
+        if (!db.objectStoreNames.contains(PL01_INDEX_STORE)) {
+          db.createObjectStore(PL01_INDEX_STORE, { keyPath: "year" });
         }
       };
       req.onsuccess = function() { resolve(req.result); };
@@ -491,6 +495,591 @@
       }
     }
   }
+
+  // =========================================================================
+  // PL01 YEARLY SHARDED INDEX CACHE & 4-TIER SEARCH ENGINE
+  // =========================================================================
+  const PL01_STOP_WORDS = new Set(["va", "cac", "tai", "theo"]);
+  const PL01_ADMIN_BIGRAMS = new Set([
+    "cung cap", "thi cong", "lap dat", "vat tu", "nhan cong", "may moc", "hang muc"
+  ]);
+
+  function filterPl01ActiveTokens(qTokens) {
+    if (!qTokens || qTokens.length < 3) return qTokens;
+    const kept = [];
+    for (let i = 0; i < qTokens.length; i++) {
+      if (i + 1 < qTokens.length && PL01_ADMIN_BIGRAMS.has(qTokens[i] + " " + qTokens[i + 1])) {
+        i++;
+        continue;
+      }
+      if (PL01_STOP_WORDS.has(qTokens[i])) continue;
+      kept.push(qTokens[i]);
+    }
+    return kept.length >= 2 ? kept : qTokens;
+  }
+
+  const PL01_INDEX_STATE = {
+    ready: false,
+    syncing: false,
+    syncPromise: null,
+    years: {},
+    byMaHD: new Map(),
+    byFileId: new Map()
+  };
+
+  function normalizePl01SearchStr(str) {
+    if (!str) return "";
+    return String(str)
+      .normalize("NFC")
+      .replace(/[àáạảãâầấậẩẫăằắặẳẵÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴ]/g, "a")
+      .replace(/[èéẹẻẽêềếệểễÈÉẸẺẼÊỀẾỆỂỄ]/g, "e")
+      .replace(/[ìíịỉĩÌÍỊỈĨ]/g, "i")
+      .replace(/[òóọỏõôồốộổỗơờớợởỡÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠ]/g, "o")
+      .replace(/[ùúụủũưừứựửữÙÚỤỦŨƯỪỨỰỬỮ]/g, "u")
+      .replace(/[ỳýỵỷỹỲÝỴỶỸ]/g, "y")
+      .replace(/[đĐ]/g, "d")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/(\d)[.,](?=\d)/g, "$1")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  function tokenizeRawLineWithOffsets(rawLine) {
+    const tokens = [];
+    const re = /(?:[A-Za-zÀ-ỹ0-9]|(?<=\d)[.,](?=\d))+/g;
+    let m;
+    while ((m = re.exec(rawLine)) !== null) {
+      const norm = normalizePl01SearchStr(m[0]);
+      if (!norm) continue;
+      tokens.push({
+        norm: norm,
+        start: m.index,
+        end: m.index + m[0].length
+      });
+    }
+    return tokens;
+  }
+
+  function getLocalPl01Index(year) {
+    return idbGet(PL01_INDEX_STORE, String(year));
+  }
+
+  function getAllLocalPl01Indexes() {
+    return openDB().then(function(db) {
+      return new Promise(function(resolve) {
+        const tx = db.transaction(PL01_INDEX_STORE, "readonly");
+        const req = tx.objectStore(PL01_INDEX_STORE).getAll();
+        req.onsuccess = function() { resolve(Array.isArray(req.result) ? req.result : []); };
+        req.onerror = function() { resolve([]); };
+      });
+    }).catch(function() { return []; });
+  }
+
+  function saveLocalPl01Index(year, updatedAt, indexObj) {
+    return openDB().then(function(db) {
+      return new Promise(function(resolve) {
+        const tx = db.transaction(PL01_INDEX_STORE, "readwrite");
+        tx.oncomplete = function() { resolve(true); };
+        tx.onerror = function() { resolve(false); };
+        tx.objectStore(PL01_INDEX_STORE).put({
+          year: String(year),
+          updatedAt: Number(updatedAt) || Date.now(),
+          indexObj: indexObj
+        });
+      });
+    }).catch(function() { return false; });
+  }
+
+  function rebuildPl01MemoryMaps() {
+    PL01_INDEX_STATE.byMaHD.clear();
+    PL01_INDEX_STATE.byFileId.clear();
+
+    const years = Object.keys(PL01_INDEX_STATE.years).sort((a, b) => Number(b) - Number(a));
+    years.forEach(y => {
+      const idxObj = PL01_INDEX_STATE.years[y];
+      if (!idxObj || !idxObj.files) return;
+
+      Object.keys(idxObj.files).forEach(fileId => {
+        const entry = idxObj.files[fileId];
+        if (!entry || !entry.maHD || !Array.isArray(entry.pages)) return;
+
+        const compiledPages = entry.pages.map(pTuple => {
+          const pageNum = Number(pTuple[0]) || 1;
+          const rawLines = Array.isArray(pTuple[1]) ? pTuple[1] : [];
+          const compiledLines = [];
+          let pagePadNorm = " ";
+
+          for (let i = 0; i < rawLines.length; i++) {
+            const raw = String(rawLines[i] || "").trim();
+            if (!raw) continue;
+            const norm = normalizePl01SearchStr(raw);
+            if (!norm) continue;
+            const padNorm = " " + norm + " ";
+            compiledLines.push({ raw, norm, padNorm });
+            pagePadNorm += norm + " ";
+          }
+          return { pageNum, lines: compiledLines, pagePadNorm };
+        });
+
+        const record = {
+          fileId: fileId,
+          maHD: String(entry.maHD).trim(),
+          year: y,
+          apStart: Number(entry.apStart) || (compiledPages[0]?.pageNum || 1),
+          pages: compiledPages
+        };
+
+        PL01_INDEX_STATE.byFileId.set(fileId, record);
+        PL01_INDEX_STATE.byMaHD.set(record.maHD.toUpperCase(), record);
+      });
+    });
+
+    PL01_INDEX_STATE.ready = true;
+  }
+
+  async function syncPl01Indexes(forceRefresh = false) {
+    if (PL01_INDEX_STATE.syncPromise && !forceRefresh) {
+      return PL01_INDEX_STATE.syncPromise;
+    }
+
+    const runSync = (async () => {
+      PL01_INDEX_STATE.syncing = true;
+      try {
+        const localRows = await getAllLocalPl01Indexes();
+        const localByYear = new Map();
+        localRows.forEach(row => {
+          if (row && row.year && row.indexObj) {
+            localByYear.set(String(row.year), row);
+            PL01_INDEX_STATE.years[String(row.year)] = row.indexObj;
+          }
+        });
+        if (localRows.length > 0) rebuildPl01MemoryMaps();
+
+        const metaList = await callBackend("getPl01IndexMeta");
+        if (!Array.isArray(metaList) || metaList.length === 0) return true;
+
+        const currentYear = String(new Date().getFullYear());
+        let anyUpdated = false;
+
+        for (let i = 0; i < metaList.length; i++) {
+          const meta = metaList[i];
+          const y = String(meta.year);
+          const cached = localByYear.get(y);
+
+          const isStale = !cached ||
+            (Number(meta.updatedAt) !== Number(cached.updatedAt)) ||
+            (forceRefresh && y === currentYear);
+
+          if (!isStale) continue;
+
+          const shardRes = await callBackend("getPl01IndexByYear", y);
+          if (shardRes && shardRes.found && shardRes.data) {
+            const parsedObj = await decompressManifest(shardRes.data);
+            if (parsedObj && parsedObj.files) {
+              PL01_INDEX_STATE.years[y] = parsedObj;
+              await saveLocalPl01Index(y, shardRes.updatedAt || meta.updatedAt, parsedObj);
+              anyUpdated = true;
+            }
+          }
+        }
+
+        if (anyUpdated || !PL01_INDEX_STATE.ready) {
+          rebuildPl01MemoryMaps();
+        }
+        return true;
+      } catch (err) {
+        console.warn("Lỗi đồng bộ Index_PL01:", err);
+        return false;
+      } finally {
+        PL01_INDEX_STATE.syncing = false;
+        PL01_INDEX_STATE.syncPromise = null;
+      }
+    })();
+
+    PL01_INDEX_STATE.syncPromise = runSync;
+    return runSync;
+  }
+
+  function matchSinglePl01Record(record, rawQuery) {
+    const cleanQ = normalizePl01SearchStr(rawQuery);
+    if (!cleanQ) return null;
+
+    const qTokens = cleanQ.split(" ").filter(Boolean);
+    const nQ = qTokens.length;
+    if (nQ === 0) return null;
+    if (nQ === 1 && qTokens[0].length < 3) return null;
+
+    const isSingleWord = (nQ === 1);
+    const tokenMatches = (lineTok, qTok) => isSingleWord ? lineTok.startsWith(qTok) : (lineTok === qTok);
+    const tokenMatchesExact = (lineTok, qTok) => lineTok === qTok;
+    const padNeedle = (qTok) => isSingleWord ? (" " + qTok) : (" " + qTok + " ");
+
+    const activeQ = filterPl01ActiveTokens(qTokens);
+    const minLineHits = (nQ === 2) ? 1 : Math.max(2, Math.ceil(activeQ.length * 0.6));
+    const checkTokens = (nQ >= 3) ? activeQ : qTokens;
+
+    const tokenWeight = (tok) => {
+      let w = Math.min(4, tok.length / 3);
+      if (/[0-9]/.test(tok)) w += 1.5;
+      if (!PL01_STOP_WORDS.has(tok)) w += 1.0;
+      return w;
+    };
+
+    const rawMatches = [];
+
+    for (let pIdx = 0; pIdx < record.pages.length; pIdx++) {
+      const page = record.pages[pIdx];
+      let pageHasAny = false;
+      for (let qIdx = 0; qIdx < checkTokens.length; qIdx++) {
+        if (page.pagePadNorm.includes(padNeedle(checkTokens[qIdx]))) {
+          pageHasAny = true;
+          break;
+        }
+      }
+      if (!pageHasAny) continue;
+
+      const lineFullMatched = new Array(page.lines.length).fill(false);
+
+      for (let lIdx = 0; lIdx < page.lines.length; lIdx++) {
+        const line = page.lines[lIdx];
+
+        let candidateHits = 0;
+        for (let qIdx = 0; qIdx < checkTokens.length; qIdx++) {
+          if (line.padNorm.includes(padNeedle(checkTokens[qIdx]))) candidateHits++;
+        }
+        if (candidateHits < minLineHits) continue;
+
+        const lTokens = tokenizeRawLineWithOffsets(line.raw);
+        if (lTokens.length === 0) continue;
+
+        // CASE 1 TỪ (>= 3 ký tự) -> 100% (Prefix Match)
+        if (nQ === 1) {
+          const qt = qTokens[0];
+          for (let ti = 0; ti < lTokens.length; ti++) {
+            if (tokenMatches(lTokens[ti].norm, qt)) {
+              const isExact = tokenMatchesExact(lTokens[ti].norm, qt);
+              const keyText = line.raw.slice(lTokens[ti].start, lTokens[ti].end);
+              rawMatches.push({
+                pct: 100,
+                keyText: keyText,
+                normKey: lTokens[ti].norm,
+                pageNum: page.pageNum,
+                contextLine: line.raw,
+                matchedWords: [lTokens[ti].norm],
+                score: isExact ? 105 : 100
+              });
+              lineFullMatched[lIdx] = true;
+            }
+          }
+          continue;
+        }
+
+        // TẦNG 1 (100%): Cụm liền mạch đúng thứ tự (Khớp đúng từng từ)
+        let foundTier1OnLine = false;
+        for (let ti = 0; ti <= lTokens.length - nQ; ti++) {
+          let seqOk = true;
+          for (let k = 0; k < nQ; k++) {
+            if (!tokenMatches(lTokens[ti + k].norm, qTokens[k])) {
+              seqOk = false;
+              break;
+            }
+          }
+          if (seqOk) {
+            const keyText = line.raw.slice(lTokens[ti].start, lTokens[ti + nQ - 1].end);
+            rawMatches.push({
+              pct: 100,
+              keyText: keyText,
+              normKey: normalizePl01SearchStr(keyText),
+              pageNum: page.pageNum,
+              contextLine: line.raw,
+              matchedWords: qTokens.slice(),
+              score: 100 + nQ
+            });
+            foundTier1OnLine = true;
+            lineFullMatched[lIdx] = true;
+          }
+        }
+        if (foundTier1OnLine) continue;
+
+        // TÌM VỊ TRÍ KHỚP ĐÚNG TỪNG TỪ TRÊN DÒNG
+        const qPosList = [];
+        let allQPresentOnLine = true;
+        for (let k = 0; k < nQ; k++) {
+          const positions = [];
+          for (let ti = 0; ti < lTokens.length; ti++) {
+            if (tokenMatches(lTokens[ti].norm, qTokens[k])) positions.push(ti);
+          }
+          if (positions.length === 0) allQPresentOnLine = false;
+          qPosList.push(positions);
+        }
+
+        // TẦNG 2 (80%): Đủ từ trên 1 dòng
+        if (allQPresentOnLine) {
+          let minSpan = Infinity;
+          let bestIndices = null;
+
+          if (nQ === 2) {
+            for (const p0 of qPosList[0]) {
+              for (const p1 of qPosList[1]) {
+                if (p0 === p1) continue;
+                const gap = Math.abs(p1 - p0) - 1;
+                if (gap <= 3 && gap < minSpan) {
+                  minSpan = gap;
+                  bestIndices = [Math.min(p0, p1), Math.max(p0, p1)];
+                }
+              }
+            }
+          } else {
+            const picked = [];
+            let validSet = true;
+            const used = new Set();
+            for (let k = 0; k < nQ; k++) {
+              const avail = qPosList[k].find(pos => !used.has(pos));
+              if (avail === undefined) { validSet = false; break; }
+              used.add(avail);
+              picked.push(avail);
+            }
+            if (validSet) {
+              const lo = Math.min(...picked);
+              const hi = Math.max(...picked);
+              if ((hi - lo + 1) <= nQ + 6) {
+                minSpan = hi - lo;
+                bestIndices = [lo, hi];
+              }
+            }
+          }
+
+          if (bestIndices) {
+            const [lo, hi] = bestIndices;
+            const spanTokens = hi - lo + 1;
+            const keyText = (spanTokens <= 6)
+              ? line.raw.slice(lTokens[lo].start, lTokens[hi].end)
+              : line.raw.slice(lTokens[lo].start, lTokens[lo].end);
+
+            rawMatches.push({
+              pct: 75,
+              keyText: keyText,
+              normKey: normalizePl01SearchStr(keyText),
+              pageNum: page.pageNum,
+              contextLine: line.raw,
+              matchedWords: qTokens.slice(),
+              score: 78 - Math.min(3, minSpan)
+            });
+            lineFullMatched[lIdx] = true;
+            continue;
+          }
+        }
+
+        // TẦNG 4: Khớp từng từ (50% khi nQ=2 khớp 1/2 từ trọn vẹn, 60% khi nQ>=3)
+        if (nQ >= 2) {
+          const matchedActive = [];
+          const matchedPositions = [];
+          let rarityScore = 0;
+
+          for (let k = 0; k < activeQ.length; k++) {
+            const qt = activeQ[k];
+            if (nQ === 2 && (qt.length < 2 || PL01_STOP_WORDS.has(qt))) continue;
+            const foundIdx = lTokens.findIndex((lt, idx) => !matchedPositions.includes(idx) && tokenMatches(lt.norm, qt));
+            if (foundIdx !== -1) {
+              matchedActive.push(qt);
+              matchedPositions.push(foundIdx);
+              rarityScore += tokenWeight(qt);
+            }
+          }
+
+          if (matchedActive.length >= minLineHits) {
+            matchedPositions.sort((a, b) => a - b);
+            const lo = matchedPositions[0];
+            const hi = matchedPositions[matchedPositions.length - 1];
+            const contiguousRun = findLongestContiguousRun(matchedPositions);
+            const useRun = (hi - lo + 1 <= 5) ? [lo, hi] : contiguousRun;
+            const keyText = line.raw.slice(lTokens[useRun[0]].start, lTokens[useRun[1]].end);
+
+            const isHalfMatch = (nQ === 2 && matchedActive.length === 1);
+            const tierPct = isHalfMatch ? 50 : 60;
+            const baseScore = isHalfMatch ? 50 : 60;
+
+            rawMatches.push({
+              pct: tierPct,
+              keyText: keyText,
+              normKey: normalizePl01SearchStr(keyText),
+              pageNum: page.pageNum,
+              contextLine: line.raw,
+              matchedWords: matchedActive,
+              score: baseScore + Math.min(14, rarityScore)
+            });
+          }
+        }
+      }
+
+      // TẦNG 3 (75%): Đủ tất cả từ trong tối đa 2-3 dòng liền kề (xuống dòng cùng 1 ô mô tả)
+      if (nQ >= 2 && page.lines.length >= 2) {
+        const maxWin = (nQ === 2) ? 2 : 3;
+        for (let startIdx = 0; startIdx < page.lines.length - 1; startIdx++) {
+          if (lineFullMatched[startIdx]) continue;
+          const firstLine = page.lines[startIdx];
+          const firstHasAny = qTokens.some(qt => firstLine.padNorm.includes(padNeedle(qt)));
+          if (!firstHasAny) continue;
+
+          const covered = new Set();
+          let maxLineHits = 0;
+          let bestLine = null;
+          let bestLineScore = -1;
+          let bestLineMatched = [];
+
+          const endLimit = Math.min(page.lines.length - 1, startIdx + maxWin - 1);
+          for (let wIdx = startIdx; wIdx <= endLimit; wIdx++) {
+            if (lineFullMatched[wIdx]) break;
+            const wLine = page.lines[wIdx];
+            const lineMatched = [];
+            let lineWeight = 0;
+
+            for (let k = 0; k < qTokens.length; k++) {
+              if (wLine.padNorm.includes(padNeedle(qTokens[k]))) {
+                covered.add(qTokens[k]);
+                lineMatched.push(qTokens[k]);
+                lineWeight += tokenWeight(qTokens[k]);
+              }
+            }
+
+            if (lineMatched.length > maxLineHits) maxLineHits = lineMatched.length;
+            const lScore = lineMatched.length * 100 + lineWeight;
+            if (lineMatched.length > 0 && lScore > bestLineScore) {
+              bestLineScore = lScore;
+              bestLine = wLine;
+              bestLineMatched = lineMatched;
+            }
+
+            if (covered.size === nQ) {
+              if (nQ >= 3 && maxLineHits < 2) break;
+
+              const lTokens = tokenizeRawLineWithOffsets(bestLine.raw);
+              const posList = [];
+              bestLineMatched.forEach(qt => {
+                const idx = lTokens.findIndex((lt, i) => !posList.includes(i) && tokenMatches(lt.norm, qt));
+                if (idx !== -1) posList.push(idx);
+              });
+
+              let keyText = bestLineMatched[0];
+              if (posList.length > 0) {
+                posList.sort((a, b) => a - b);
+                const lo = posList[0];
+                const hi = posList[posList.length - 1];
+                const spanRun = (hi - lo + 1 <= 5) ? [lo, hi] : findLongestContiguousRun(posList);
+                keyText = bestLine.raw.slice(lTokens[spanRun[0]].start, lTokens[spanRun[1]].end);
+              }
+
+              rawMatches.push({
+                pct: 75,
+                keyText: keyText,
+                normKey: normalizePl01SearchStr(keyText),
+                pageNum: page.pageNum,
+                contextLine: bestLine.raw,
+                matchedWords: bestLineMatched,
+                score: 75 + maxLineHits
+              });
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (rawMatches.length === 0) return null;
+
+    // Gom nhóm trùng theo (pct + normKey)
+    const groupMap = new Map();
+    let bestPct = 0;
+    let totalScore = 0;
+
+    rawMatches.forEach(m => {
+      if (m.pct > bestPct) bestPct = m.pct;
+      totalScore += m.score;
+
+      const gKey = `${m.pct}|${m.normKey}`;
+      if (!groupMap.has(gKey)) {
+        groupMap.set(gKey, {
+          pct: m.pct,
+          keyText: m.keyText,
+          normKey: m.normKey,
+          count: 1,
+          firstPage: m.pageNum,
+          bestContextLine: m.contextLine,
+          bestContextScore: m.matchedWords.length * 10 + m.score,
+          matchedWords: m.matchedWords,
+          distinctContexts: new Set([m.contextLine])
+        });
+      } else {
+        const g = groupMap.get(gKey);
+        g.count++;
+        if (m.pageNum < g.firstPage) g.firstPage = m.pageNum;
+        g.distinctContexts.add(m.contextLine);
+        const ctxScore = m.matchedWords.length * 10 + m.score;
+        if (ctxScore > g.bestContextScore) {
+          g.bestContextScore = ctxScore;
+          g.bestContextLine = m.contextLine;
+          g.matchedWords = m.matchedWords;
+        }
+      }
+    });
+
+    const groups = Array.from(groupMap.values()).map(g => ({
+      pct: g.pct,
+      keyText: g.keyText,
+      normKey: g.normKey,
+      count: g.count,
+      firstPage: g.firstPage,
+      bestContextLine: g.bestContextLine,
+      matchedWords: g.matchedWords,
+      extraLocations: Math.max(0, g.distinctContexts.size - 1)
+    }));
+
+    groups.sort((a, b) => (b.pct - a.pct) || (b.count - a.count) || (a.firstPage - b.firstPage));
+
+    const bestTierMatches = rawMatches.filter(m => m.pct === bestPct);
+    const hasLowerTier = rawMatches.some(m => m.pct < bestPct);
+
+    return {
+      fileId: record.fileId,
+      maHD: record.maHD,
+      apStart: record.apStart,
+      rawQuery: rawQuery.trim(),
+      bestPct: bestPct,
+      bestCount: bestTierMatches.length,
+      hasLowerTier: hasLowerTier,
+      totalMatches: rawMatches.length,
+      totalScore: bestPct * 10000 + totalScore,
+      groups: groups
+    };
+  }
+
+  function findLongestContiguousRun(sortedIndices) {
+    if (!sortedIndices || sortedIndices.length === 0) return [0, 0];
+    let bestStart = sortedIndices[0], bestEnd = sortedIndices[0];
+    let curStart = sortedIndices[0], curEnd = sortedIndices[0];
+    for (let i = 1; i < sortedIndices.length; i++) {
+      if (sortedIndices[i] - curEnd <= 2) {
+        curEnd = sortedIndices[i];
+        if ((curEnd - curStart) > (bestEnd - bestStart)) {
+          bestStart = curStart;
+          bestEnd = curEnd;
+        }
+      } else {
+        curStart = sortedIndices[i];
+        curEnd = sortedIndices[i];
+      }
+    }
+    return [bestStart, bestEnd];
+  }
+
+  BV.pl01Index = {
+    state: PL01_INDEX_STATE,
+    sync: syncPl01Indexes,
+    matchContract: matchSinglePl01Record,
+    normalize: normalizePl01SearchStr
+  };
 
   BV.utils = {
     scalesEqual,
