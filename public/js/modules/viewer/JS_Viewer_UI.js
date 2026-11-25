@@ -1236,6 +1236,15 @@
           }
         }
       }, true);
+      const resyncOpenDropdown = () => {
+        const drop = document.getElementById("pl01-variants-dropdown");
+        if (drop && drop.classList.contains("show")) {
+          syncPl01DropdownPosition(drop);
+        }
+      };
+      window.addEventListener("resize", resyncOpenDropdown);
+      document.addEventListener("fullscreenchange", () => setTimeout(resyncOpenDropdown, 140));
+      document.addEventListener("webkitfullscreenchange", () => setTimeout(resyncOpenDropdown, 140));
     }
 
     return dropEl;
@@ -1250,16 +1259,16 @@
     const wrapRect = searchWrap.getBoundingClientRect();
     if (!panelRect.width || !wrapRect.width) return;
 
-    const snap5 = (v) => Math.round(v / 5) * 5;
     const scaleX = panel.clientWidth / Math.max(1, panelRect.width);
     const scaleY = panel.clientHeight / Math.max(1, panelRect.height);
     const wrapBottomY = (wrapRect.bottom - panelRect.top) * scaleY;
-    const wrapCenterX = ((wrapRect.left + wrapRect.width / 2) - panelRect.left) * scaleX;
-    const dropW = Math.max(240, Math.floor(Math.min(480, panel.clientWidth - 24) / 5) * 5);
-    const clampedLeft = Math.max(10, Math.min(snap5(wrapCenterX - dropW / 2), Math.floor((panel.clientWidth - 10 - dropW) / 5) * 5));
+    const wrapRightX = (wrapRect.right - panelRect.left) * scaleX;
 
-    dropEl.style.top = `${snap5(wrapBottomY + 8)}px`;
-    dropEl.style.left = `${clampedLeft}px`;
+    const dropW = Math.max(240, Math.floor(Math.min(480, wrapRightX - 10, panel.clientWidth - 24)));
+    const fixedLeft = Math.max(10, Math.round(wrapRightX - dropW));
+
+    dropEl.style.top = `${Math.round(wrapBottomY + 8)}px`;
+    dropEl.style.left = `${fixedLeft}px`;
     dropEl.style.width = `${dropW}px`;
   }
 
@@ -1293,7 +1302,7 @@
           <div class="pl01-card-row1">
             <span class="pl01-tier-badge ${tierClass}">${g.pct}%</span>
             <span class="pl01-key-text">${escapePl01Html(g.keyText)}</span>
-            <span class="pl01-meta-text">· x${g.count} · Tr. ${g.firstPage}</span>
+            <span class="pl01-meta-text">Tr. ${g.firstPage} (x${g.count})</span>
           </div>
           <div class="pl01-card-row2">${ctxHtml}${extraHTML}</div>
         </div>
@@ -1494,6 +1503,12 @@
         ST.deleteLocalPdfBinary(fileId),
         ST.clearFilePageBitmaps(fileId)
       ]).catch(() => {});
+    },
+    redigitizeAll: function(options) {
+      return BV.pipeline.redigitizeAllContracts(options);
+    },
+    stopRedigitizeAll: function() {
+      return BV.pipeline.stopRedigitizeAllContracts();
     },
     getActivePl01Context: function() {
       return S.activePl01Context || null;

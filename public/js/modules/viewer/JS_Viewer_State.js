@@ -704,7 +704,7 @@
     const padNeedle = (qTok) => isSingleWord ? (" " + qTok) : (" " + qTok + " ");
 
     const activeQ = filterPl01ActiveTokens(qTokens);
-    const minLineHits = (nQ === 2) ? 1 : Math.max(2, Math.ceil(activeQ.length * 0.6));
+    const minLineHits = (nQ <= 2) ? 1 : Math.max(2, Math.ceil(activeQ.length * 0.6));
     const checkTokens = (nQ >= 3) ? activeQ : qTokens;
     const maxAllowedSpan = 2 * nQ; // Giới hạn mật độ: Span <= 2N từ
 
@@ -740,7 +740,7 @@
         const bTokens = tokenizeRawLineWithOffsets(block.raw);
         if (bTokens.length === 0) continue;
 
-        // TẦNG 100% (1 TỪ >= 3 ký tự, Prefix Match)
+        // TẦNG 100% / 75% (1 TỪ >= 3 ký tự: khớp chuẩn 100%, khớp tiền tố 75%)
         if (nQ === 1) {
           const qt = qTokens[0];
           for (let ti = 0; ti < bTokens.length; ti++) {
@@ -748,13 +748,13 @@
               const isExact = tokenMatchesExact(bTokens[ti].norm, qt);
               const keyText = block.raw.slice(bTokens[ti].start, bTokens[ti].end);
               rawMatches.push({
-                pct: 100,
+                pct: isExact ? 100 : 75,
                 keyText: keyText,
                 normKey: bTokens[ti].norm,
                 pageNum: page.pageNum,
                 contextLine: block.raw,
                 matchedWords: [bTokens[ti].norm],
-                score: isExact ? 105 : 100
+                score: isExact ? 105 : 75
               });
             }
           }

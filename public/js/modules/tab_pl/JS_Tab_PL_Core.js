@@ -172,7 +172,7 @@ function loadMoreData_PL(event) {
  * @param {boolean} isLoadMore - Đang nhấn nút tải thêm
  * @param {boolean} preserveScroll - Giữ nguyên vị trí cuộn (khi tạo PL, sửa data). Mặc định là false (cuộn về đỉnh)
  */
-function executeFilter_PL(allowAnim = true, isLoadMore = false, preserveScroll = false) {
+function executeFilter_PL(allowAnim = true, isLoadMore = false, preserveScroll = false, fromSyncCallback = false) {
     currentFocusIndex = -1;
     activeDropIndex_PL = -1;
     precomputePLData();
@@ -196,11 +196,14 @@ function executeFilter_PL(allowAnim = true, isLoadMore = false, preserveScroll =
     }
 
     const idxApi = window.__BconsViewer && window.__BconsViewer.pl01Index;
-    if (query.includes("#") && idxApi && !idxApi.state.ready) {
+    if (query.includes("#") && idxApi && !idxApi.state.ready && !fromSyncCallback) {
         const tok = localStorage.getItem('bcons_session_token');
-        if (tok && !idxApi.state.syncing) {
-            idxApi.sync(false).then(() => {
-                if (activeTabId === 'tab-plhd') executeFilter_PL(false, false, true);
+        if (tok && !idxApi._pendingFilterRefresh) {
+            idxApi._pendingFilterRefresh = true;
+            const pendingSync = idxApi.state.syncPromise || idxApi.sync(false);
+            Promise.resolve(pendingSync).finally(() => {
+                idxApi._pendingFilterRefresh = false;
+                if (activeTabId === 'tab-plhd') executeFilter_PL(false, false, true, true);
             });
         }
     }
@@ -611,26 +614,22 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
     if (i._pl01Match) {
         const m = i._pl01Match;
         let badgeColor = "#FF4D4D";
-        let badgeBg = "rgba(255, 77, 77, 0.14)";
-        let badgeBorder = "rgba(255, 77, 77, 0.45)";
+        let badgeBg = "rgba(255, 77, 77, 0.12)";
 
         if (m.bestPct === 100) {
             badgeColor = "#2ECC71";
-            badgeBg = "rgba(46, 204, 113, 0.14)";
-            badgeBorder = "rgba(46, 204, 113, 0.45)";
+            badgeBg = "rgba(46, 204, 113, 0.12)";
         } else if (m.bestPct === 75) {
             badgeColor = "#FFBA08";
-            badgeBg = "rgba(255, 186, 8, 0.14)";
-            badgeBorder = "rgba(255, 186, 8, 0.45)";
+            badgeBg = "rgba(255, 186, 8, 0.12)";
         } else if (m.bestPct === 60) {
             badgeColor = "#FF7A00";
-            badgeBg = "rgba(255, 122, 0, 0.14)";
-            badgeBorder = "rgba(255, 122, 0, 0.45)";
+            badgeBg = "rgba(255, 122, 0, 0.12)";
         }
 
         const targetMatchFileId = fileIdH || m.fileId;
         const badgeClick = targetMatchFileId ? `onmousedown="openDirectFile_PL('${escapeStr(targetMatchFileId)}', event);"` : "";
-        matchBadgeHTML = `<span ${badgeClick} onmouseover="this.style.opacity='1'; this.style.filter='brightness(1.35) saturate(1.2)';" onmouseout="this.style.opacity='0.6'; this.style.filter='none';" style="flex-shrink: 0; margin-left: 8px; padding: 2.5px 7px; border-radius: var(--badge-radius, 4px); font-size: 9.5px; font-weight: 700; letter-spacing: 0.2px; color: ${badgeColor}; background: ${badgeBg}; border: 1px solid ${badgeBorder}; line-height: 1.4; cursor: pointer; opacity: 0.6; transition: opacity 0.15s ease, filter 0.15s ease;">${m.bestPct}% · x${m.bestCount}${m.hasLowerTier ? '+' : ''}</span>`;
+        matchBadgeHTML = `<span class="pl01-match-badge" ${badgeClick} style="color: ${badgeColor}; background: ${badgeBg};">${m.bestPct}% (×${m.bestCount}${m.hasLowerTier ? '+' : ''})</span>`;matchBadgeHTML = `<span class="pl01-match-badge" ${badgeClick} style="color: ${badgeColor}; background: ${badgeBg};">${m.bestPct}% ×${m.bestCount}${m.hasLowerTier ? ' +' : ''}</span>`;
     }
 
     const uploadHintHTML = window.activeHashContext_PL ? "" : `

@@ -255,7 +255,6 @@
 
     S.currentManifest.pages.forEach(function(p) {
       if (!p.textItems || p.textItems.length === 0) return;
-
       const isAppendixPage = (p.pageNum >= appendixStart) || (p.textItems.length > 250);
       const matchedIndicesInA = new Set();
 
@@ -706,7 +705,7 @@
     if (excludeKeys.length > 0 && finalMatches.length > 0) {
       const excludedMatches = [];
       for (let eIdx = 0; eIdx < excludeKeys.length; eIdx++) {
-        const exRes = await executeSearch({ overrideQuery: excludeKeys[eIdx], returnRawOnly: true });
+        const exRes = await executeSearch({ overrideQuery: excludeKeys[eIdx], returnRawOnly: true, preferPl01: preferPl01 });
         if (exRes && exRes.length > 0) excludedMatches.push(...exRes);
       }
 
@@ -760,24 +759,73 @@
     }
   }
 
+  function getPl01TableHeaderBottomY(page) {
+    if (!page || !Array.isArray(page.textItems) || page.textItems.length === 0) return null;
+    const items = page.textItems;
+    const pageW = page.width || 595;
+    const pageH = page.height || 842;
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it[0] || it[1] >= pageW * 0.16 || it[2] < pageH * 0.35) continue;
+      if (cleanNaturalToken(it[0]) !== "stt") continue;
+
+      const tolY = Math.max(12, (it[4] || 10) * 1.5);
+      let rowText = "";
+      let minY = it[2];
+      for (let j = 0; j < items.length; j++) {
+        const other = items[j];
+        if (!other[0]) continue;
+        if (Math.abs(other[2] - it[2]) <= tolY) {
+          rowText += " " + cleanSentenceNatural(other[0]);
+          if (other[2] < minY) minY = other[2];
+        }
+      }
+      if (/(noi dung|hang muc|dien giai|ten vat tu|don vi|khoi luong)/.test(rowText)) {
+        return minY - Math.max(4, (it[4] || 10) * 0.6);
+      }
+    }
+    return null;
+  }
+
   function onSearchReady(preferPl01 = false, preferPage = 0) {
     document.getElementById("btn-prev").disabled = false;
     document.getElementById("btn-next").disabled = false;
     redrawAllHighlights();
 
+    const apStart = (S.currentManifest && S.currentManifest.appendixStartPage) ? S.currentManifest.appendixStartPage : 0;
+    let apHeaderBottomY = null;
+    if ((preferPl01 || preferPage > 0) && apStart && S.currentManifest && Array.isArray(S.currentManifest.pages)) {
+      const apPageObj = S.currentManifest.pages.find(pg => pg.pageNum === apStart);
+      if (apPageObj) apHeaderBottomY = getPl01TableHeaderBottomY(apPageObj);
+    }
+
+    const isInPl01TitleHeader = (m) => (
+      apStart > 0 && apHeaderBottomY !== null && m.page === apStart && m.y >= apHeaderBottomY
+    );
+
     let startIdx = 0;
     if (preferPage > 0) {
-      const exactIdx = S.searchResults.findIndex(m => m.page === preferPage);
-      if (exactIdx !== -1) {
-        startIdx = exactIdx;
+      const exactTableIdx = S.searchResults.findIndex(m => m.page === preferPage && !isInPl01TitleHeader(m));
+      if (exactTableIdx !== -1) {
+        startIdx = exactTableIdx;
       } else {
-        const afterIdx = S.searchResults.findIndex(m => m.page > preferPage);
-        if (afterIdx !== -1) startIdx = afterIdx;
+        const exactIdx = S.searchResults.findIndex(m => m.page === preferPage);
+        if (exactIdx !== -1) {
+          startIdx = exactIdx;
+        } else {
+          const afterIdx = S.searchResults.findIndex(m => m.page > preferPage);
+          if (afterIdx !== -1) startIdx = afterIdx;
+        }
       }
-    } else if (preferPl01 && S.currentManifest && S.currentManifest.appendixStartPage) {
-      const apStart = S.currentManifest.appendixStartPage;
-      const pl01Idx = S.searchResults.findIndex(m => m.page >= apStart);
-      if (pl01Idx !== -1) startIdx = pl01Idx;
+    } else if (preferPl01 && apStart > 0) {
+      const pl01TableIdx = S.searchResults.findIndex(m => m.page >= apStart && !isInPl01TitleHeader(m));
+      if (pl01TableIdx !== -1) {
+        startIdx = pl01TableIdx;
+      } else {
+        const pl01Idx = S.searchResults.findIndex(m => m.page >= apStart);
+        if (pl01Idx !== -1) startIdx = pl01Idx;
+      }
     }
 
     S.currentMatchIndex = startIdx;

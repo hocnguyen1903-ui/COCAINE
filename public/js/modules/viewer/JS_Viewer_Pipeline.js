@@ -1439,7 +1439,7 @@
     }
   }
 
-  async function commitDigitizedUploadCache(fileId, fileName, manifest, pdfBuffer) {
+  async function commitDigitizedUploadCache(fileId, fileName, manifest, pdfBuffer, skipIndexSync = false) {
     if (!fileId || !manifest) return false;
     manifest.fileId = fileId;
 
@@ -1456,10 +1456,116 @@
       window.markScanFileDigitized_PL(fileId);
     }
 
-    if (BV.pl01Index && typeof BV.pl01Index.sync === "function") {
+    if (!skipIndexSync && BV.pl01Index && typeof BV.pl01Index.sync === "function") {
       setTimeout(() => BV.pl01Index.sync(true), 300);
     }
     return true;
+  }
+
+  let stopBatchRedigitizeFlag = false;
+
+  function stopRedigitizeAllContracts() {
+    stopBatchRedigitizeFlag = true;
+    console.warn("⏹ Đã gửi lệnh dừng sau khi hoàn tất file hiện tại.");
+  }
+
+  async function redigitizeAllContracts(options = {}) {
+    const onlyUndigitized = Boolean(options.onlyUndigitized);
+    const startFrom = Math.max(0, Number(options.startFrom) || 0);
+    const limit = Number(options.limit) || Infinity;
+    const rows = (typeof SYSTEM_DATA !== "undefined" && SYSTEM_DATA && SYSTEM_DATA.pl && SYSTEM_DATA.pl.field0) || [];
+
+    const jobs = [];
+    const seenIds = new Set();
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const maHD = (row.maHD || "").trim();
+      if (!row.scanId || /^PL\d+/i.test(maHD)) continue;
+
+      const entries = String(row.scanId).split(";;").filter(Boolean);
+      for (let j = 0; j < entries.length; j++) {
+        const parts = entries[j].split("|");
+        const fId = (parts[0] || "").trim();
+        const fName = (parts[1] || "").trim();
+        const fFlag = (parts[2] || "").trim();
+        if (!fId || !fName || seenIds.has(fId)) continue;
+        if (!/\.pdf$/i.test(fName) || isPlOrPdgFile(fName)) continue;
+        if (onlyUndigitized && fFlag === "1") continue;
+
+        seenIds.add(fId);
+        jobs.push({ fileId: fId, fileName: fName, maHD: maHD });
+      }
+    }
+
+    const slice = jobs.slice(startFrom, Number.isFinite(limit) ? startFrom + limit : jobs.length);
+    if (slice.length === 0) {
+      console.log("Không có file hợp đồng nào cần số hóa lại.");
+      return { total: 0, success: 0, failed: [] };
+    }
+
+    stopBatchRedigitizeFlag = false;
+    if (typeof acquireKeepAlive === "function") acquireKeepAlive("batch_redigitize");
+    U.setAntiExitGuard(true);
+
+    let successCount = 0;
+    const failedList = [];
+    const tStartAll = performance.now();
+    console.log(`%c🚀 BẮT ĐẦU SỐ HÓA LẠI HÀNG LOẠT: ${slice.length} FILE (tổng queue: ${jobs.length})`, "color:#FFBA08;font-weight:bold;font-size:13px;");
+
+    try {
+      for (let idx = 0; idx < slice.length; idx++) {
+        if (stopBatchRedigitizeFlag) break;
+        const job = slice[idx];
+        const tag = `[${idx + 1}/${slice.length}] ${job.fileName}`;
+
+        let done = false;
+        for (let attempt = 1; attempt <= 2 && !done; attempt++) {
+          try {
+            await Promise.all([
+              ST.deleteLocalManifest(job.fileId),
+              ST.deleteLocalPdfBinary(job.fileId),
+              ST.clearFilePageBitmaps(job.fileId)
+            ]);
+            delete S.SESSION_MANIFEST_CACHE[job.fileId];
+
+            const rawBuffer = await fetchPdfDirectOrFallback(job.fileId);
+            const pack = await prepareDigitizedUploadPdf({ name: job.fileName }, null, rawBuffer, job.fileId);
+            await commitDigitizedUploadCache(job.fileId, job.fileName, pack.manifest, pack.pdfBuffer, true);
+
+            successCount++;
+            done = true;
+            console.log(`%c✔ ${tag} (${pack.manifest.numPages} trang)`, "color:#2ecc71;font-weight:bold;");
+          } catch (err) {
+            const msg = String(err && err.message ? err.message : err);
+            const isRateLimit = msg.includes("vượt giới hạn tần suất") || msg.includes("429");
+            if (isRateLimit && attempt === 1) {
+              console.warn(`⏳ ${tag} chạm giới hạn 20 lượt/phút của Vision API — tạm nghỉ 65s rồi tự chạy tiếp...`);
+              await new Promise(r => setTimeout(r, 65000));
+            } else {
+              failedList.push({ fileId: job.fileId, fileName: job.fileName, error: msg });
+              console.error(`✖ ${tag}: ${msg}`);
+              break;
+            }
+          }
+        }
+
+        if (idx < slice.length - 1 && !stopBatchRedigitizeFlag) {
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+
+      if (BV.pl01Index && typeof BV.pl01Index.sync === "function") {
+        await BV.pl01Index.sync(true);
+      }
+    } finally {
+      U.setAntiExitGuard(false);
+      if (typeof releaseKeepAlive === "function") releaseKeepAlive("batch_redigitize");
+    }
+
+    const totalSec = ((performance.now() - tStartAll) / 1000).toFixed(1);
+    console.log(`%c🏁 HOÀN TẤT LÔ TRONG ${totalSec}s: Thành công ${successCount}/${slice.length} | Lỗi ${failedList.length}`, "color:#00e5ff;font-weight:bold;font-size:13px;");
+    if (failedList.length > 0) console.table(failedList);
+    return { total: slice.length, success: successCount, failed: failedList };
   }
 
   BV.pipeline = {
@@ -1469,6 +1575,8 @@
     processAndOptimizeFileJIT,
     prepareDigitizedUploadPdf,
     commitDigitizedUploadCache,
+    redigitizeAllContracts,
+    stopRedigitizeAllContracts,
     ensurePdfPreloaded,
     isPlOrPdgFile,
     loadFile

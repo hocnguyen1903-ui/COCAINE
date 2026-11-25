@@ -48,8 +48,13 @@ async function openTab(tabId, triggerIntro = true) {
     if (tabId === 'tab-plhd') {
         const warmDelay = isInitialLoad ? 2000 : 450;
         setTimeout(() => {
-            if (localStorage.getItem('bcons_session_token') && window.BconsViewer && typeof window.BconsViewer.warmToken === 'function') {
-                window.BconsViewer.warmToken();
+            if (localStorage.getItem('bcons_session_token') && window.BconsViewer) {
+                if (typeof window.BconsViewer.warmToken === 'function') {
+                    window.BconsViewer.warmToken();
+                }
+                if (window.BconsViewer.pl01Index && !window.BconsViewer.pl01Index.state.ready && !window.BconsViewer.pl01Index.state.syncing) {
+                    window.BconsViewer.pl01Index.sync(false);
+                }
             }
         }, warmDelay);
     }

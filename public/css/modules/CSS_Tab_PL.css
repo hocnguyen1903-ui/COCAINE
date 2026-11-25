@@ -125,7 +125,7 @@
     text-rendering: optimizeLegibility !important;
     filter: blur(0) !important; 
 
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
     transform: translate3d(0, -5px, 0);
     
     transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), 
@@ -567,4 +567,31 @@
                 background-color 0.3s ease,
                 border-color 0.3s ease,
                 color 0.3s ease !important;
+}
+
+#dropdown-field0-pl .pl01-match-badge {
+    flex-shrink: 0;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border: none;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    line-height: 1.25;
+    cursor: pointer;
+    opacity: 0.78;
+    user-select: none;
+    display: inline-block;
+    -webkit-font-smoothing: antialiased;
+    transition: transform 0.12s ease, opacity 0.15s ease;
+}
+
+#dropdown-field0-pl .pl01-match-badge:hover,
+#dropdown-field0-pl .hoc-tooltip.is-previewing-row .pl01-match-badge {
+    opacity: 1;
+}
+
+#dropdown-field0-pl .pl01-match-badge:active {
+    transform: scale(0.96);
 }

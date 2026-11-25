@@ -594,7 +594,30 @@ function extractCleanPl01PagesFromManifest_(manifest) {
       }
     }
     lines.push(curLine);
-
+    if (pNum === apStart) {
+      let headerLineIdx = -1;
+      for (let l = 0; l < Math.min(lines.length, 20); l++) {
+        const lineNorm = removeDiacriticsLower_Viewer_(lines[l].map(t => t.str).join(" "));
+        if (/\bstt\b/.test(lineNorm) &&
+            (lineNorm.includes("noi dung") || lineNorm.includes("hang muc") || lineNorm.includes("dien giai") || lineNorm.includes("ten vat tu"))) {
+          headerLineIdx = l;
+          break;
+        }
+      }
+      if (headerLineIdx !== -1) {
+        lines.splice(0, headerLineIdx + 1);
+      } else {
+        while (lines.length > 0) {
+          const firstRaw = removeDiacriticsLower_Viewer_(lines[0].map(t => t.str).join(" "));
+          if (/^phu luc hop dong\b|^(?:cong trinh|hang muc|goi thau|chu dau tu|dia diem)\s*:/.test(firstRaw)) {
+            lines.shift();
+          } else {
+            break;
+          }
+        }
+      }
+      if (lines.length === 0) continue;
+    }
     // 2. Tách từng dòng theo vách ngăn cột (isCrossColumnBoundary_Viewer_) -> Chỉ giữ cell cột Nội dung
     const rawRows = [];
     const anchorXs = [];
