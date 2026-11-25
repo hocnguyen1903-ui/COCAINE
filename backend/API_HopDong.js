@@ -75,52 +75,35 @@ function escapeSpecialChars(s) {
 // --- PHÂN HỆ: HỢP ĐỒNG GỐC (HDTCXD) ---
 // ==========================================
 
-function getLatestContractNumber_TB(targetYear) {
+function getLatestContractNumber_HD(targetYear) {
   const year = String(targetYear || new Date().getFullYear()).trim();
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME_SO_TB);
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("SO HDTCXD BCONS - NTP");
   if (!sheet) return "00";
   const lastRow = sheet.getLastRow();
   if (lastRow < 3) return "00";
 
-  // Đọc đồng thời Cột B (Ngày ký) và Cột C (Số công văn)
-  const data = sheet.getRange(3, 2, lastRow - 2, 2).getValues(); 
+  // Đọc Cột B (Ngày ký) đến Cột E (Số HĐ): data[i][0] = Cột B, data[i][3] = Cột E
+  const data = sheet.getRange(3, 2, lastRow - 2, 4).getDisplayValues();
   let maxStt = 0;
 
   for (let i = 0; i < data.length; i++) {
-    const rawDate = data[i][0];
-    // Loại bỏ khoảng trắng thừa để tránh lỗi gõ nhầm (vd: "115 / TB" thành "115/TB")
-    const valCV = (data[i][1] || "").toString().replace(/\s+/g, "");
-    
-    // Regex bắt: (Nhóm 1: Số thứ tự) / (Nhóm 2: Năm - nếu có) /
-    // VD 1: "115/2026/TB" -> match[1]="115", match[2]="2026"
-    // VD 2: "114/TB"      -> match[1]="114", match[2]=undefined
-    const match = valCV.match(/^(\d+)\/(?:(\d{4})\/)?/);
+    const strDate = (data[i][0] || "").toString().trim();
+    const valHD = (data[i][3] || "").toString().replace(/\s+/g, "");
+
+    // Chỉ bắt HĐ gốc dạng "STT/YYYY/..." hoặc "STT/..." (tự động loại các dòng "PLxx - ...")
+    const match = valHD.match(/^(\d+)\/(?:(\d{4})\/)?/);
     if (!match) continue;
 
-    const sttStr = match[1];
+    const stt = parseInt(match[1], 10);
     const stringYear = match[2];
-    let isSameYear = false;
+    const isSameYear = stringYear ? (stringYear === year) : strDate.includes(year);
 
-    if (stringYear) {
-      // Ưu tiên 1: Lấy số năm trực tiếp trong chuỗi mã số
-      isSameYear = (stringYear === year);
-    } else {
-      // Ưu tiên 2: Nếu mã số không có năm, lấy năm từ cột Ngày ký
-      if (rawDate instanceof Date) {
-        isSameYear = (rawDate.getFullYear().toString() === year);
-      } else if (rawDate) {
-        isSameYear = rawDate.toString().includes(year);
-      }
-    }
-
-    // Nếu xác nhận đúng là của năm mục tiêu thì so sánh tìm số lớn nhất
-    if (isSameYear) {
-      const stt = parseInt(sttStr, 10);
-      if (stt > maxStt) maxStt = stt;
+    if (isSameYear && stt > maxStt) {
+      maxStt = stt;
     }
   }
-  
-  return String(maxStt).padStart(2, '0');
+
+  return String(maxStt).padStart(2, "0");
 }
 
 function handleFullExportProcess_HD(formData) {

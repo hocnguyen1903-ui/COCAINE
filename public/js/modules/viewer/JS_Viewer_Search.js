@@ -115,14 +115,21 @@
   }
 
   async function executeSearch(options = {}) {
-    const rawQuery = document.getElementById("ai-search-input").value;
-    if (!rawQuery || !rawQuery.trim() || !S.currentFileId || !S.currentManifest) return;
+    const returnRawOnly = Boolean(options && options.returnRawOnly);
+    const rawQuery = (options && options.overrideQuery !== undefined)
+      ? options.overrideQuery
+      : document.getElementById("ai-search-input").value;
+    if (!rawQuery || !rawQuery.trim() || !S.currentFileId || !S.currentManifest) return [];
 
     const preferPl01 = Boolean(options && options.preferPl01);
+    const preferPage = (options && options.preferPage) ? Number(options.preferPage) : 0;
     const silentNotFound = Boolean(options && options.silentNotFound);
+    const excludeKeys = (options && Array.isArray(options.excludeKeys)) ? options.excludeKeys : [];
 
-    S.lastSearchedQuery = rawQuery.trim();
-    clearSearchState();
+    if (!returnRawOnly) {
+      S.lastSearchedQuery = rawQuery.trim();
+      clearSearchState();
+    }
 
     const qTokens = rawQuery
       .replace(/(\d)[.,](?=\d)/g, "$1\uE001")
@@ -587,10 +594,39 @@
       }
     });
 
-    if (matches.length > 0) {
-      S.searchResults = matches;
-      onSearchReady(preferPl01);
+    if (returnRawOnly) {
       return matches;
+    }
+
+    let finalMatches = matches;
+    if (excludeKeys.length > 0 && finalMatches.length > 0) {
+      const excludedMatches = [];
+      for (let eIdx = 0; eIdx < excludeKeys.length; eIdx++) {
+        const exRes = await executeSearch({ overrideQuery: excludeKeys[eIdx], returnRawOnly: true });
+        if (exRes && exRes.length > 0) excludedMatches.push(...exRes);
+      }
+
+      if (excludedMatches.length > 0) {
+        const isCoveredByHigherTier = (m, em) => {
+          if (m.page !== em.page) return false;
+          const mBoxes = (m.boxes && m.boxes.length > 0) ? m.boxes : [m];
+          const emBoxes = (em.boxes && em.boxes.length > 0) ? em.boxes : [em];
+          return mBoxes.every(b1 => emBoxes.some(b2 => {
+            if (Math.abs(b1.y - b2.y) > Math.max(b1.h, b2.h) * 0.7) return false;
+            const xOverlap = Math.min(b1.x + b1.w, b2.x + b2.w) - Math.max(b1.x, b2.x);
+            return xOverlap > (Math.min(b1.w, b2.w) * 0.35);
+          }));
+        };
+
+        const filtered = finalMatches.filter(m => !excludedMatches.some(em => isCoveredByHigherTier(m, em)));
+        if (filtered.length > 0) finalMatches = filtered;
+      }
+    }
+
+    if (finalMatches.length > 0) {
+      S.searchResults = finalMatches;
+      onSearchReady(preferPl01, preferPage);
+      return finalMatches;
     } else {
       document.getElementById("search-counter").textContent = "0/0";
       if (!silentNotFound) {
@@ -620,13 +656,21 @@
     }
   }
 
-  function onSearchReady(preferPl01 = false) {
+  function onSearchReady(preferPl01 = false, preferPage = 0) {
     document.getElementById("btn-prev").disabled = false;
     document.getElementById("btn-next").disabled = false;
     redrawAllHighlights();
 
     let startIdx = 0;
-    if (preferPl01 && S.currentManifest && S.currentManifest.appendixStartPage) {
+    if (preferPage > 0) {
+      const exactIdx = S.searchResults.findIndex(m => m.page === preferPage);
+      if (exactIdx !== -1) {
+        startIdx = exactIdx;
+      } else {
+        const afterIdx = S.searchResults.findIndex(m => m.page > preferPage);
+        if (afterIdx !== -1) startIdx = afterIdx;
+      }
+    } else if (preferPl01 && S.currentManifest && S.currentManifest.appendixStartPage) {
       const apStart = S.currentManifest.appendixStartPage;
       const pl01Idx = S.searchResults.findIndex(m => m.page >= apStart);
       if (pl01Idx !== -1) startIdx = pl01Idx;

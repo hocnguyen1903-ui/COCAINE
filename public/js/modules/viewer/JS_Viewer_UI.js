@@ -1334,7 +1334,25 @@
     const inp = document.getElementById("ai-search-input");
     if (inp) inp.value = card.keyText;
     closePl01VariantsDropdown();
-    await SR.executeSearch({ preferPl01: true });
+
+    const excludeKeys = [];
+    if (S.activePl01Context && Array.isArray(S.activePl01Context.groups)) {
+      const cardNormPad = " " + card.normKey + " ";
+      S.activePl01Context.groups.forEach(g => {
+        if (g.pct > card.pct && g.normKey && g.normKey !== card.normKey) {
+          const gNormPad = " " + g.normKey + " ";
+          if (gNormPad.includes(cardNormPad)) {
+            excludeKeys.push(g.keyText);
+          }
+        }
+      });
+    }
+
+    await SR.executeSearch({
+      preferPl01: true,
+      preferPage: card.firstPage,
+      excludeKeys: excludeKeys
+    });
   }
 
   function resetPl01VariantsUI() {

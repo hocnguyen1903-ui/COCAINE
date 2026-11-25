@@ -441,6 +441,44 @@ function cleanPl01Punctuation_Viewer_(str) {
     .trim();
 }
 
+function isCrossColumnBoundary_Viewer_(items, leftIt, rightIt) {
+  const leftEnd = leftIt.x + leftIt.w;
+  const rightStart = rightIt.x;
+  const gap = rightStart - leftEnd;
+  const avgH = Math.max(6, (leftIt.h + rightIt.h) / 2);
+
+  const hardMaxGap = Math.max(18, avgH * 1.9);
+  if (gap > hardMaxGap) return true;
+  if (gap <= Math.max(3.5, avgH * 0.42)) return false;
+
+  const midX = (leftEnd + rightStart) / 2;
+  const yCenter = (leftIt.y + rightIt.y) / 2;
+
+  let crossingWords = 0;
+  let alignedRightColCount = 0;
+  const distinctY = new Set();
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const t = items[idx];
+    if (!t.str) continue;
+
+    const yDiff = Math.abs(t.y - yCenter);
+    if (yDiff > 5 && yDiff <= 120) {
+      distinctY.add(Math.round(t.y / 6));
+      if (t.x < midX - 1.5 && (t.x + t.w) > midX + 1.5) crossingWords++;
+      if (Math.abs(t.x - rightStart) <= 3.5) alignedRightColCount++;
+    }
+  }
+
+  if (distinctY.size >= 2) {
+    if (crossingWords === 0 && (alignedRightColCount >= 1 || gap > avgH * 0.85)) return true;
+    if (crossingWords <= 1 && alignedRightColCount >= 2 && gap > avgH * 0.65) return true;
+  }
+
+  if (gap > Math.max(12, avgH * 1.25)) return true;
+  return false;
+}
+
 function extractCleanPl01PagesFromManifest_(manifest) {
   if (!manifest || !Array.isArray(manifest.pages) || manifest.pages.length === 0) return [];
   const total = manifest.numPages || manifest.pages.length;
@@ -448,7 +486,7 @@ function extractCleanPl01PagesFromManifest_(manifest) {
   if (!apStart || apStart > total) return [];
 
   const INLINE_UNIT_NEXT_RE = /^(canh|lop|lot|phu|tang|phut|gio|ngay|thang|nam|bo|chiec|cai|mat|ben|loai|phan|dot|mm|cm|m|m2|m3|md|kg|tan|lit|ong|vien|tam|thanh|cay|soi|cuon|thung|bao|cap|doi|he|bac|buoc)$/;
-  const PREV_DESCRIPTOR_RE = /^(tang|loai|so|dot|phan|khu|block|thap|can|truc|mau|cap|he|bac|buoc|lo|muc|dieu|khoan|pl|nam|thang|ngay|gio|phut|lan|cot|day|nhom|phong|canh|lop|lot|phu)$/;
+  const STT_CELL_RE = /^(?:\d{1,4}(?:\.\d{1,2}){0,2}|[IVX]{1,4}|[a-z])[.)]?$/i;
 
   const resultPages = [];
 
@@ -470,12 +508,13 @@ function extractCleanPl01PagesFromManifest_(manifest) {
       const w = Number(Array.isArray(it) ? it[3] : it.w) || 0;
       const h = Number(Array.isArray(it) ? it[4] : it.h) || 10;
       const topY = pageH - (y + h);
-      normItems.push({ str, x, w, h, topY });
+      normItems.push({ str, x, y, w, h, topY });
     }
 
     if (normItems.length === 0) continue;
     normItems.sort((a, b) => (a.topY - b.topY) || (a.x - b.x));
 
+    // 1. Gom các từ nằm trên cùng 1 dòng ngang
     const lines = [];
     let curLine = [normItems[0]];
     let anchorTopY = normItems[0].topY;
@@ -495,9 +534,10 @@ function extractCleanPl01PagesFromManifest_(manifest) {
     }
     lines.push(curLine);
 
-    // Bước 1: Tiền xử lý từng dòng, cắt STT + cột số/tiền bên phải + nhận diện cột ĐVT
-    const preparedRows = [];
-    const dvtCandidatesX = [];
+    // 2. Tách từng dòng theo vách ngăn cột (isCrossColumnBoundary_Viewer_) -> Chỉ giữ cell cột Nội dung
+    const rawRows = [];
+    const anchorXs = [];
+    const secondColXs = [];
 
     for (let l = 0; l < lines.length; l++) {
       const row = lines[l];
@@ -508,149 +548,229 @@ function extractCleanPl01PagesFromManifest_(manifest) {
       }
       if (row.length === 0) continue;
 
+      const cells = [[row[0]]];
+      for (let k = 1; k < row.length; k++) {
+        const prevIt = row[k - 1];
+        const curIt = row[k];
+        if (curIt.str === "|" || isCrossColumnBoundary_Viewer_(normItems, prevIt, curIt)) {
+          if (curIt.str !== "|") cells.push([curIt]);
+        } else {
+          cells[cells.length - 1].push(curIt);
+        }
+      }
+
+      let hasStt = false;
+      let isGroupStt = false;
+      while (cells.length > 1) {
+        const c0Text = cells[0].map(t => t.str).join("").trim();
+        const c0X = cells[0][0].x;
+        if (c0X < pageW * 0.16 && (STT_CELL_RE.test(c0Text) || /^[.)]$/.test(c0Text))) {
+          if (/^(?:[IVX]{1,4}|[A-Z])[.)]?$/.test(c0Text)) isGroupStt = true;
+          cells.shift();
+          hasStt = true;
+        } else {
+          break;
+        }
+      }
+
+      const mainCell = cells[0];
+      if (!mainCell || mainCell.length === 0) continue;
+
+      if (cells.length >= 2) {
+        const c1Text = cells[1].map(t => t.str).join(" ").trim();
+        if (isStandaloneNumberOrMoney_Viewer_(c1Text) || c1Text.length <= 8) {
+          secondColXs.push(cells[1][0].x);
+        }
+      }
+
       let sttStripped = 0;
-      while (row.length > 1 && sttStripped < 2) {
-        const t0 = row[0];
-        const t1 = row[1];
+      while (mainCell.length > 1 && sttStripped < 2) {
+        const t0 = mainCell[0];
+        const t1 = mainCell[1];
         const s0 = t0.str.trim();
-        const isSttPattern = /^(?:\d{1,4}(?:\.\d{1,2}){0,2}|[IVX]{1,4}|[a-z])[.)]?$/i.test(s0) || /^[.)]$/.test(s0);
-        if (!isSttPattern) break;
+        if (!STT_CELL_RE.test(s0) && !/^[.)]$/.test(s0)) break;
 
         const gap0 = t1.x - (t0.x + t0.w);
         const avgH0 = Math.max(6, (t0.h + t1.h) / 2);
         const t1Norm = removeDiacriticsLower_Viewer_(t1.str);
+        if (/^\d{1,4}$/.test(s0) && gap0 <= avgH0 * 0.75 && INLINE_UNIT_NEXT_RE.test(t1Norm)) break;
 
-        if (/^\d{1,4}$/.test(s0) && gap0 <= avgH0 * 0.75 && INLINE_UNIT_NEXT_RE.test(t1Norm)) {
-          break;
-        }
         if (t0.x < pageW * 0.16 || /[.)]$/.test(s0) || gap0 > Math.max(6, avgH0 * 0.85)) {
-          row.shift();
+          if (/^(?:[IVX]{1,4}|[A-Z])[.)]?$/.test(s0)) isGroupStt = true;
+          mainCell.shift();
           sttStripped++;
+          hasStt = true;
         } else {
           break;
         }
       }
 
-      let poppedNumericCount = 0;
-      while (row.length > 1) {
-        const last = row[row.length - 1];
-        const prev = row[row.length - 2];
-        const sLast = last.str.trim();
+      if (mainCell.length === 0) continue;
+      const cellJoined = mainCell.map(t => t.str).join(" ").trim();
+      if (!cellJoined || isStandaloneNumberOrMoney_Viewer_(cellJoined)) continue;
 
-        if (/^[^a-zA-ZÀ-ỹ0-9]+$/.test(sLast) && !/^[-–—]+$/.test(sLast)) {
-          row.pop();
-          continue;
-        }
-        if (!isStandaloneNumberOrMoney_Viewer_(sLast)) break;
+      const avgH = mainCell.reduce((sum, it) => sum + it.h, 0) / mainCell.length;
+      const baselines = mainCell.map(it => pageH - it.y).sort((a, b) => a - b);
+      const baselineY = baselines[Math.floor(baselines.length / 2)];
+      const lettersOnly = cellJoined.replace(/[^A-Za-zÀ-ỹ]/g, "");
+      const isAllCaps = lettersOnly.length >= 4 && lettersOnly === lettersOnly.toUpperCase();
 
-        const hasMoneySep = /[.,]\d/.test(sLast) || /^[-–—]+$/.test(sLast) || /^[₫đ%]+$/i.test(sLast);
-        const gap = last.x - (prev.x + prev.w);
-        const avgH = Math.max(6, (prev.h + last.h) / 2);
-        const prevNorm = removeDiacriticsLower_Viewer_(prev.str);
+      const rowObj = {
+        items: mainCell,
+        x: mainCell[0].x,
+        baselineY: baselineY,
+        avgH: avgH,
+        hasStt: hasStt,
+        isHeading: isGroupStt || isAllCaps
+      };
+      rawRows.push(rowObj);
 
-        if (!hasMoneySep && PREV_DESCRIPTOR_RE.test(prevNorm) && gap <= Math.max(8, avgH * 0.95)) {
-          break;
-        }
-        if (hasMoneySep || gap > Math.max(8, avgH * 1.1) || last.x > pageW * 0.6) {
-          row.pop();
-          poppedNumericCount++;
-        } else {
-          break;
-        }
+      if (cellJoined.length >= 8 && rowObj.x < pageW * 0.35) {
+        anchorXs.push(rowObj.x);
       }
-
-      // Nếu dòng vừa bị cắt cột số bên phải -> kiểm tra ô ngay sát trước nó (cột ĐVT nằm sau khoảng hở cột)
-      if (poppedNumericCount > 0 && row.length > 1) {
-        const last = row[row.length - 1];
-        const prev = row[row.length - 2];
-        const avgH = Math.max(6, (prev.h + last.h) / 2);
-        const gap = last.x - (prev.x + prev.w);
-        const lastLen = last.str.trim().length;
-        if (gap > Math.max(8, avgH * 0.9) && last.x > pageW * 0.35 && lastLen <= 14) {
-          dvtCandidatesX.push({ x: last.x, xEnd: last.x + last.w });
-          row.pop();
-        }
-      }
-
-      if (row.length === 0) continue;
-      if (row.length === 1 && isStandaloneNumberOrMoney_Viewer_(row[0].str)) continue;
-      preparedRows.push(row);
     }
 
-    // Bước 2: Học dải tọa độ cột ĐVT trên trang để loại luôn các dòng bị lệch Y (nếu có >= 2 mẫu)
-    let dvtRange = null;
-    if (dvtCandidatesX.length >= 2) {
-      const xs = dvtCandidatesX.map(c => c.x).sort((a, b) => a - b);
-      const xEnds = dvtCandidatesX.map(c => c.xEnd).sort((a, b) => a - b);
-      const medX = xs[Math.floor(xs.length / 2)];
-      const medEnd = xEnds[Math.floor(xEnds.length / 2)];
-      dvtRange = { minX: medX - 24, maxX: medEnd + 24 };
+    if (rawRows.length === 0) continue;
+
+    // 3. Khóa cứng biên trái & biên phải của cột Nội dung (chặn tuyệt đối cột ĐVT & Ghi chú mép phải)
+    let anchorX = pageW * 0.05;
+    if (anchorXs.length >= 2) {
+      anchorXs.sort((a, b) => a - b);
+      anchorX = anchorXs[Math.floor(anchorXs.length * 0.25)];
+    }
+    const maxAllowedStartX = anchorX + Math.min(45, pageW * 0.08);
+
+    let descColMaxX = Infinity;
+    if (secondColXs.length >= 3) {
+      secondColXs.sort((a, b) => a - b);
+      const medSecondX = secondColXs[Math.floor(secondColXs.length * 0.5)];
+      if (medSecondX > anchorX + pageW * 0.15) {
+        descColMaxX = medSecondX - 4;
+      }
     }
 
-    const cleanLines = [];
+    const preparedRows = [];
+    for (let i = 0; i < rawRows.length; i++) {
+      const r = rawRows[i];
+      if (r.x > maxAllowedStartX || r.x >= descColMaxX) continue;
+      if (descColMaxX < Infinity) {
+        r.items = r.items.filter(it => it.x < descColMaxX);
+        if (r.items.length === 0) continue;
+      }
+      preparedRows.push(r);
+    }
+    if (preparedRows.length === 0) continue;
+
+    // 4. Tính bước dòng nội bộ theo baselineY + mép phải cột Nội dung để ngắt ô chuẩn theo quy luật Word-Wrap
+    const getRowEndX = (r) => {
+      const last = r.items[r.items.length - 1];
+      return last ? (last.x + last.w) : r.x;
+    };
+
+    const endXs = [];
+    const sampleGaps = [];
+    for (let i = 0; i < preparedRows.length; i++) {
+      if (preparedRows[i].items.length >= 2) {
+        endXs.push(getRowEndX(preparedRows[i]));
+      }
+      if (i > 0) {
+        const g = preparedRows[i].baselineY - preparedRows[i - 1].baselineY;
+        const refH = preparedRows[i - 1].avgH || 10;
+        if (g > 0 && g <= refH * 2.2) sampleGaps.push(g);
+      }
+    }
+
+    let colRightEdge = 0;
+    if (endXs.length >= 3) {
+      endXs.sort((a, b) => a - b);
+      const p88 = endXs[Math.floor(endXs.length * 0.88)];
+      if (p88 > anchorX + pageW * 0.15) colRightEdge = p88;
+    }
+
+    let pageBaseStep = 0;
+    if (sampleGaps.length >= 3) {
+      sampleGaps.sort((a, b) => a - b);
+      pageBaseStep = sampleGaps[Math.floor(sampleGaps.length * 0.25)];
+    }
+
+    const itemBlocks = [];
+    let curBlockItems = [];
+    let curBlockLineCount = 0;
+    let curBlockHasStt = false;
+    let curBlockIsHeading = false;
+    let prevRow = null;
+    let prevRowBaselineY = -999;
+    let prevRowAvgH = 10;
 
     for (let rIdx = 0; rIdx < preparedRows.length; rIdx++) {
-      const row = preparedRows[rIdx];
+      const rObj = preparedRows[rIdx];
+      const yGap = rObj.baselineY - prevRowBaselineY;
+      const refStep = pageBaseStep > 0
+        ? Math.max(prevRowAvgH * 1.05, Math.min(pageBaseStep, prevRowAvgH * 1.55))
+        : prevRowAvgH * 1.3;
 
-      if (dvtRange && row.length > 1) {
-        while (row.length > 1) {
-          const last = row[row.length - 1];
-          const prev = row[row.length - 2];
-          const avgH = Math.max(6, (prev.h + last.h) / 2);
-          const gap = last.x - (prev.x + prev.w);
-          const inDvtCol = last.x >= dvtRange.minX && (last.x + last.w) <= dvtRange.maxX;
-          if (inDvtCol && gap > Math.max(10, avgH * 1.1) && last.str.trim().length <= 14) {
-            row.pop();
-          } else {
-            break;
-          }
+      const isSameCellGap = yGap > 0 && yGap <= refStep * 1.32;
+      const conflictsStt = curBlockHasStt && rObj.hasStt;
+      const headingBoundary = curBlockIsHeading !== rObj.isHeading;
+
+      let wordWrapBroken = false;
+      if (prevRow && colRightEdge > 0 && rObj.items.length > 0 && prevRow.items.length > 0) {
+        const prevEndX = getRowEndX(prevRow);
+        const prevLastStr = (prevRow.items[prevRow.items.length - 1].str || "").trim();
+        const firstWord = rObj.items[0];
+        const firstChar = (firstWord.str || "").trim().charAt(0);
+        const startsWithUpper = firstChar !== "" && firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase();
+        const prevEndedJoiner = /[-–—,(/:+]$/.test(prevLastStr);
+        const remainingSpace = colRightEdge - prevEndX;
+
+        if (!prevEndedJoiner && startsWithUpper && remainingSpace > (firstWord.w + Math.max(10, prevRowAvgH * 1.5))) {
+          wordWrapBroken = true;
         }
       }
 
-      // Tách đoạn nếu trên cùng dòng vẫn còn 2 cụm ngăn cách bởi khoảng hở bảng lớn (không nối xuyên cột)
-      const segments = [];
-      let curSeg = [row[0]];
-      for (let i = 1; i < row.length; i++) {
-        const prev = row[i - 1];
-        const cur = row[i];
-        const avgH = Math.max(6, (prev.h + cur.h) / 2);
-        const gap = cur.x - (prev.x + prev.w);
-        if (gap > Math.max(22, avgH * 2.2)) {
-          segments.push(curSeg);
-          curSeg = [cur];
-        } else {
-          curSeg.push(cur);
-        }
+      const isContinuation = isSameCellGap && !conflictsStt && !headingBoundary && !wordWrapBroken && curBlockLineCount > 0 && curBlockLineCount < 4;
+
+      if (isContinuation) {
+        curBlockItems.push(...rObj.items);
+        curBlockLineCount++;
+        if (rObj.hasStt) curBlockHasStt = true;
+      } else {
+        if (curBlockItems.length > 0) itemBlocks.push(curBlockItems);
+        curBlockItems = [...rObj.items];
+        curBlockLineCount = 1;
+        curBlockHasStt = rObj.hasStt;
+        curBlockIsHeading = rObj.isHeading;
       }
-      segments.push(curSeg);
 
-      for (let sIdx = 0; sIdx < segments.length; sIdx++) {
-        const seg = segments[sIdx];
-        if (!seg || seg.length === 0) continue;
-        if (seg.length === 1 && isStandaloneNumberOrMoney_Viewer_(seg[0].str)) continue;
+      prevRow = rObj;
+      prevRowBaselineY = rObj.baselineY;
+      prevRowAvgH = rObj.avgH;
+    }
+    if (curBlockItems.length > 0) itemBlocks.push(curBlockItems);
 
-        const joinedRaw = seg.map(t => t.str).join(" ");
-        const lineStr = cleanPl01Punctuation_Viewer_(joinedRaw);
-        if (!lineStr || lineStr.length < 2 || /^[^a-zA-ZÀ-ỹ0-9]+$/.test(lineStr)) continue;
+    // 5. Chuẩn hóa văn bản & lọc tiêu đề/ký tên hành chính
+    const cleanBlocks = [];
+    for (let bIdx = 0; bIdx < itemBlocks.length; bIdx++) {
+      const blockStr = cleanPl01Punctuation_Viewer_(itemBlocks[bIdx].map(t => t.str).join(" "));
+      if (!blockStr || blockStr.length < 2 || /^[^a-zA-ZÀ-ỹ0-9]+$/.test(blockStr)) continue;
 
-        const normLine = removeDiacriticsLower_Viewer_(lineStr);
-        const isTableHeader = normLine.includes("stt") &&
-          (normLine.includes("noi dung") || normLine.includes("hang muc") || normLine.includes("dien giai") || normLine.includes("ten vat tu")) &&
-          (normLine.includes("don gia") || normLine.includes("thanh tien") || normLine.includes("khoi luong") || normLine.includes("dvt"));
-        const isAdminBoilerplate =
-          /^cong hoa xa hoi chu nghia viet nam\b/.test(normLine) ||
-          /^doc lap tu do hanh phuc\b/.test(normLine) ||
-          (/^trang \d+( \d+)?$/.test(normLine)) ||
-          ((/^(dai dien ben a|dai dien ben b|ben a|ben b|tong giam doc|pho tong giam doc|giam doc)\b/.test(normLine)) && normLine.length <= 45) ||
-          ((/^(ky ten|ky va ghi ro ho ten|dong dau)\b/.test(normLine)) && normLine.length <= 35);
+      const normBlock = removeDiacriticsLower_Viewer_(blockStr);
+      const isTableHeader = normBlock.includes("stt") &&
+        (normBlock.includes("noi dung") || normBlock.includes("hang muc") || normBlock.includes("dien giai") || normBlock.includes("ten vat tu")) &&
+        (normBlock.includes("don gia") || normBlock.includes("thanh tien") || normBlock.includes("khoi luong") || normBlock.includes("dvt"));
+      const isAdminBoilerplate =
+        /^cong hoa xa hoi chu nghia viet nam\b/.test(normBlock) ||
+        /^doc lap tu do hanh phuc\b/.test(normBlock) ||
+        (/^trang \d+( \d+)?$/.test(normBlock)) ||
+        ((/^(dai dien ben a|dai dien ben b|ben a|ben b|tong giam doc|pho tong giam doc|giam doc)\b/.test(normBlock)) && normBlock.length <= 45) ||
+        ((/^(ky ten|ky va ghi ro ho ten|dong dau)\b/.test(normBlock)) && normBlock.length <= 35);
 
-        if (isTableHeader || isAdminBoilerplate) continue;
-        cleanLines.push(lineStr);
-      }
+      if (isTableHeader || isAdminBoilerplate) continue;
+      cleanBlocks.push(blockStr);
     }
 
-    if (cleanLines.length > 0) {
-      resultPages.push([pNum, cleanLines]);
+    if (cleanBlocks.length > 0) {
+      resultPages.push([pNum, cleanBlocks]);
     }
   }
 

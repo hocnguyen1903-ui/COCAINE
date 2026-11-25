@@ -719,6 +719,7 @@
     const activeQ = filterPl01ActiveTokens(qTokens);
     const minLineHits = (nQ === 2) ? 1 : Math.max(2, Math.ceil(activeQ.length * 0.6));
     const checkTokens = (nQ >= 3) ? activeQ : qTokens;
+    const maxAllowedSpan = 2 * nQ; // Giới hạn mật độ: Span <= 2N từ
 
     const tokenWeight = (tok) => {
       let w = Math.min(4, tok.length / 3);
@@ -740,112 +741,109 @@
       }
       if (!pageHasAny) continue;
 
-      const lineFullMatched = new Array(page.lines.length).fill(false);
-
       for (let lIdx = 0; lIdx < page.lines.length; lIdx++) {
-        const line = page.lines[lIdx];
+        const block = page.lines[lIdx];
 
         let candidateHits = 0;
         for (let qIdx = 0; qIdx < checkTokens.length; qIdx++) {
-          if (line.padNorm.includes(padNeedle(checkTokens[qIdx]))) candidateHits++;
+          if (block.padNorm.includes(padNeedle(checkTokens[qIdx]))) candidateHits++;
         }
         if (candidateHits < minLineHits) continue;
 
-        const lTokens = tokenizeRawLineWithOffsets(line.raw);
-        if (lTokens.length === 0) continue;
+        const bTokens = tokenizeRawLineWithOffsets(block.raw);
+        if (bTokens.length === 0) continue;
 
-        // CASE 1 TỪ (>= 3 ký tự) -> 100% (Prefix Match)
+        // TẦNG 100% (1 TỪ >= 3 ký tự, Prefix Match)
         if (nQ === 1) {
           const qt = qTokens[0];
-          for (let ti = 0; ti < lTokens.length; ti++) {
-            if (tokenMatches(lTokens[ti].norm, qt)) {
-              const isExact = tokenMatchesExact(lTokens[ti].norm, qt);
-              const keyText = line.raw.slice(lTokens[ti].start, lTokens[ti].end);
+          for (let ti = 0; ti < bTokens.length; ti++) {
+            if (tokenMatches(bTokens[ti].norm, qt)) {
+              const isExact = tokenMatchesExact(bTokens[ti].norm, qt);
+              const keyText = block.raw.slice(bTokens[ti].start, bTokens[ti].end);
               rawMatches.push({
                 pct: 100,
                 keyText: keyText,
-                normKey: lTokens[ti].norm,
+                normKey: bTokens[ti].norm,
                 pageNum: page.pageNum,
-                contextLine: line.raw,
-                matchedWords: [lTokens[ti].norm],
+                contextLine: block.raw,
+                matchedWords: [bTokens[ti].norm],
                 score: isExact ? 105 : 100
               });
-              lineFullMatched[lIdx] = true;
             }
           }
           continue;
         }
 
-        // TẦNG 1 (100%): Cụm liền mạch đúng thứ tự (Khớp đúng từng từ)
-        let foundTier1OnLine = false;
-        for (let ti = 0; ti <= lTokens.length - nQ; ti++) {
+        // TẦNG 100% (CỤM TỪ >= 2 TỪ): Khớp liền mạch đúng thứ tự (Span = N <= 2N)
+        let foundTier1 = false;
+        for (let ti = 0; ti <= bTokens.length - nQ; ti++) {
           let seqOk = true;
           for (let k = 0; k < nQ; k++) {
-            if (!tokenMatches(lTokens[ti + k].norm, qTokens[k])) {
+            if (!tokenMatches(bTokens[ti + k].norm, qTokens[k])) {
               seqOk = false;
               break;
             }
           }
           if (seqOk) {
-            const keyText = line.raw.slice(lTokens[ti].start, lTokens[ti + nQ - 1].end);
+            const keyText = block.raw.slice(bTokens[ti].start, bTokens[ti + nQ - 1].end);
             rawMatches.push({
               pct: 100,
               keyText: keyText,
               normKey: normalizePl01SearchStr(keyText),
               pageNum: page.pageNum,
-              contextLine: line.raw,
+              contextLine: block.raw,
               matchedWords: qTokens.slice(),
               score: 100 + nQ
             });
-            foundTier1OnLine = true;
-            lineFullMatched[lIdx] = true;
+            foundTier1 = true;
           }
         }
-        if (foundTier1OnLine) continue;
+        if (foundTier1) continue;
 
-        // TÌM VỊ TRÍ KHỚP ĐÚNG TỪNG TỪ TRÊN DÒNG
-        const qPosList = [];
-        let allQPresentOnLine = true;
+        // TÌM TẤT CẢ VỊ TRÍ XUẤT HIỆN CỦA TỪNG TỪ KHÓA TRONG BLOCK Ô
+        const qPosMap = [];
+        let allTokensPresent = true;
         for (let k = 0; k < nQ; k++) {
-          const positions = [];
-          for (let ti = 0; ti < lTokens.length; ti++) {
-            if (tokenMatches(lTokens[ti].norm, qTokens[k])) positions.push(ti);
+          const posArr = [];
+          for (let ti = 0; ti < bTokens.length; ti++) {
+            if (tokenMatches(bTokens[ti].norm, qTokens[k])) posArr.push(ti);
           }
-          if (positions.length === 0) allQPresentOnLine = false;
-          qPosList.push(positions);
+          if (posArr.length === 0) allTokensPresent = false;
+          qPosMap.push(posArr);
         }
 
-        // TẦNG 2 (80%): Đủ từ trên 1 dòng
-        if (allQPresentOnLine) {
-          let minSpan = Infinity;
+        // TẦNG 75%: Đủ 100% số từ trong Ô Hạng mục VÀ thỏa mãn Span <= 2N
+        if (allTokensPresent) {
           let bestIndices = null;
+          let minSpan = Infinity;
 
           if (nQ === 2) {
-            for (const p0 of qPosList[0]) {
-              for (const p1 of qPosList[1]) {
+            for (const p0 of qPosMap[0]) {
+              for (const p1 of qPosMap[1]) {
                 if (p0 === p1) continue;
-                const gap = Math.abs(p1 - p0) - 1;
-                if (gap <= 3 && gap < minSpan) {
-                  minSpan = gap;
+                const span = Math.abs(p1 - p0) + 1;
+                if (span <= maxAllowedSpan && span < minSpan) {
+                  minSpan = span;
                   bestIndices = [Math.min(p0, p1), Math.max(p0, p1)];
                 }
               }
             }
           } else {
             const picked = [];
-            let validSet = true;
+            let valid = true;
             const used = new Set();
             for (let k = 0; k < nQ; k++) {
-              const avail = qPosList[k].find(pos => !used.has(pos));
-              if (avail === undefined) { validSet = false; break; }
+              const avail = qPosMap[k].find(pos => !used.has(pos));
+              if (avail === undefined) { valid = false; break; }
               used.add(avail);
               picked.push(avail);
             }
-            if (validSet) {
+            if (valid) {
               const lo = Math.min(...picked);
               const hi = Math.max(...picked);
-              if ((hi - lo + 1) <= nQ + 6) {
-                minSpan = hi - lo;
+              const span = hi - lo + 1;
+              if (span <= maxAllowedSpan) {
+                minSpan = span;
                 bestIndices = [lo, hi];
               }
             }
@@ -853,135 +851,81 @@
 
           if (bestIndices) {
             const [lo, hi] = bestIndices;
-            const spanTokens = hi - lo + 1;
-            const keyText = (spanTokens <= 6)
-              ? line.raw.slice(lTokens[lo].start, lTokens[hi].end)
-              : line.raw.slice(lTokens[lo].start, lTokens[lo].end);
-
+            const keyText = block.raw.slice(bTokens[lo].start, bTokens[hi].end);
             rawMatches.push({
               pct: 75,
               keyText: keyText,
               normKey: normalizePl01SearchStr(keyText),
               pageNum: page.pageNum,
-              contextLine: line.raw,
+              contextLine: block.raw,
               matchedWords: qTokens.slice(),
-              score: 78 - Math.min(3, minSpan)
+              score: 78 - Math.min(3, minSpan - nQ)
             });
-            lineFullMatched[lIdx] = true;
             continue;
           }
         }
 
-        // TẦNG 4: Khớp từng từ (50% khi nQ=2 khớp 1/2 từ trọn vẹn, 60% khi nQ>=3)
-        if (nQ >= 2) {
-          const matchedActive = [];
-          const matchedPositions = [];
-          let rarityScore = 0;
+        // TẦNG 60% (>= 3 TỪ) HOẶC TẦNG 50% (2 TỪ): Khớp 1 phần số từ VÀ thỏa mãn Span <= 2N
+        const matchedHits = [];
+        for (let k = 0; k < activeQ.length; k++) {
+          const qt = activeQ[k];
+          if (nQ === 2 && (qt.length < 2 || PL01_STOP_WORDS.has(qt))) continue;
+          for (let ti = 0; ti < bTokens.length; ti++) {
+            if (tokenMatches(bTokens[ti].norm, qt)) {
+              matchedHits.push({ pos: ti, qt: qt, weight: tokenWeight(qt) });
+            }
+          }
+        }
 
-          for (let k = 0; k < activeQ.length; k++) {
-            const qt = activeQ[k];
-            if (nQ === 2 && (qt.length < 2 || PL01_STOP_WORDS.has(qt))) continue;
-            const foundIdx = lTokens.findIndex((lt, idx) => !matchedPositions.includes(idx) && tokenMatches(lt.norm, qt));
-            if (foundIdx !== -1) {
-              matchedActive.push(qt);
-              matchedPositions.push(foundIdx);
-              rarityScore += tokenWeight(qt);
+        if (matchedHits.length >= minLineHits) {
+          matchedHits.sort((a, b) => a.pos - b.pos);
+
+          // Cửa sổ trượt tìm cụm con đạt minLineHits thỏa mãn Span <= 2N
+          let bestSubRun = null;
+          let bestSubScore = -1;
+
+          for (let sIdx = 0; sIdx < matchedHits.length; sIdx++) {
+            const seenQ = new Set();
+            let totalW = 0;
+            for (let eIdx = sIdx; eIdx < matchedHits.length; eIdx++) {
+              const span = matchedHits[eIdx].pos - matchedHits[sIdx].pos + 1;
+              if (span > maxAllowedSpan) break;
+
+              if (!seenQ.has(matchedHits[eIdx].qt)) {
+                seenQ.add(matchedHits[eIdx].qt);
+                totalW += matchedHits[eIdx].weight;
+              }
+
+              if (seenQ.size >= minLineHits) {
+                const subScore = seenQ.size * 10 + totalW - span;
+                if (subScore > bestSubScore) {
+                  bestSubScore = subScore;
+                  bestSubRun = {
+                    startPos: matchedHits[sIdx].pos,
+                    endPos: matchedHits[eIdx].pos,
+                    matchedWords: Array.from(seenQ),
+                    totalW: totalW
+                  };
+                }
+              }
             }
           }
 
-          if (matchedActive.length >= minLineHits) {
-            matchedPositions.sort((a, b) => a - b);
-            const lo = matchedPositions[0];
-            const hi = matchedPositions[matchedPositions.length - 1];
-            const contiguousRun = findLongestContiguousRun(matchedPositions);
-            const useRun = (hi - lo + 1 <= 5) ? [lo, hi] : contiguousRun;
-            const keyText = line.raw.slice(lTokens[useRun[0]].start, lTokens[useRun[1]].end);
-
-            const isHalfMatch = (nQ === 2 && matchedActive.length === 1);
-            const tierPct = isHalfMatch ? 50 : 60;
-            const baseScore = isHalfMatch ? 50 : 60;
+          if (bestSubRun) {
+            const keyText = block.raw.slice(bTokens[bestSubRun.startPos].start, bTokens[bestSubRun.endPos].end);
+            const isHalf = (nQ === 2 && bestSubRun.matchedWords.length === 1);
+            const tierPct = isHalf ? 50 : 60;
+            const baseScore = isHalf ? 50 : 60;
 
             rawMatches.push({
               pct: tierPct,
               keyText: keyText,
               normKey: normalizePl01SearchStr(keyText),
               pageNum: page.pageNum,
-              contextLine: line.raw,
-              matchedWords: matchedActive,
-              score: baseScore + Math.min(14, rarityScore)
+              contextLine: block.raw,
+              matchedWords: bestSubRun.matchedWords,
+              score: baseScore + Math.min(14, bestSubRun.totalW)
             });
-          }
-        }
-      }
-
-      // TẦNG 3 (75%): Đủ tất cả từ trong tối đa 2-3 dòng liền kề (xuống dòng cùng 1 ô mô tả)
-      if (nQ >= 2 && page.lines.length >= 2) {
-        const maxWin = (nQ === 2) ? 2 : 3;
-        for (let startIdx = 0; startIdx < page.lines.length - 1; startIdx++) {
-          if (lineFullMatched[startIdx]) continue;
-          const firstLine = page.lines[startIdx];
-          const firstHasAny = qTokens.some(qt => firstLine.padNorm.includes(padNeedle(qt)));
-          if (!firstHasAny) continue;
-
-          const covered = new Set();
-          let maxLineHits = 0;
-          let bestLine = null;
-          let bestLineScore = -1;
-          let bestLineMatched = [];
-
-          const endLimit = Math.min(page.lines.length - 1, startIdx + maxWin - 1);
-          for (let wIdx = startIdx; wIdx <= endLimit; wIdx++) {
-            if (lineFullMatched[wIdx]) break;
-            const wLine = page.lines[wIdx];
-            const lineMatched = [];
-            let lineWeight = 0;
-
-            for (let k = 0; k < qTokens.length; k++) {
-              if (wLine.padNorm.includes(padNeedle(qTokens[k]))) {
-                covered.add(qTokens[k]);
-                lineMatched.push(qTokens[k]);
-                lineWeight += tokenWeight(qTokens[k]);
-              }
-            }
-
-            if (lineMatched.length > maxLineHits) maxLineHits = lineMatched.length;
-            const lScore = lineMatched.length * 100 + lineWeight;
-            if (lineMatched.length > 0 && lScore > bestLineScore) {
-              bestLineScore = lScore;
-              bestLine = wLine;
-              bestLineMatched = lineMatched;
-            }
-
-            if (covered.size === nQ) {
-              if (nQ >= 3 && maxLineHits < 2) break;
-
-              const lTokens = tokenizeRawLineWithOffsets(bestLine.raw);
-              const posList = [];
-              bestLineMatched.forEach(qt => {
-                const idx = lTokens.findIndex((lt, i) => !posList.includes(i) && tokenMatches(lt.norm, qt));
-                if (idx !== -1) posList.push(idx);
-              });
-
-              let keyText = bestLineMatched[0];
-              if (posList.length > 0) {
-                posList.sort((a, b) => a - b);
-                const lo = posList[0];
-                const hi = posList[posList.length - 1];
-                const spanRun = (hi - lo + 1 <= 5) ? [lo, hi] : findLongestContiguousRun(posList);
-                keyText = bestLine.raw.slice(lTokens[spanRun[0]].start, lTokens[spanRun[1]].end);
-              }
-
-              rawMatches.push({
-                pct: 75,
-                keyText: keyText,
-                normKey: normalizePl01SearchStr(keyText),
-                pageNum: page.pageNum,
-                contextLine: bestLine.raw,
-                matchedWords: bestLineMatched,
-                score: 75 + maxLineHits
-              });
-              break;
-            }
           }
         }
       }
@@ -989,7 +933,6 @@
 
     if (rawMatches.length === 0) return null;
 
-    // Gom nhóm trùng theo (pct + normKey)
     const groupMap = new Map();
     let bestPct = 0;
     let totalScore = 0;
