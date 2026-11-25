@@ -700,20 +700,28 @@ function deleteScanFilePermanently(maHD, fileIdToDelete) {
     // CHỐNG IDOR: Kiểm tra fileIdToDelete có thực sự nằm trong danh sách file scan của mã HĐ này không
     const cell = sheetLog.getRange(targetIndex + 1, 16);
     const currentVal = cell.getValue().toString();
-    const isFileBelongsToContract = currentVal.includes(fileIdToDelete + "|");
+    const entries = currentVal.split(";;").filter(Boolean);
+    const matchedEntry = entries.find(f => f.split("|")[0].trim() === fileIdToDelete);
 
-    if (!isFileBelongsToContract) {
+    if (!matchedEntry) {
       throw new Error("BẢO MẬT: File không thuộc hồ sơ hợp đồng này, từ chối xóa!");
     }
 
-    // Sau khi xác thực hợp lệ mới thực hiện xóa vật lý trên Drive
+    const entryFileName = (matchedEntry.split("|")[1] || "").trim();
+    const rawDate = sheetLog.getRange(targetIndex + 1, 2).getDisplayValue();
+
+    // Xóa file [Số hóa] *.json và cập nhật Index_PL01 trước khi xóa file PDF gốc (vì cần đọc thư mục cha của PDF)
+    deleteDigitizedJsonForFile_Viewer_(fileIdToDelete, entryFileName);
+    removeFileFromPl01Index_Viewer_(fileIdToDelete, maHD, rawDate);
+
+    // Sau khi xác thực hợp lệ mới thực hiện xóa vật lý file gốc trên Drive
     try {
       Drive.Files.remove(fileIdToDelete);
     } catch (driveErr) {
       console.warn("File đã bị xóa trước đó trên Drive: " + driveErr.message);
     }
 
-    const updatedFiles = currentVal.split(";;").filter(f => f && !f.startsWith(fileIdToDelete + "|"));
+    const updatedFiles = entries.filter(f => f.split("|")[0].trim() !== fileIdToDelete);
     if (updatedFiles.length > 0) {
       cell.setValue(updatedFiles.join(";;"));
     } else {

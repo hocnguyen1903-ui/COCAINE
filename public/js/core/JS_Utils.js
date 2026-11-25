@@ -515,3 +515,144 @@ async function lazyLoadDrawingLibs() {
         throw e;
     }
 }
+
+/**
+ * Bộ điều phối Keep-Alive tập trung (Audio + Web Worker rAF 16ms vượt trần throttle 1000ms khi ẩn tab)
+ */
+const ACTIVE_KEEP_ALIVE_KEYS = new Set();
+const ORIG_RAF = window.requestAnimationFrame.bind(window);
+const ORIG_CANCEL_RAF = window.cancelAnimationFrame.bind(window);
+const BG_RAF_CALLBACKS = new Map();
+const BG_RAF_FALLBACK_TIMERS = new Map();
+const PENDING_NATIVE_RAFS = new Map();
+let bgRafSeq = 0;
+let isBgRafPatched = false;
+let bgRafWorker = null;
+
+function ensureBgRafWorker() {
+    if (bgRafWorker) return bgRafWorker;
+    try {
+        const workerSrc = `
+            const timers = new Map();
+            self.onmessage = function(e) {
+                const d = e.data;
+                if (d.cancel) {
+                    const t = timers.get(d.id);
+                    if (t !== undefined) { clearTimeout(t); timers.delete(d.id); }
+                    return;
+                }
+                const t = setTimeout(function() {
+                    timers.delete(d.id);
+                    self.postMessage(d.id);
+                }, 16);
+                timers.set(d.id, t);
+            };
+        `;
+        const blob = new Blob([workerSrc], { type: "application/javascript" });
+        const url = URL.createObjectURL(blob);
+        bgRafWorker = new Worker(url);
+        URL.revokeObjectURL(url);
+        bgRafWorker.onmessage = function(e) {
+            const id = e.data;
+            const cb = BG_RAF_CALLBACKS.get(id);
+            if (!cb) return;
+            BG_RAF_CALLBACKS.delete(id);
+            cb(performance.now());
+        };
+    } catch (e) {
+        bgRafWorker = null;
+    }
+    return bgRafWorker;
+}
+
+function scheduleBgRaf(cb) {
+    const fakeId = --bgRafSeq;
+    const worker = ensureBgRafWorker();
+    if (worker) {
+        BG_RAF_CALLBACKS.set(fakeId, cb);
+        worker.postMessage({ id: fakeId });
+        return fakeId;
+    }
+    const tId = window.setTimeout(() => {
+        BG_RAF_FALLBACK_TIMERS.delete(fakeId);
+        cb(performance.now());
+    }, 16);
+    BG_RAF_FALLBACK_TIMERS.set(fakeId, tId);
+    return fakeId;
+}
+
+function cancelBgRaf(id) {
+    if (BG_RAF_CALLBACKS.has(id)) {
+        BG_RAF_CALLBACKS.delete(id);
+        if (bgRafWorker) bgRafWorker.postMessage({ id: id, cancel: true });
+        return true;
+    }
+    if (BG_RAF_FALLBACK_TIMERS.has(id)) {
+        window.clearTimeout(BG_RAF_FALLBACK_TIMERS.get(id));
+        BG_RAF_FALLBACK_TIMERS.delete(id);
+        return true;
+    }
+    return false;
+}
+
+function flushNativeRafsToBackground() {
+    if (!document.hidden || !isBgRafPatched || PENDING_NATIVE_RAFS.size === 0) return;
+    const entries = Array.from(PENDING_NATIVE_RAFS.entries());
+    PENDING_NATIVE_RAFS.clear();
+    entries.forEach(([nativeId, cb]) => {
+        ORIG_CANCEL_RAF(nativeId);
+        scheduleBgRaf(cb);
+    });
+}
+
+document.addEventListener("visibilitychange", flushNativeRafsToBackground);
+
+function enableBackgroundRafBypass() {
+    if (isBgRafPatched) return;
+    isBgRafPatched = true;
+    ensureBgRafWorker();
+
+    window.requestAnimationFrame = function(cb) {
+        if (document.hidden) return scheduleBgRaf(cb);
+        const nativeId = ORIG_RAF((ts) => {
+            PENDING_NATIVE_RAFS.delete(nativeId);
+            cb(ts);
+        });
+        PENDING_NATIVE_RAFS.set(nativeId, cb);
+        return nativeId;
+    };
+
+    window.cancelAnimationFrame = function(id) {
+        if (cancelBgRaf(id)) return;
+        PENDING_NATIVE_RAFS.delete(id);
+        ORIG_CANCEL_RAF(id);
+    };
+}
+
+function disableBackgroundRafBypass() {
+    if (!isBgRafPatched) return;
+    isBgRafPatched = false;
+    window.requestAnimationFrame = ORIG_RAF;
+    window.cancelAnimationFrame = ORIG_CANCEL_RAF;
+}
+
+function acquireKeepAlive(key = "default") {
+    ACTIVE_KEEP_ALIVE_KEYS.add(String(key));
+    enableBackgroundRafBypass();
+    if (typeof keepAliveAudio !== "undefined" && keepAliveAudio.paused) {
+        keepAliveAudio.play().catch(() => {});
+    }
+}
+
+function releaseKeepAlive(key = "default") {
+    ACTIVE_KEEP_ALIVE_KEYS.delete(String(key));
+    if (ACTIVE_KEEP_ALIVE_KEYS.size === 0) {
+        disableBackgroundRafBypass();
+        if (typeof keepAliveAudio !== "undefined") {
+            try {
+                keepAliveAudio.pause();
+                keepAliveAudio.currentTime = 0;
+            } catch (e) {}
+        }
+    }
+}

@@ -1467,6 +1467,34 @@
 
   window.BconsViewer = {
     pl01Index: BV.pl01Index,
+    shouldDigitizeFile: function(fileName, maHD) {
+      if (!fileName || !/\.pdf$/i.test(fileName)) return false;
+      if (maHD && /^PL\d+/i.test(String(maHD).trim())) return false;
+      return !BV.pipeline.isPlOrPdgFile(fileName);
+    },
+    prepareDigitizedUploadPdf: function(fileObj, onProgress, preloadedBuffer) {
+      return BV.pipeline.prepareDigitizedUploadPdf(fileObj, onProgress, preloadedBuffer);
+    },
+    commitDigitizedUploadCache: function(fileId, fileName, manifest, pdfBuffer) {
+      return BV.pipeline.commitDigitizedUploadCache(fileId, fileName, manifest, pdfBuffer);
+    },
+    purgeLocalCacheForFile: async function(fileId) {
+      if (!fileId) return;
+      delete S.SESSION_MANIFEST_CACHE[fileId];
+      const lruIdx = S.SESSION_LRU_KEYS.indexOf(fileId);
+      if (lruIdx !== -1) S.SESSION_LRU_KEYS.splice(lruIdx, 1);
+      S.AUTO_REPAIR_ATTEMPTED.delete(fileId);
+      if (BV.pl01Index && BV.pl01Index.state) {
+        const rec = BV.pl01Index.state.byFileId.get(fileId);
+        if (rec && rec.maHD) BV.pl01Index.state.byMaHD.delete(rec.maHD.toUpperCase());
+        BV.pl01Index.state.byFileId.delete(fileId);
+      }
+      await Promise.all([
+        ST.deleteLocalManifest(fileId),
+        ST.deleteLocalPdfBinary(fileId),
+        ST.clearFilePageBitmaps(fileId)
+      ]).catch(() => {});
+    },
     getActivePl01Context: function() {
       return S.activePl01Context || null;
     },

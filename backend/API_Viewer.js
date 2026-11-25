@@ -243,6 +243,15 @@ function callCloudVisionApiBatch(imagesBase64Array) {
         b.paragraphs.forEach(function(p) {
           p.words.forEach(function(w) {
             const str = w.symbols.map(function(s) { return s.text; }).join("");
+            const trimmedStr = str.trim();
+            if (
+              trimmedStr.length === 1 &&
+              /^[A-Za-zÀ-ỹ]$/.test(trimmedStr) &&
+              typeof w.confidence === "number" &&
+              w.confidence < 0.6
+            ) {
+              return;
+            }
             const v = w.boundingBox.vertices || [];
             if (v.length >= 2 && v[0] && v[1]) {
               const dx = (v[1].x || 0) - (v[0].x || 0);
@@ -311,7 +320,23 @@ function callCloudVisionApiBatch(imagesBase64Array) {
         return { str: w.str, x: nx, y: ny, w: nw, h: nh };
       });
 
-      return { words: correctedWords, rotation: pdfRotation };
+      const cleanWords = correctedWords.filter(function(cw) {
+        const s = (cw.str || "").trim();
+        if (s.length !== 1 || !/^[A-Za-zÀ-ỹ]$/.test(s)) return true;
+        const area = Math.max(1, cw.w * cw.h);
+        for (let j = 0; j < correctedWords.length; j++) {
+          const other = correctedWords[j];
+          if (other === cw || (other.str || "").trim().length < 2) continue;
+          const ix = Math.min(cw.x + cw.w, other.x + other.w) - Math.max(cw.x, other.x);
+          if (ix <= 0) continue;
+          const iy = Math.min(cw.y + cw.h, other.y + other.h) - Math.max(cw.y, other.y);
+          if (iy <= 0) continue;
+          if ((ix * iy) / area >= 0.4) return false;
+        }
+        return true;
+      });
+
+      return { words: cleanWords, rotation: pdfRotation };
     });
   } catch (e) {
     throw new Error("Lỗi Cloud Vision Batch: " + e.message);
@@ -428,13 +453,16 @@ function cleanPl01Punctuation_Viewer_(str) {
   if (!str) return "";
   const PH_DOT = "\uE001";
   const PH_COMMA = "\uE002";
+  const PH_VV = "\uE003";
   let s = String(str)
+    .replace(/(^|[^a-zA-ZÀ-ỹ0-9])v\s*\.\s*v\.?(?=[^a-zA-ZÀ-ỹ0-9]|$)/gi, "$1" + PH_VV)
     .replace(/(\d)\.(?=\d)/g, "$1" + PH_DOT)
     .replace(/(\d),(?=\d)/g, "$1" + PH_COMMA);
 
-  s = s.replace(/[^a-zA-ZÀ-ỹ0-9\uE001\uE002]+/g, " ");
+  s = s.replace(/[^a-zA-ZÀ-ỹ0-9\uE001\uE002\uE003]+/g, " ");
 
   return s
+    .replace(/\uE003/g, "v.v")
     .replace(/\uE001/g, ".")
     .replace(/\uE002/g, ",")
     .replace(/\s+/g, " ")
@@ -477,6 +505,39 @@ function isCrossColumnBoundary_Viewer_(items, leftIt, rightIt) {
 
   if (gap > Math.max(12, avgH * 1.25)) return true;
   return false;
+}
+
+function filterOcrNoiseTokens_Viewer_(items) {
+  if (!items || items.length < 3) return items;
+
+  const hs = items.map(it => it.h || 10).sort((a, b) => a - b);
+  const medH = hs[Math.floor(hs.length / 2)] || 10;
+  const ys = items.map(it => it.y || 0).sort((a, b) => a - b);
+  const medY = ys[Math.floor(ys.length / 2)] || 0;
+
+  return items.filter((cur, idx) => {
+    const s = (cur.str || "").trim();
+    if (s.length !== 1 || idx === 0 || idx === items.length - 1) return true;
+    if (!/^[A-Za-zÀ-ỹ]$/.test(s)) return true;
+
+    const prev = items[idx - 1];
+    const next = items[idx + 1];
+    const curW = Math.max(1, cur.w || 1);
+    const curH = Math.max(1, cur.h || 1);
+
+    // 1. Bị từ liền trước hoặc liền sau chồng lấn hộp tọa độ >= 35% bề rộng (OCR đọc lặp nét)
+    const overlapPrev = (prev.x + prev.w) - cur.x;
+    const overlapNext = (cur.x + curW) - next.x;
+    if (overlapPrev >= curW * 0.35 || overlapNext >= curW * 0.35) return false;
+
+    // 2. Chiều cao nhỏ bất thường (< 55% chuẩn dòng) -> vết mực/bụi scan
+    if (curH < medH * 0.55) return false;
+
+    // 3. Lệch hẳn đường đáy chữ so với dòng (> 45% chiều cao chuẩn) -> nhiễu dấu mộc/nền
+    if (Math.abs((cur.y || 0) - medY) > Math.max(4, medH * 0.45)) return false;
+
+    return true;
+  });
 }
 
 function extractCleanPl01PagesFromManifest_(manifest) {
@@ -573,7 +634,7 @@ function extractCleanPl01PagesFromManifest_(manifest) {
         }
       }
 
-      const mainCell = cells[0];
+      let mainCell = cells[0];
       if (!mainCell || mainCell.length === 0) continue;
 
       if (cells.length >= 2) {
@@ -604,7 +665,7 @@ function extractCleanPl01PagesFromManifest_(manifest) {
           break;
         }
       }
-
+      mainCell = filterOcrNoiseTokens_Viewer_(mainCell);
       if (mainCell.length === 0) continue;
       const cellJoined = mainCell.map(t => t.str).join(" ").trim();
       if (!cellJoined || isStandaloneNumberOrMoney_Viewer_(cellJoined)) continue;
@@ -718,8 +779,10 @@ function extractCleanPl01PagesFromManifest_(manifest) {
         const prevEndX = getRowEndX(prevRow);
         const prevLastStr = (prevRow.items[prevRow.items.length - 1].str || "").trim();
         const firstWord = rObj.items[0];
-        const firstChar = (firstWord.str || "").trim().charAt(0);
-        const startsWithUpper = firstChar !== "" && firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase();
+        const firstWordStr = (firstWord.str || "").trim();
+        const firstChar = firstWordStr.charAt(0);
+        const isVvStart = /^v\s*\.\s*v\b/i.test(firstWordStr);
+        const startsWithUpper = !isVvStart && firstChar !== "" && firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase();
         const prevEndedJoiner = /[-–—,(/:+]$/.test(prevLastStr);
         const remainingSpace = colRightEdge - prevEndX;
 
@@ -1056,4 +1119,59 @@ function backfillPl01IndexFromDrive(options) {
 
 function rebuildAllPl01IndexesFromDrive() {
   return backfillPl01IndexFromDrive({ forceRebuild: true });
+}
+
+function deleteDigitizedJsonForFile_Viewer_(fileId, optFileName) {
+  if (!fileId) return;
+  try {
+    CacheService.getScriptCache().remove("LOCK_OPT_" + fileId);
+  } catch (e) {}
+
+  try {
+    const file = DriveApp.getFileById(fileId);
+    const resolvedName = (optFileName || file.getName() || "").normalize("NFC");
+    const cleanBase = resolvedName.replace(/\.pdf$/i, "").trim();
+    if (!cleanBase) return;
+
+    const jsonMain = getJsonCacheName_Viewer_(resolvedName);
+    const candidateNames = Array.from(new Set([
+      jsonMain,
+      jsonMain.normalize("NFD"),
+      cleanBase + ".json",
+      (cleanBase + ".json").normalize("NFD")
+    ]));
+
+    const parents = file.getParents();
+    while (parents.hasNext()) {
+      const folder = parents.next();
+      candidateNames.forEach(name => {
+        const files = folder.getFilesByName(name);
+        while (files.hasNext()) {
+          const jf = files.next();
+          if (jf.isTrashed()) continue;
+          try {
+            Drive.Files.remove(jf.getId());
+          } catch (remErr) {
+            try { jf.setTrashed(true); } catch (trashErr) {}
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.warn("Bỏ qua lỗi xóa file JSON số hóa:", e.message);
+  }
+}
+
+function removeFileFromPl01Index_Viewer_(fileId, maHD, rawDate) {
+  if (!fileId) return;
+  try {
+    const year = extractYearFromContract_Viewer_(maHD || "", rawDate || "", fileId);
+    const loaded = loadPl01IndexObj_(year);
+    if (loaded.file && loaded.indexObj && loaded.indexObj.files && loaded.indexObj.files[fileId]) {
+      delete loaded.indexObj.files[fileId];
+      savePl01IndexObj_(year, loaded.indexObj, loaded.file);
+    }
+  } catch (e) {
+    console.warn("Bỏ qua lỗi xóa file khỏi Index_PL01:", e.message);
+  }
 }

@@ -609,25 +609,98 @@ function closePreviewModal_PL(isInstant = false) {
 // 7. UPLOAD LOGIC & QUEUE MANAGEMENT
 // ==========================================================================
 
+function formatScanBytes_PL(bytes) {
+    if (!bytes || bytes <= 0) return "0 KB";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+}
+
+function syncScanDropZoneHeight_PL() {
+    const dropZone = document.getElementById('scan-drop-zone');
+    const stateFile = document.getElementById('scan-state-file');
+    if (!dropZone) return;
+
+    const BASE_H = 114; // Chiều cao cố định bằng nhau cho 0 file và 1 file
+    if (!currentScanFiles || currentScanFiles.length <= 1 || !stateFile) {
+        dropZone.style.height = BASE_H + "px";
+        return;
+    }
+
+    // 26px = 24px padding (12+12) + 2px border (1+1)
+    const targetH = Math.max(BASE_H, stateFile.offsetHeight + 26);
+    dropZone.style.height = targetH + "px";
+}
+
 function updateScanQueueUI() {
     if (currentScanFiles.length === 0) { removeScanFile_PL(); return; }
-    const totalMB = (currentScanFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024)).toFixed(2);
-    document.getElementById('scan-state-empty').style.display = "none";
-    document.getElementById('scan-state-file').style.display = "flex";
-    const nameLabel = document.getElementById('scan-file-name');
-    nameLabel.textContent = currentScanFiles.length === 1 ? currentScanFiles[0].name : `Queue: ${currentScanFiles.length} PDF/Excel files ready!`;
-    document.getElementById('scan-file-size').textContent = `Total size: ${totalMB} MB`;
-    document.getElementById('btn-upload-scan').disabled = false;
+
+    const dropZone = document.getElementById('scan-drop-zone');
+    const stateEmpty = document.getElementById('scan-state-empty');
+    const stateFile = document.getElementById('scan-state-file');
+    const countBadge = document.getElementById('scan-queue-count');
+    const sizeLabel = document.getElementById('scan-file-size');
+    const queueList = document.getElementById('scan-queue-list');
+    const uploadBtn = document.getElementById('btn-upload-scan');
+
+    const totalBytes = currentScanFiles.reduce((sum, f) => sum + f.size, 0);
+    if (dropZone) dropZone.classList.add('has-files');
+    if (stateEmpty) stateEmpty.style.display = "none";
+    if (stateFile) stateFile.style.display = "flex";
+    if (countBadge) countBadge.textContent = `${currentScanFiles.length} ${currentScanFiles.length > 1 ? 'FILES' : 'FILE'} READY`;
+    if (sizeLabel) sizeLabel.textContent = `Total: ${formatScanBytes_PL(totalBytes)}`;
+    if (uploadBtn) uploadBtn.disabled = false;
+
+    if (queueList) {
+        queueList.innerHTML = currentScanFiles.map((f, idx) => {
+            const isExcel = /\.(xls|xlsx)$/i.test(f.name);
+            const iconClass = isExcel ? 'bi-file-earmark-excel-fill' : 'bi-file-earmark-pdf-fill';
+            const typeClass = isExcel ? 'is-excel' : 'is-pdf';
+            const extTag = isExcel ? 'EXCEL' : 'PDF';
+            const safeName = (f.name || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            return `
+                <div class="scan-queue-item">
+                    <div class="scan-queue-icon ${typeClass}">
+                        <i class="bi ${iconClass}"></i>
+                    </div>
+                    <div class="scan-queue-meta">
+                        <div class="scan-queue-name" title="${safeName}">${safeName}</div>
+                        <div class="scan-queue-sub">
+                            <span>${extTag}</span>
+                            <span style="opacity:0.35;">•</span>
+                            <span>${formatScanBytes_PL(f.size)}</span>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-icon-delete" onclick="removeSingleScanFile_PL(${idx}, event)" title="Xóa tệp này">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>`;
+        }).join("");
+    }
+
+    requestAnimationFrame(syncScanDropZoneHeight_PL);
 }
 
 function removeScanFile_PL(event) {
-    if(event) event.stopPropagation();
-    currentScanFiles = []; 
+    if (event) event.stopPropagation();
+    currentScanFiles = [];
     const fileInput = document.getElementById('scan-file-input');
-    if (fileInput) fileInput.value = ""; 
+    if (fileInput) fileInput.value = "";
+    const dropZone = document.getElementById('scan-drop-zone');
+    if (dropZone) {
+        dropZone.classList.remove('has-files');
+        dropZone.style.height = "114px";
+    }
+    const queueList = document.getElementById('scan-queue-list');
+    if (queueList) queueList.innerHTML = "";
     document.getElementById('scan-state-empty').style.display = "flex";
     document.getElementById('scan-state-file').style.display = "none";
     document.getElementById('btn-upload-scan').disabled = true;
+}
+
+function removeSingleScanFile_PL(index, event) {
+    if (event) event.stopPropagation();
+    currentScanFiles.splice(index, 1);
+    updateScanQueueUI();
 }
 
 /**
@@ -635,80 +708,145 @@ function removeScanFile_PL(event) {
  */
 async function startUploadScan_PL() {
     if (!currentScanFiles.length) return;
+    const targetMaHD = currentScanMaHD;
+    const filesToUpload = [...currentScanFiles];
+
     const btn = document.getElementById('btn-upload-scan');
     const progressBar = document.getElementById('scan-progress-bar');
     const percentText = document.getElementById('scan-percent-text');
     const statusText = document.getElementById('scan-status-text');
     const progressContainer = document.getElementById('scan-progress-container');
-    
+
     progressContainer.style.display = 'block';
     btn.disabled = true;
-    
+
     progressBar.classList.remove('finished');
-    progressBar.style.backgroundColor = "#FFBA08"; 
+    progressBar.style.backgroundColor = "#FFBA08";
     progressBar.style.width = "0%";
     percentText.textContent = "0%";
-    
-    keepAliveAudio.play().catch(e => console.warn("Audio error:", e));
+
+    acquireKeepAlive("pl_scan_upload");
+
+    const setStepProgress = (fileIdx, localPct, label) => {
+        const overall = Math.round(((fileIdx + (localPct / 100)) / filesToUpload.length) * 100);
+        const clamped = Math.max(0, Math.min(100, overall));
+        progressBar.style.width = clamped + "%";
+        percentText.textContent = clamped + "%";
+        statusText.textContent = `[${fileIdx + 1}/${filesToUpload.length}] ${label}`;
+    };
+
+    const bufferToBase64 = (buf) => {
+        const bytes = new Uint8Array(buf);
+        const CHUNK = 0x8000;
+        const parts = [];
+        for (let offset = 0; offset < bytes.length; offset += CHUNK) {
+            parts.push(String.fromCharCode.apply(null, bytes.subarray(offset, offset + CHUNK)));
+        }
+        return btoa(parts.join(""));
+    };
+
+    const readFileBufferSafe = async (f) => {
+        try {
+            if (f._bufferPromise) {
+                const cached = await f._bufferPromise;
+                if (cached instanceof ArrayBuffer) return cached;
+            }
+            return await f.arrayBuffer();
+        } catch (readErr) {
+            const detail = (readErr && readErr.message) ? readErr.message : (readErr && readErr.name) || "NotReadableError";
+            throw new Error(`Không thể đọc tệp "${f.name}" từ máy tính (${detail}). Nếu tệp nằm trong thư mục sâu (>260 ký tự) hoặc kéo từ Zalo/OneDrive, hãy lưu tệp ra Desktop rồi chọn lại.`);
+        }
+    };
+
+    let digitizedCount = 0;
 
     try {
-        for (let i = 0; i < currentScanFiles.length; i++) {
-            const file = currentScanFiles[i];
-            const baseProgress = (i / currentScanFiles.length) * 100;
-            const fileWeight = 100 / currentScanFiles.length;
+        for (let i = 0; i < filesToUpload.length; i++) {
+            const file = filesToUpload[i];
+            const shouldDigitize = Boolean(
+                window.BconsViewer &&
+                typeof window.BconsViewer.shouldDigitizeFile === "function" &&
+                window.BconsViewer.shouldDigitizeFile(file.name, targetMaHD)
+            );
+
+            setStepProgress(i, 5, "READING FILE...");
+            const rawBuffer = await file.arrayBuffer();
+
             let base64Data = "";
+            let digitizedPack = null;
 
-            statusText.textContent = `[${i+1}/${currentScanFiles.length}] READING ORIGINAL FILE...`;
-            
-            // Đọc trực tiếp tệp tin gốc nguyên bản sang Base64 không qua nén ảnh
-            base64Data = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result.split(',')[1]);
-                reader.onerror = e => reject(e);
-                reader.readAsDataURL(file);
-            });
+            if (shouldDigitize) {
+                try {
+                    digitizedPack = await window.BconsViewer.prepareDigitizedUploadPdf(
+                        file,
+                        (localPct, stageLabel) => {
+                            setStepProgress(i, Math.round(localPct * 0.65), stageLabel);
+                        },
+                        rawBuffer
+                    );
+                    base64Data = digitizedPack.base64Data;
+                } catch (digErr) {
+                    console.warn(`[Upload Digitize] Số hóa thất bại cho "${file.name}", chuyển sang upload file gốc:`, digErr);
+                    digitizedPack = null;
+                    setStepProgress(i, 35, "PREPARING ORIGINAL FILE...");
+                    base64Data = bufferToBase64(rawBuffer);
+                }
+            } else {
+                setStepProgress(i, 40, "PREPARING FILE...");
+                base64Data = bufferToBase64(rawBuffer);
+            }
 
-            let fakeP = Math.round(baseProgress + fileWeight * 0.5); // 50% hoàn tất tiến trình đọc tệp cục bộ
-            progressBar.style.width = fakeP + "%";
-            percentText.textContent = fakeP + "%";
+            setStepProgress(i, digitizedPack ? 72 : 60, "UPLOADING TO DRIVE...");
+            const res = await callBackend('uploadScanToDrive', [base64Data, targetMaHD, file.name]);
 
-            statusText.textContent = `[${i+1}/${currentScanFiles.length}] UPLOADING TO DRIVE...`;
-            
-            const res = await callBackend('uploadScanToDrive', [base64Data, currentScanMaHD, file.name]);
             if (res && res.success) {
-                const item = SYSTEM_DATA.pl.field0.find(it => (it.display || "").split(" | ")[0].trim().toUpperCase() === currentScanMaHD.toUpperCase());
-                if(item) {
+                const item = SYSTEM_DATA.pl.field0.find(it => (it.display || "").split(" | ")[0].trim().toUpperCase() === targetMaHD.toUpperCase());
+                if (item) {
                     const newEntry = res.id + "|" + res.fileName;
                     item.scanId = (item.scanId || "").trim() !== "" ? (item.scanId + ";;" + newEntry) : newEntry;
                     PRECOMPUTED_PL_DATA = null;
-                    // BẬT CỜ preserveScroll = true ĐỂ GIỮ NGUYÊN VỊ TRÍ CUỘN DASHBOARD
                     executeFilter_PL(false, false, true);
-                    renderExistingFiles_PL(currentScanMaHD);
+                    if (currentScanMaHD === targetMaHD) renderExistingFiles_PL(targetMaHD);
+                }
+
+                if (digitizedPack) {
+                    setStepProgress(i, 90, "SAVING DIGITIZED DATA...");
+                    try {
+                        await window.BconsViewer.commitDigitizedUploadCache(
+                            res.id,
+                            res.fileName,
+                            digitizedPack.manifest,
+                            digitizedPack.pdfBuffer
+                        );
+                        digitizedCount++;
+                    } catch (commitErr) {
+                        console.warn(`[Upload Digitize] Đã upload file nhưng lỗi lưu bản số hóa "${file.name}":`, commitErr);
+                    }
                 }
             } else {
                 throw new Error(res ? res.error : "Lỗi Upload Server");
             }
-            
-            let stepP = Math.round(((i + 1) / currentScanFiles.length) * 100);
-            progressBar.style.width = stepP + "%";
-            percentText.textContent = stepP + "%";
+
+            setStepProgress(i, 100, "DONE");
         }
-        
+
         statusText.textContent = "COMPLETE!";
-        progressBar.classList.add('finished'); 
-        progressBar.style.backgroundColor = "#2ECC71"; 
-        
-        showToast_PL(`🚀 UPLOADED ${currentScanFiles.length} FILE(S) SUCCESSFULLY!`, "success");
+        progressBar.classList.add('finished');
+        progressBar.style.backgroundColor = "#2ECC71";
+
+        const msg = digitizedCount > 0
+            ? `🚀 UPLOADED & DIGITIZED ${filesToUpload.length} FILE(S) SUCCESSFULLY!`
+            : `🚀 UPLOADED ${filesToUpload.length} FILE(S) SUCCESSFULLY!`;
+        showToast_PL(msg, "success");
+
         removeScanFile_PL();
         setTimeout(() => { progressContainer.style.display = 'none'; }, 2000);
     } catch (e) {
         statusText.textContent = "FAILED!";
-        progressBar.style.backgroundColor = "#ff4d4d"; 
+        progressBar.style.backgroundColor = "#ff4d4d";
         alert(`Upload Error: ${e.message || e}`);
     } finally {
-        keepAliveAudio.pause(); 
-        keepAliveAudio.currentTime = 0;
-        // Khóa nút nếu đã upload xong sạch hàng chờ, chỉ bật lại nếu có lỗi cần upload lại
+        releaseKeepAlive("pl_scan_upload");
         if (btn) {
             btn.disabled = (currentScanFiles.length === 0);
         }
@@ -766,23 +904,24 @@ function executeActualDeleteData_PL() {
         
         showToast_PL(`🗑️ Đã xóa dữ liệu: <b style="color:white">${maToDelete}`, "success");
 
-        callBackend("deleteContractRow_Backend", maToDelete)
-            .then(() => {
-                // Kích hoạt phát tin cập nhật ngay tại Client khi hoàn tất xóa thành công
-                publishAblyContractUpdate_Client("DELETE_DATA", maToDelete);
-                
-                loadSystemData(true); 
-            })
-            .catch(err => {
-                if (backupIndex !== -1) {
-                    SYSTEM_DATA.pl.field0.splice(backupIndex, 0, backupItem);
+        if (currentPreviewFileId_PL === targetFileId) {
+        closePreviewModal_PL(true);
+    }
+    if (window.BconsViewer && typeof window.BconsViewer.purgeLocalCacheForFile === "function") {
+        window.BconsViewer.purgeLocalCacheForFile(targetFileId);
+    }
+
+    // 3. GỌI BACKEND CHẠY NGẦM LẶNG LẼ TRÊN SPREADSHEET VÀ DRIVE
+    callBackend("deleteScanFilePermanently", [currentScanMaHD, targetFileId])
+        .then(res => {
+            if (res && res.success) {
+                if (window.BconsViewer && window.BconsViewer.pl01Index && typeof window.BconsViewer.pl01Index.sync === "function") {
+                    setTimeout(() => window.BconsViewer.pl01Index.sync(true), 300);
                 }
-                PRECOMPUTED_PL_DATA = null;
-                executeFilter_PL(false);
-                if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
-                showToast_PL(`⚠️ Thao tác xóa ${maToDelete} thất bại! Đã khôi phục dữ liệu.`, "error");
-                loadSystemData(true);
-            });
+            } else {
+                throw new Error(res ? res.error : "Không xác nhận được từ máy chủ");
+            }
+        })
     }
 }
 
@@ -970,7 +1109,9 @@ const descColor = isActiveDot ? '#2ECC71' : (isPendingDot ? '#FFBA08' : '#95A1AF
     const dropZone = document.getElementById('scan-drop-zone');
     const fileInput = document.getElementById('scan-file-input');
     if (dropZone && fileInput) {
-        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('click', () => {
+            if (currentScanFiles.length === 0) fileInput.click();
+        });
         fileInput.addEventListener('change', (e) => {
             handleFilesSelected(e.target.files);
             fileInput.value = "";
@@ -979,7 +1120,11 @@ const descColor = isActiveDot ? '#2ECC71' : (isPendingDot ? '#FFBA08' : '#95A1AF
             e.preventDefault(); 
             dropZone.classList.add('dragover'); 
         });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('dragleave', (e) => {
+            if (!dropZone.contains(e.relatedTarget)) {
+                dropZone.classList.remove('dragover');
+            }
+        });
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault(); 
             dropZone.classList.remove('dragover');
@@ -1065,38 +1210,47 @@ const descColor = isActiveDot ? '#2ECC71' : (isPendingDot ? '#FFBA08' : '#95A1AF
 
 function handleFilesSelected(files) {
     if (!files || !files.length) return;
-    
+
     const MAX_SIZE = 20 * 1024 * 1024; // Giới hạn trần 20MB
     let oversizedFiles = [];
+    let unreadableFiles = [];
 
     // 1. Chỉ chấp nhận định dạng PDF và Excel (.xls, .xlsx)
     const incomingFiles = Array.from(files).filter(f => {
         const name = f.name.toLowerCase();
         return f.type === "application/pdf" || name.endsWith(".xls") || name.endsWith(".xlsx");
     });
-    
+
     if (incomingFiles.length === 0) {
         showToast_PL("⚠️ Sếp chỉ được chọn định dạng PDF hoặc Excel!", "error");
         return;
     }
 
-    // 2. Kiểm tra dung lượng và lọc trùng lặp
+    // 2. Kiểm tra handle rỗng (lỗi đường dẫn > 260 ký tự khi kéo thả), dung lượng và lọc trùng
     incomingFiles.forEach(newFile => {
+        if (!newFile.size || newFile.size === 0) {
+            unreadableFiles.push(newFile.name);
+            return;
+        }
+
         if (newFile.size > MAX_SIZE) {
             const sizeMB = (newFile.size / (1024 * 1024)).toFixed(1);
             oversizedFiles.push(`${newFile.name} (${sizeMB}MB)`);
-            return; // Chặn không đưa vào hàng chờ upload
+            return;
         }
 
-        const isDuplicate = currentScanFiles.some(oldFile => 
+        const isDuplicate = currentScanFiles.some(oldFile =>
             oldFile.name === newFile.name && oldFile.size === newFile.size
         );
         if (!isDuplicate) currentScanFiles.push(newFile);
     });
 
-    // 3. Cảnh báo nếu phát hiện file > 20MB
+    if (unreadableFiles.length > 0) {
+        showToast_PL("⚠️ Trình duyệt không đọc được tệp kéo thả (đường dẫn quá dài). Hãy bấm vào khung để chọn tệp!", "error");
+    }
+
     if (oversizedFiles.length > 0) {
-        showToast_PL(`⚠️ File vượt quá dung lượng tối đa. Vui lòng nén file < 20MB trước khi tải lên.`, "error");
+        showToast_PL("⚠️ File vượt quá dung lượng tối đa. Vui lòng nén file < 20MB trước khi tải lên.", "error");
     }
 
     updateScanQueueUI();

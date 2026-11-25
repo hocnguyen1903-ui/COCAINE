@@ -188,6 +188,22 @@
       return strToken.startsWith(queryToken);
     }
 
+    function matchMergedTokensAt(clean, rawStr, startK, isAppendixPage) {
+      if (!clean || startK >= numTokens - 1) return null;
+      if (!/[a-zA-ZÀ-ỹ0-9][.\-\/\\,:][a-zA-ZÀ-ỹ0-9]/.test(rawStr || "")) return null;
+      let merged = qTokens[startK];
+      const maxEnd = Math.min(numTokens - 1, startK + 3);
+      for (let endK = startK + 1; endK <= maxEnd; endK++) {
+        merged += qTokens[endK];
+        const isLast = (endK === numTokens - 1);
+        const ok = isAppendixPage
+          ? (isLast ? isPrefixTokenMatch(clean, merged) : isStrictTokenMatch(clean, merged))
+          : (isLast ? isFuzzyPrefixMatch(clean, merged) : isFuzzyTokenMatch(clean, merged));
+        if (ok) return { span: endK - startK + 1, target: merged };
+      }
+      return null;
+    }
+
     const totalPages = S.currentManifest.numPages || S.currentManifest.pages.length;
     const fallbackAppendixStart = Math.max(1, totalPages - 6);
     const appendixStart = S.currentManifest.appendixStartPage || fallbackAppendixStart;
@@ -328,6 +344,8 @@
           let isFirstMatch = false;
           let firstIsFuzzy = false;
           let firstStartRatio = 0;
+          let firstSpan = 1;
+          let firstTargetToken = qTokens[0];
 
           if (isAppendixPage) {
             if (isStrictTokenMatch(firstClean, qTokens[0])) {
@@ -345,23 +363,33 @@
             }
           }
 
+          if (!isFirstMatch) {
+            const mergedFirst = matchMergedTokensAt(firstClean, firstIt[0], 0, isAppendixPage);
+            if (mergedFirst) {
+              isFirstMatch = true;
+              firstSpan = mergedFirst.span;
+              firstTargetToken = mergedFirst.target;
+            }
+          }
+
           if (!isFirstMatch) continue;
 
-          let matchedList = [{ it: firstIt, clean: firstClean, sR: firstStartRatio, isWrap: false }];
+          let matchedList = [{ it: firstIt, clean: firstClean, sR: firstStartRatio, isWrap: false, targetToken: firstTargetToken }];
+          let consumedTokens = firstSpan;
           let currentItemIdx = i;
           let sequenceValid = true;
           let lineBreakCount = 0;
           let fuzzyUsed = firstIsFuzzy ? 1 : 0;
-          let strictCount = firstIsFuzzy ? 0 : 1;
+          let strictCount = firstIsFuzzy ? 0 : firstSpan;
           let maxStrictLen = firstIsFuzzy ? 0 : firstClean.length;
           const maxFuzzy = 1;
 
-          for (let k = 1; k < numTokens; k++) {
+          for (let k = firstSpan; k < numTokens; k++) {
             let foundNext = false;
             const isLastSearchToken = (k === numTokens - 1);
             const prevItem = matchedList[matchedList.length - 1].it;
 
-            // 1. Quét tìm trên cùng một dòng ngang (Cập nhật mốc tọa độ qua dấu câu, khóa chặt ranh giới cột)
+            // 1. Quét tìm trên cùng một dòng ngang
             let tempIdx = currentItemIdx;
             let lastSameLineIt = prevItem;
             const maxStep = 5;
@@ -385,10 +413,22 @@
               }
 
               let isStrictOrPrefix = false;
+              let stepSpan = 1;
+              let stepTarget = qTokens[k];
+
               if (isAppendixPage) {
                 isStrictOrPrefix = isLastSearchToken ? isPrefixTokenMatch(clean, qTokens[k]) : isStrictTokenMatch(clean, qTokens[k]);
               } else {
                 isStrictOrPrefix = isLastSearchToken ? isFuzzyPrefixMatch(clean, qTokens[k]) : isFuzzyTokenMatch(clean, qTokens[k]);
+              }
+
+              if (!isStrictOrPrefix) {
+                const mergedMatch = matchMergedTokensAt(clean, it[0], k, isAppendixPage);
+                if (mergedMatch) {
+                  isStrictOrPrefix = true;
+                  stepSpan = mergedMatch.span;
+                  stepTarget = mergedMatch.target;
+                }
               }
 
               const isSoft = !isAppendixPage && !isStrictOrPrefix && (fuzzyUsed < maxFuzzy) && isSoftOcrTokenMatch(clean, qTokens[k]);
@@ -403,13 +443,15 @@
                 if (gap >= -5 && gap <= maxWordGap && yDiff <= 6 && !isCrossColumnBoundary(p.textItems, lastSameLineIt, it, isAppendixPage)) {
                   foundNext = true;
                   currentItemIdx = tempIdx;
-                  matchedList.push({ it: it, clean: clean, sR: 0, isWrap: false });
+                  matchedList.push({ it: it, clean: clean, sR: 0, isWrap: false, targetToken: stepTarget });
+                  consumedTokens += stepSpan;
                   if (!isSoft) {
-                    strictCount++;
+                    strictCount += stepSpan;
                     if (clean.length > maxStrictLen) maxStrictLen = clean.length;
                   } else {
                     fuzzyUsed++;
                   }
+                  if (stepSpan > 1) k += (stepSpan - 1);
                   break;
                 } else {
                   break;
@@ -419,7 +461,7 @@
               }
             }
 
-            // 2. Ngoại lệ xuống dòng (chặn vách ngăn cột & chống nhảy cóc dòng, hỗ trợ khi OCR đảo thứ tự block)
+            // 2. Ngoại lệ xuống dòng
             if (!foundNext && lineBreakCount < 2 && isAppendixPage) {
               const maxOffset = 120;
               const candidateIndices = [];
@@ -436,7 +478,19 @@
                 const clean = cleanNaturalToken(it[0]).replace(/\s+/g, "");
                 if (!clean) continue;
 
-                const isStrictOrPrefix = isLastSearchToken ? isPrefixTokenMatch(clean, qTokens[k]) : isStrictTokenMatch(clean, qTokens[k]);
+                let isStrictOrPrefix = isLastSearchToken ? isPrefixTokenMatch(clean, qTokens[k]) : isStrictTokenMatch(clean, qTokens[k]);
+                let stepSpan = 1;
+                let stepTarget = qTokens[k];
+
+                if (!isStrictOrPrefix) {
+                  const mergedMatch = matchMergedTokensAt(clean, it[0], k, isAppendixPage);
+                  if (mergedMatch) {
+                    isStrictOrPrefix = true;
+                    stepSpan = mergedMatch.span;
+                    stepTarget = mergedMatch.target;
+                  }
+                }
+
                 const isSoft = !isAppendixPage && !isStrictOrPrefix && (fuzzyUsed < maxFuzzy) && isSoftOcrTokenMatch(clean, qTokens[k]);
 
                 if (isStrictOrPrefix || isSoft) {
@@ -497,17 +551,67 @@
                       }
                     }
 
-                    if (!hasInterveningLine) {
+                    let isCrossRowCell = false;
+
+                    // Chốt chặn 1: Nếu dòng dưới kéo dài vượt xa cuối dòng trên -> dòng trên đã kết thúc ô
+                    const prevEndX = prevItem[1] + prevItem[3];
+                    const prevLastChar = (prevItem[0] || "").trim().slice(-1);
+                    const prevEndedJoiner = /[-–—,(/:+]$/.test(prevLastChar);
+                    if (!prevEndedJoiner) {
+                      let line2EndX = it[1] + it[3];
+                      let walkIt = it;
+                      for (let wIdx = tempIdx + 1; wIdx < p.textItems.length && wIdx <= tempIdx + 40; wIdx++) {
+                        const nxt = p.textItems[wIdx];
+                        if (!nxt[0] || !nxt[0].trim()) continue;
+                        if (Math.abs(nxt[2] - it[2]) > 5) continue;
+                        if (nxt[1] < walkIt[1]) continue;
+                        if (isCrossColumnBoundary(p.textItems, walkIt, nxt, isAppendixPage)) break;
+                        line2EndX = Math.max(line2EndX, nxt[1] + nxt[3]);
+                        walkIt = nxt;
+                      }
+                      if ((line2EndX - prevEndX) > (it[3] + Math.max(14, lineH * 1.6))) {
+                        isCrossRowCell = true;
+                      }
+                    }
+
+                    // Chốt chặn 2: Dòng trên và dòng dưới có 2 STT khác nhau ở cột lề trái -> khác ô
+                    if (!isCrossRowCell) {
+                      const findLeftStt = (targetY, maxYDist) => {
+                        let best = null, bestD = maxYDist + 1;
+                        for (let sIdx = scanMin; sIdx <= scanMax; sIdx++) {
+                          const sIt = p.textItems[sIdx];
+                          if (sIt[1] >= p.width * 0.16) continue;
+                          if ((sIt[1] + sIt[3]) >= it[1] - 4) continue;
+                          const sClean = cleanNaturalToken(sIt[0]);
+                          if (!/^(?:[0-9]{1,4}|[a-z]|[ivx]{1,5})$/i.test(sClean)) continue;
+                          const d = Math.abs(sIt[2] - targetY);
+                          if (d <= maxYDist && d < bestD) {
+                            bestD = d;
+                            best = { idx: sIdx, val: sClean };
+                          }
+                        }
+                        return best;
+                      };
+                      const stt1 = findLeftStt(prevItem[2], Math.max(6, lineH * 0.8));
+                      const stt2 = findLeftStt(it[2], Math.max(10, lineH * 1.2));
+                      if (stt1 && stt2 && stt1.idx !== stt2.idx) {
+                        isCrossRowCell = true;
+                      }
+                    }
+
+                    if (!hasInterveningLine && !isCrossRowCell) {
                       foundNext = true;
                       lineBreakCount++;
                       currentItemIdx = tempIdx;
-                      matchedList.push({ it: it, clean: clean, sR: 0, isWrap: true });
+                      matchedList.push({ it: it, clean: clean, sR: 0, isWrap: true, targetToken: stepTarget });
+                      consumedTokens += stepSpan;
                       if (!isSoft) {
-                        strictCount++;
+                        strictCount += stepSpan;
                         if (clean.length > maxStrictLen) maxStrictLen = clean.length;
                       } else {
                         fuzzyUsed++;
                       }
+                      if (stepSpan > 1) k += (stepSpan - 1);
                       break;
                     }
                   }
@@ -523,7 +627,7 @@
 
           const isPairSafe = (numTokens > 2) || (fuzzyUsed === 0) || (maxStrictLen >= 2);
 
-          if (sequenceValid && matchedList.length === numTokens && strictCount >= 1 && fuzzyUsed <= maxFuzzy && isPairSafe) {
+          if (sequenceValid && consumedTokens === numTokens && strictCount >= 1 && fuzzyUsed <= maxFuzzy && isPairSafe) {
             const lines = [];
             let currentLine = [];
             matchedList.forEach(item => {
@@ -544,7 +648,7 @@
               let exactEndX = endItem.it[1] + endItem.it[3];
 
               if (isLastLine) {
-                const lastTargetToken = qTokens[numTokens - 1];
+                const lastTargetToken = endItem.targetToken || qTokens[numTokens - 1];
                 let endRatio = Math.min(1, lastTargetToken.length / Math.max(1, endItem.clean.length));
                 if (isAppendixPage && /[0-9]/.test(endItem.clean)) endRatio = 1;
                 exactEndX = endItem.it[1] + (endRatio * endItem.it[3]);

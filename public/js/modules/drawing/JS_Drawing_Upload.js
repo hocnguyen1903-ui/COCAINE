@@ -372,6 +372,7 @@
     }
 
     S.isUploading_Drawing = true;
+    acquireKeepAlive("drawing_upload");
     stateQueue.style.display = "none";
     stateUploading.style.display = "flex";
     progressBar.style.width = "0%";
@@ -475,6 +476,7 @@
       renderDrawingQueueUI();
     } finally {
       S.isUploading_Drawing = false;
+      releaseKeepAlive("drawing_upload");
     }
   }
 

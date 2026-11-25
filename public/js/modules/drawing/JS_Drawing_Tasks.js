@@ -955,7 +955,9 @@
       return;
     }
 
+    const aiKeepAliveKey = "drawing_ai_" + targetFileId;
     S.activeAiFiles.add(targetFileId);
+    acquireKeepAlive(aiKeepAliveKey);
     updateAiButtonUI(targetFileId);
 
     (async () => {
@@ -1040,6 +1042,7 @@
         showToast_PL(`⚠️ Lỗi AI [${cleanFileName}]: ${err.message || err}`, "error");
       } finally {
         S.activeAiFiles.delete(targetFileId);
+        releaseKeepAlive(aiKeepAliveKey);
         if (S.currentFileId === targetFileId) {
           updateAiButtonUI(targetFileId);
           renderTaskList_Drawing(targetFileId);

@@ -410,14 +410,22 @@
                             <div style="color: #95A1AF; font-size: 9.5px; margin-top: 4px;">Or click to browse from computer</div>
                         </div>
 
-                        <div id="scan-state-file" style="display: none; width: 100%; flex-direction: column; align-items: center;">
-                            <i class="bi bi-file-earmark-check-fill" style="font-size: 40px; color: #2ECC71; margin-bottom: 5px;"></i>
-                            <div id="scan-file-name" style="color: #FFBA08; font-size: 13px; font-weight: bold; text-align: center; word-break: break-all; max-width: 95%; margin-bottom: 2px;">hd_test.pdf</div>
-                            <div id="scan-file-size" style="color: #95A1AF; font-size: 11px; margin-bottom: 12px; font-style: italic;">0 MB</div>
-                            
-                            <button type="button" class="btn-danger-luxury" onclick="removeScanFile_PL(event)" style="padding: 5px 12px; font-size: 11px; border-radius: 20px; box-shadow: none;">
-                                <i class="bi bi-trash3"></i> Remove file
-                            </button>
+                        <div id="scan-state-file" onclick="event.stopPropagation()" style="display: none; width: 100%; flex-direction: column; gap: 8px; text-align: left;">
+                            <div class="scan-queue-header">
+                                <div class="scan-queue-summary">
+                                    <span class="scan-queue-badge" id="scan-queue-count">0 FILE</span>
+                                    <span class="scan-queue-total" id="scan-file-size">0 MB</span>
+                                </div>
+                                <div class="scan-queue-actions">
+                                    <button type="button" class="scan-queue-add-btn" onclick="document.getElementById('scan-file-input').click()">
+                                        <i class="bi bi-plus-lg"></i> Add
+                                    </button>
+                                    <button type="button" class="scan-queue-clear-btn" onclick="removeScanFile_PL(event)" title="Xóa toàn bộ hàng chờ">
+                                        Clear
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="scan-queue-list" class="scan-queue-list"></div>
                         </div>
                     </div>
                         

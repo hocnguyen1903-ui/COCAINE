@@ -588,7 +588,7 @@
     return pdf;
   }
 
-  async function scanAppendixWithVision(pdf, ctx, canvas, skippedBlankPages) {
+  async function scanAppendixWithVision(pdf, ctx, canvas, skippedBlankPages, onProgress = null) {
     const SCAN_AI_SCALE = 2.85;
     const VISION_PAGE_BUDGET = 16;
     let visionApiPages = 0;
@@ -602,7 +602,11 @@
       if (pTop - 1 >= 1) candidateNums.push(pTop - 1);
 
       const scanPct = 20 + Math.round(((pdf.numPages - pTop + 1) / Math.min(pdf.numPages, VISION_PAGE_BUDGET)) * 22);
-      U.updateProcessProgress(Math.min(42, scanPct), "Đang số hóa tài liệu...");
+      if (typeof onProgress === "function") {
+        onProgress(Math.min(42, scanPct));
+      } else {
+        U.updateProcessProgress(Math.min(42, scanPct), "Đang số hóa tài liệu...");
+      }
       const pairData = [];
 
       for (let i = 0; i < candidateNums.length; i++) {
@@ -693,6 +697,8 @@
     const isLocalUpload = (localFileObj !== null);
     const uploadFileName = S.currentFileName;
     const myEpoch = S.currentSessionEpoch;
+    const keepAliveKey = "viewer_digitize_" + myEpoch;
+    U.startBackgroundKeepAlive(keepAliveKey);
     U.setAntiExitGuard(true);
 
     const timeStartTotal = performance.now();
@@ -990,6 +996,7 @@
           U.updateProcessProgress(0, "Số hóa thất bại", false, true);
           console.error(`%c❌ LỖI TRONG TIẾN TRÌNH: ${err.message}`, "color: #ff1744; font-size: 13px; font-weight: bold;", err);
         } finally {
+          U.stopBackgroundKeepAlive(keepAliveKey);
           if (canvas) {
             canvas.width = 0;
             canvas.height = 0;
@@ -997,6 +1004,7 @@
         }
       })
       .catch(function(err) {
+        U.stopBackgroundKeepAlive(keepAliveKey);
         U.setAntiExitGuard(false);
         U.hideLoading();
         console.error(`%c❌ LỖI TẢI NHỊ PHÂN: ${err.message}`, "color: #ff1744; font-weight: bold;", err);
@@ -1256,11 +1264,211 @@
     checkDriveCacheWithRetry(fileId, S.currentFileName, 1);
   }
 
+  async function prepareDigitizedUploadPdf(fileObj, onProgress, preloadedBuffer = null) {
+    const report = (pct, label) => {
+      if (typeof onProgress === "function") onProgress(pct, label);
+    };
+
+    const timeStart = performance.now();
+    report(5, "READING PDF...");
+
+    const rawPdfData = preloadedBuffer ? preloadedBuffer.slice(0) : await fileObj.arrayBuffer();
+    const preservedPdfData = rawPdfData.slice(0);
+
+    let pdf = null;
+    let canvas = null;
+    try {
+      pdf = await pdfjsLib.getDocument({ data: rawPdfData }).promise;
+      const sourcePageCount = pdf.numPages;
+
+      const manifest = { fileId: "", numPages: sourcePageCount, pages: [] };
+      canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const skippedBlankPages = new Set();
+
+      // 1. Quét Phụ lục bằng Cloud Vision
+      report(15, "DIGITIZING APPENDIX (AI)...");
+      const { appendixStartPage, appendixPages } = await scanAppendixWithVision(
+        pdf, ctx, canvas, skippedBlankPages,
+        (scanPct) => {
+          const mapped = 15 + Math.round(((scanPct - 20) / 22) * 35);
+          report(Math.max(15, Math.min(50, mapped)), "DIGITIZING APPENDIX (AI)...");
+        }
+      );
+
+      manifest.pages.push(...appendixPages);
+      manifest.appendixStartPage = appendixStartPage;
+      manifest.sourcePageCount = sourcePageCount;
+
+      // 2. Xử lý thân HĐ & lọc trang trắng
+      report(52, "SCANNING CONTRACT PAGES...");
+      const contractEndPage = appendixStartPage - 1;
+      const preScannedPages = new Set(appendixPages.map(p => p.pageNum));
+      const bodyPages = [];
+
+      for (let pageNum = 1; pageNum <= contractEndPage; pageNum++) {
+        if (preScannedPages.has(pageNum)) continue;
+
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1.0 });
+
+        let textItems = [];
+        try {
+          const tc = await page.getTextContent();
+          if (tc && tc.items) {
+            textItems = tc.items.map(it => [
+              (it.str || "").trim(),
+              U.round1(it.transform[4]),
+              U.round1(it.transform[5]),
+              U.round1(it.width),
+              U.round1(it.height)
+            ]).filter(it => it[0].length > 0);
+          }
+        } catch (tcErr) {}
+
+        if (textItems.length === 0) {
+          const thumbVp = page.getViewport({ scale: 0.22 });
+          canvas.width = thumbVp.width;
+          canvas.height = thumbVp.height;
+          await page.render({ canvasContext: ctx, viewport: thumbVp, intent: "display" }).promise;
+          if (isScannedPageBlank(canvas)) {
+            skippedBlankPages.add(pageNum);
+            page.cleanup();
+            continue;
+          }
+        }
+
+        bodyPages.push({
+          pageNum: pageNum,
+          pdfPageNum: pageNum,
+          width: U.round1(viewport.width),
+          height: U.round1(viewport.height),
+          rotation: 0,
+          textItems: textItems
+        });
+        page.cleanup();
+
+        if (pageNum % 4 === 0) {
+          const pct = 52 + Math.round((pageNum / Math.max(1, contractEndPage)) * 18);
+          report(Math.min(70, pct), "SCANNING CONTRACT PAGES...");
+        }
+      }
+
+      manifest.pages.push(...bodyPages);
+      manifest.pages.sort((a, b) => a.pageNum - b.pageNum);
+
+      // 3. Làm sạch trang trắng & xoay thẳng ngay trên bộ nhớ trước khi upload 1 lần duy nhất
+      const rotationMap = new Map();
+      manifest.pages.forEach(p => {
+        if (p.rotation && p.rotation !== 0) rotationMap.set(p.pageNum, p.rotation);
+      });
+
+      const needsPhysicalFix = skippedBlankPages.size > 0 || rotationMap.size > 0;
+      let finalPdfBuffer = preservedPdfData;
+      let fixedPhysical = false;
+
+      if (needsPhysicalFix) {
+        try {
+          report(72, "OPTIMIZING PDF...");
+          const PDFLib = await ensurePdfLibLoaded();
+          const editDoc = await PDFLib.PDFDocument.load(preservedPdfData.slice(0), { ignoreEncryption: true });
+
+          rotationMap.forEach((extraRot, origPageNum) => {
+            const idx = origPageNum - 1;
+            if (idx >= 0 && idx < editDoc.getPageCount()) {
+              const p = editDoc.getPage(idx);
+              const curRot = p.getRotation().angle || 0;
+              p.setRotation(PDFLib.degrees((curRot + extraRot) % 360));
+            }
+          });
+
+          const blankDesc = Array.from(skippedBlankPages).sort((a, b) => b - a);
+          blankDesc.forEach(origPageNum => {
+            const idx = origPageNum - 1;
+            if (idx >= 0 && idx < editDoc.getPageCount() && editDoc.getPageCount() > 1) {
+              editDoc.removePage(idx);
+            }
+          });
+
+          const cleanBytes = await editDoc.save();
+          finalPdfBuffer = cleanBytes.buffer.slice(cleanBytes.byteOffset, cleanBytes.byteOffset + cleanBytes.byteLength);
+          fixedPhysical = true;
+        } catch (optErr) {
+          console.warn("[Upload Digitize] Không thể sửa PDF cục bộ, dùng ánh xạ ảo:", optErr);
+          fixedPhysical = false;
+        }
+      }
+
+      const cleanPages = [];
+      let cleanAppendixPage = -1;
+      const foundIdx = manifest.pages.findIndex(p => p.pageNum >= appendixStartPage);
+      if (foundIdx !== -1) cleanAppendixPage = foundIdx + 1;
+
+      manifest.pages.forEach((p, idx) => {
+        cleanPages.push({
+          pageNum: idx + 1,
+          pdfPageNum: fixedPhysical ? (idx + 1) : p.pageNum,
+          width: p.width,
+          height: p.height,
+          rotation: fixedPhysical ? 0 : (p.rotation || 0),
+          textItems: p.textItems
+        });
+      });
+
+      manifest.pages = cleanPages;
+      manifest.numPages = cleanPages.length;
+      manifest.appendixStartPage = (cleanAppendixPage !== -1) ? cleanAppendixPage : (cleanPages.length + 1);
+      manifest.mapsOriginalPdf = true;
+      manifest.pdfByteLength = finalPdfBuffer.byteLength;
+      manifest.originalPdfCleanChecked = true;
+
+      report(78, "PREPARING UPLOAD...");
+      const base64Data = arrayBufferToBase64(finalPdfBuffer);
+      const dur = ((performance.now() - timeStart) / 1000).toFixed(2);
+      console.log(`%c⚡ [UPLOAD DIGITIZE] Đã số hóa xong "${fileObj.name}" (${sourcePageCount} -> ${cleanPages.length} trang) trong ${dur}s`, "color: #00e676; font-weight: bold;");
+
+      return { pdfBuffer: finalPdfBuffer, manifest, base64Data };
+    } finally {
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+      if (pdf) {
+        try { pdf.destroy(); } catch (e) {}
+      }
+    }
+  }
+
+  async function commitDigitizedUploadCache(fileId, fileName, manifest, pdfBuffer) {
+    if (!fileId || !manifest) return false;
+    manifest.fileId = fileId;
+
+    const compressedPayload = await ST.compressManifest(manifest);
+    await saveDriveCacheAdaptive(fileId, fileName, compressedPayload);
+
+    ST.putSessionCache(fileId, manifest);
+    await ST.saveLocalManifest(fileId, manifest);
+    if (pdfBuffer) {
+      await ST.saveLocalPdfBinary(fileId, pdfBuffer);
+    }
+
+    if (typeof window.markScanFileDigitized_PL === "function") {
+      window.markScanFileDigitized_PL(fileId);
+    }
+
+    if (BV.pl01Index && typeof BV.pl01Index.sync === "function") {
+      setTimeout(() => BV.pl01Index.sync(true), 300);
+    }
+    return true;
+  }
+
   BV.pipeline = {
     getDriveTokenAsync,
     invalidateDriveToken,
     fetchPdfDirectOrFallback,
     processAndOptimizeFileJIT,
+    prepareDigitizedUploadPdf,
+    commitDigitizedUploadCache,
     ensurePdfPreloaded,
     isPlOrPdgFile,
     loadFile

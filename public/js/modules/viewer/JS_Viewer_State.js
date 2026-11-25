@@ -246,6 +246,18 @@
     }).catch(function() { return false; });
   }
 
+  function deleteLocalManifest(fileId) {
+    if (!fileId) return Promise.resolve(false);
+    return openDB().then(function(db) {
+      return new Promise(function(resolve) {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        tx.objectStore(STORE_NAME).delete(fileId);
+        tx.oncomplete = function() { resolve(true); };
+        tx.onerror = function() { resolve(false); };
+      });
+    }).catch(function() { return false; });
+  }
+
   function getPageBitmap(fileId, pdfPage, scale) {
     if (!fileId || String(fileId).indexOf("local_") === 0) return Promise.resolve(null);
     if (!scalesEqual(scale, S.cachedRenderScale)) return Promise.resolve(null);
@@ -370,37 +382,12 @@
   // =========================================================================
   // KEEP-ALIVE AUDIO & LOADING / PROGRESS UI
   // =========================================================================
-  function startBackgroundKeepAlive() {
-    try {
-      const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtxClass) return;
-
-      if (!S.bgAudioCtx) {
-        S.bgAudioCtx = new AudioCtxClass();
-        const buffer = S.bgAudioCtx.createBuffer(1, S.bgAudioCtx.sampleRate, S.bgAudioCtx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < data.length; i++) {
-          data[i] = (Math.random() * 2 - 1) * 0.00002;
-        }
-        S.bgSourceNode = S.bgAudioCtx.createBufferSource();
-        S.bgSourceNode.buffer = buffer;
-        S.bgSourceNode.loop = true;
-        S.bgSourceNode.connect(S.bgAudioCtx.destination);
-        S.bgSourceNode.start();
-      }
-
-      if (S.bgAudioCtx.state === "suspended") {
-        S.bgAudioCtx.resume().catch(() => {});
-      }
-    } catch (e) {}
+  function startBackgroundKeepAlive(key = "viewer_digitize") {
+    if (typeof acquireKeepAlive === "function") acquireKeepAlive(key);
   }
 
-  function stopBackgroundKeepAlive() {
-    try {
-      if (S.bgAudioCtx && S.bgAudioCtx.state === "running") {
-        S.bgAudioCtx.suspend();
-      }
-    } catch (e) {}
+  function stopBackgroundKeepAlive(key = "viewer_digitize") {
+    if (typeof releaseKeepAlive === "function") releaseKeepAlive(key);
   }
 
   function updateLoaderProgress(percent) {
@@ -1048,6 +1035,7 @@
     deleteLocalPdfBinary,
     getLocalManifest,
     saveLocalManifest,
+    deleteLocalManifest,
     getPageBitmap,
     savePageBitmap,
     clearFilePageBitmaps,
