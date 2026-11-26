@@ -46,7 +46,7 @@ async function openTab(tabId, triggerIntro = true) {
 
     // 🚀 XIN SẴN DRIVE TOKEN NGẦM KHI MỞ TAB PL (TRỊ KHỰNG 0% / 15%)
     if (tabId === 'tab-plhd') {
-        const warmDelay = isInitialLoad ? 2000 : 450;
+        const warmDelay = isInitialLoad ? 600 : 250;
         setTimeout(() => {
             if (localStorage.getItem('bcons_session_token') && window.BconsViewer) {
                 if (typeof window.BconsViewer.warmToken === 'function') {
@@ -1436,6 +1436,9 @@ function initAblyRealtimeConnection() {
             // Chỉ xử lý nếu hành động này được thực thi bởi một user khác
             if (updateInfo && updateInfo.staffName !== localStaffName) {
                 loadSystemData(true); // tải ngầm dữ liệu
+                if (window.BconsViewer && window.BconsViewer.pl01Index && typeof window.BconsViewer.pl01Index.sync === "function") {
+                    window.BconsViewer.pl01Index.sync(false);
+                }
                 
                 let actionText = "cập nhật";
                 if (updateInfo.actionType === "CREATE_HD") actionText = "tạo";

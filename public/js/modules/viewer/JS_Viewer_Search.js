@@ -116,6 +116,7 @@
 
   async function executeSearch(options = {}) {
     const returnRawOnly = Boolean(options && options.returnRawOnly);
+    if (!returnRawOnly && S.isDocumentReady === false) return [];
     const rawQuery = (options && options.overrideQuery !== undefined)
       ? options.overrideQuery
       : document.getElementById("ai-search-input").value;
@@ -139,7 +140,7 @@
       .map(cleanNaturalToken)
       .filter(Boolean);
     const numTokens = qTokens.length;
-    if (numTokens === 0) return;
+    if (numTokens === 0) return [];
 
     const isCodeMode = isSingleTechnicalCode(rawQuery);
     const matches = [];
@@ -177,7 +178,9 @@
       if (strToken.includes(".") !== queryToken.includes(".")) return false;
       const qLen = queryToken.length;
       const sLen = strToken.length;
-      if (qLen >= 2 && /[0-9]/.test(queryToken) && /[0-9]/.test(strToken)) {
+      // Bug fix: yêu cầu cả 2 token đủ dài (>= 3 ký tự) trước khi áp fuzzy match số
+      // tránh "1" khớp sai với "12", "23" v.v.
+      if (qLen >= 3 && sLen >= 3 && /[0-9]/.test(queryToken) && /[0-9]/.test(strToken)) {
         if (qLen - sLen === 1 && (queryToken.endsWith(strToken) || queryToken.startsWith(strToken))) return true;
       }
       if (qLen >= 4 && sLen === qLen - 1 && queryToken.startsWith(strToken)) return true;
@@ -196,9 +199,7 @@
       for (let endK = startK + 1; endK <= maxEnd; endK++) {
         merged += qTokens[endK];
         const isLast = (endK === numTokens - 1);
-        const ok = isAppendixPage
-          ? (isLast ? isPrefixTokenMatch(clean, merged) : isStrictTokenMatch(clean, merged))
-          : (isLast ? isFuzzyPrefixMatch(clean, merged) : isFuzzyTokenMatch(clean, merged));
+        const ok = isLast ? isPrefixTokenMatch(clean, merged) : isStrictTokenMatch(clean, merged);
         if (ok) return { span: endK - startK + 1, target: merged };
       }
       return null;
@@ -262,13 +263,35 @@
         const targetWord = qTokens[0];
         p.textItems.forEach(function(it) {
           if (!it[0]) return;
+          const itClean = cleanSentenceNatural(it[0]);
+          if (itClean && itClean.includes(" ")) {
+            let startPos = 0;
+            while ((startPos = itClean.indexOf(targetWord, startPos)) !== -1) {
+              const beforeChar = startPos > 0 ? itClean[startPos - 1] : " ";
+              if (beforeChar === " ") {
+                const startRatio = startPos / Math.max(1, itClean.length);
+                const widthRatio = targetWord.length / Math.max(1, itClean.length);
+                const b = {
+                  x: it[1] + (startRatio * it[3]),
+                  y: it[2],
+                  w: Math.max(14, widthRatio * it[3]),
+                  h: it[4]
+                };
+                addMatch({
+                  page: p.pageNum, pageWidth: p.width, pageHeight: p.height,
+                  x: b.x, y: b.y, w: b.w, h: b.h, boxes: [b]
+                });
+              }
+              startPos += targetWord.length;
+            }
+            return;
+          }
+
           const pure = cleanNaturalToken(it[0]);
           if (!pure) return;
           const solidPure = pure.replace(/\s+/g, "");
 
-          const isMatched = isAppendixPage
-            ? isPrefixTokenMatch(solidPure, targetWord)
-            : isFuzzyPrefixMatch(solidPure, targetWord);
+          const isMatched = isPrefixTokenMatch(solidPure, targetWord);
 
           if (isMatched) {
             let widthRatio = 1;
@@ -285,8 +308,9 @@
             while ((startIdx = solidPure.indexOf(targetWord, startIdx)) !== -1) {
               const isNumeric = /[0-9]/.test(solidPure);
               const prevSolidChar = startIdx > 0 ? solidPure[startIdx - 1] : "";
-              const beforeChar = startIdx > 0 ? it[0][startIdx - 1] : " ";
-              const isStartOfWord = !(/[a-zA-Z]/.test(beforeChar));
+              // Bug fix: dùng solidPure (đã clean) thay vì it[0] (gốc) để tránh lệch index
+              const beforeSolidChar = startIdx > 0 ? solidPure[startIdx - 1] : " ";
+              const isStartOfWord = !(/[a-zA-Z]/.test(beforeSolidChar));
 
               if ((isStartOfWord || isNumeric) && prevSolidChar !== ".") {
                 const startRatio = startIdx / Math.max(1, solidPure.length);
@@ -346,20 +370,11 @@
           let firstSpan = 1;
           let firstTargetToken = qTokens[0];
 
-          if (isAppendixPage) {
-            if (isStrictTokenMatch(firstClean, qTokens[0])) {
-              isFirstMatch = true;
-            } else if (firstClean.endsWith(qTokens[0]) && /[0-9]/.test(firstClean)) {
-              isFirstMatch = true;
-              firstStartRatio = firstClean.indexOf(qTokens[0]) / firstClean.length;
-            }
-          } else {
-            if (isFuzzyTokenMatch(firstClean, qTokens[0])) {
-              isFirstMatch = true;
-            } else if (isSoftOcrTokenMatch(firstClean, qTokens[0])) {
-              isFirstMatch = true;
-              firstIsFuzzy = true;
-            }
+          if (isStrictTokenMatch(firstClean, qTokens[0])) {
+            isFirstMatch = true;
+          } else if (isAppendixPage && firstClean.endsWith(qTokens[0]) && /[0-9]/.test(firstClean)) {
+            isFirstMatch = true;
+            firstStartRatio = firstClean.indexOf(qTokens[0]) / firstClean.length;
           }
 
           if (!isFirstMatch) {
@@ -415,11 +430,7 @@
               let stepSpan = 1;
               let stepTarget = qTokens[k];
 
-              if (isAppendixPage) {
-                isStrictOrPrefix = isLastSearchToken ? isPrefixTokenMatch(clean, qTokens[k]) : isStrictTokenMatch(clean, qTokens[k]);
-              } else {
-                isStrictOrPrefix = isLastSearchToken ? isFuzzyPrefixMatch(clean, qTokens[k]) : isFuzzyTokenMatch(clean, qTokens[k]);
-              }
+              isStrictOrPrefix = isLastSearchToken ? isPrefixTokenMatch(clean, qTokens[k]) : isStrictTokenMatch(clean, qTokens[k]);
 
               if (!isStrictOrPrefix) {
                 const mergedMatch = matchMergedTokensAt(clean, it[0], k, isAppendixPage);
@@ -430,7 +441,7 @@
                 }
               }
 
-              const isSoft = !isAppendixPage && !isStrictOrPrefix && (fuzzyUsed < maxFuzzy) && isSoftOcrTokenMatch(clean, qTokens[k]);
+              const isSoft = false;
 
               if (isStrictOrPrefix || isSoft) {
                 const yDiff = Math.abs(it[2] - lastSameLineIt[2]);
@@ -490,7 +501,7 @@
                   }
                 }
 
-                const isSoft = !isAppendixPage && !isStrictOrPrefix && (fuzzyUsed < maxFuzzy) && isSoftOcrTokenMatch(clean, qTokens[k]);
+                const isSoft = false;
 
                 if (isStrictOrPrefix || isSoft) {
                   const yDrop = prevItem[2] - it[2];
@@ -743,7 +754,71 @@
     }
   }
 
+  const LIVE_SEARCH_DEBOUNCE_MS = 120;
+  let liveSearchTimer = null;
+
+  function cancelLiveSearchTimer() {
+    if (liveSearchTimer) {
+      clearTimeout(liveSearchTimer);
+      liveSearchTimer = null;
+    }
+  }
+
+  function setSearchBoxEnabled(enabled) {
+    const isEnabled = Boolean(enabled);
+    S.isDocumentReady = isEnabled;
+
+    const input = document.getElementById("ai-search-input");
+    const wrap = input ? input.closest(".search-box-wrap") : document.querySelector("#pl-dock-preview-panel .search-box-wrap");
+    if (wrap) {
+      wrap.classList.toggle("is-disabled", !isEnabled);
+    }
+    if (input) {
+      input.disabled = !isEnabled;
+      input.tabIndex = isEnabled ? 0 : -1;
+      if (!isEnabled && document.activeElement === input) {
+        input.blur();
+      }
+    }
+    if (!isEnabled) {
+      cancelLiveSearchTimer();
+    }
+  }
+
+  function handleSearchInput() {
+    if (!S.isDocumentReady) return;
+    const input = document.getElementById("ai-search-input");
+    if (!input || input.disabled) return;
+    const raw = input.value.trim();
+
+    cancelLiveSearchTimer();
+
+    if (raw.length < 2) {
+      S.lastSearchedQuery = "";
+      clearSearchState();
+      return;
+    }
+
+    if (raw === S.lastSearchedQuery) return;
+
+    liveSearchTimer = setTimeout(() => {
+      liveSearchTimer = null;
+      const latestInput = document.getElementById("ai-search-input");
+      if (!latestInput) return;
+      const latestRaw = latestInput.value.trim();
+      if (latestRaw.length < 2) {
+        S.lastSearchedQuery = "";
+        clearSearchState();
+        return;
+      }
+      if (latestRaw === S.lastSearchedQuery) return;
+      executeSearch({ silentNotFound: true, overrideQuery: latestRaw });
+    }, LIVE_SEARCH_DEBOUNCE_MS);
+  }
+
   function handleSearchSubmit(isShift = false) {
+    if (!S.isDocumentReady) return;
+    cancelLiveSearchTimer();
     const currentInput = document.getElementById("ai-search-input").value.trim();
     if (currentInput === S.lastSearchedQuery && S.searchResults.length > 0) {
       navigateMatch(isShift ? -1 : 1);
@@ -848,6 +923,14 @@
       const boxes = (m.boxes && m.boxes.length > 0) ? m.boxes : [m];
       const isMultiLine = boxes.length > 1;
 
+      // Bug fix: với trang xoay 90°/270°, width và height bị swap sau khi render.
+      // Dùng pageHeight từ manifest là chiều cao "không xoay" (đúng cho tính toán tọa độ
+      // vì textItems cũng được transform về hệ toạ độ không xoay trong pipeline).
+      const rotation = parseInt(pageEl.dataset.rotation || "0", 10);
+      const effectivePageHeight = (rotation === 90 || rotation === 270)
+        ? m.pageWidth   // sau xoay: chiều cao thực = width gốc
+        : m.pageHeight;
+
       boxes.forEach((box, bIdx) => {
         const highlight = document.createElement("div");
         highlight.id = "highlight-match-" + idx + "-" + bIdx;
@@ -860,7 +943,7 @@
 
         highlight.className = "ai-highlight-box match-group-" + idx + wrapClass + (idx === S.currentMatchIndex ? " active-match" : "");
         highlight.style.left = docPx(box.x - 1.5);
-        highlight.style.top = docPx((m.pageHeight - box.y - box.h) - 1);
+        highlight.style.top = docPx((effectivePageHeight - box.y - box.h) - 1);
         highlight.style.width = docPx(box.w + 1.5 + rightPad);
         highlight.style.height = docPx(box.h + 2);
         pageEl.appendChild(highlight);
@@ -909,6 +992,7 @@
   }
 
   function clearSearchState() {
+    cancelLiveSearchTimer();
     S.searchResults = [];
     S.currentMatchIndex = -1;
     document.querySelectorAll(".ai-highlight-box").forEach(el => el.remove());
@@ -924,6 +1008,12 @@
     if (isSearchShortcutBound) return;
     isSearchShortcutBound = true;
 
+    const searchInputEl = document.getElementById("ai-search-input");
+    if (searchInputEl) {
+      searchInputEl.addEventListener("input", handleSearchInput);
+    }
+    setSearchBoxEnabled(Boolean(S.isDocumentReady));
+
     window.addEventListener("keydown", function(e) {
       if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
         if (!S.currentFileId && !S.currentManifest) return;
@@ -937,6 +1027,7 @@
         if (!input) return;
 
         e.preventDefault();
+        if (!S.isDocumentReady || input.disabled) return;
         input.focus();
         input.select();
       }
@@ -957,6 +1048,8 @@
     isEditDistanceOne,
     isSoftOcrTokenMatch,
     executeSearch,
+    setSearchBoxEnabled,
+    handleSearchInput,
     handleSearchSubmit,
     handleSearchKey,
     onSearchReady,

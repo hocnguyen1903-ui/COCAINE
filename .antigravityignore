@@ -1,0 +1,4 @@
+dump_du_lieu.txt
+*.txt
+node_modules/
+.git/

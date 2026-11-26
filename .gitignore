@@ -1,0 +1,30 @@
+# Thư mục thư viện & môi trường
+node_modules/
+.venv/
+venv/
+__pycache__/
+.git/
+
+# Thư mục build & cache
+dist/
+build/
+.next/
+out/
+.cache/
+.tmp/
+
+# File lock, log & file dump
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+*.log
+dump_du_lieu.txt
+
+# Dữ liệu mẫu & file tĩnh nặng (Giữ lại JSON cấu hình của dự án)
+*.csv
+*.xlsx
+*.xls
+*.pdf
+*.zip
+*.sql
+*.sqlite

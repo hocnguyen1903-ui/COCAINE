@@ -472,12 +472,25 @@ function cleanPl01Punctuation_Viewer_(str) {
 function isCrossColumnBoundary_Viewer_(items, leftIt, rightIt) {
   const leftEnd = leftIt.x + leftIt.w;
   const rightStart = rightIt.x;
+  const rightEnd = rightStart + rightIt.w;
+  const rightCenter = (rightStart + rightEnd) / 2;
   const gap = rightStart - leftEnd;
   const avgH = Math.max(6, (leftIt.h + rightIt.h) / 2);
 
   const hardMaxGap = Math.max(18, avgH * 1.9);
   if (gap > hardMaxGap) return true;
   if (gap <= Math.max(3.5, avgH * 0.42)) return false;
+
+  // Tách nhanh khi từ bên phải là đơn vị / số liệu đứng sau chữ thuần túy (Nội dung -> ĐVT / Số)
+  const rightRaw = (rightIt.str || "").trim();
+  const leftRaw = (leftIt.str || "").trim();
+  if (
+    gap > Math.max(7, avgH * 0.75) &&
+    leftRaw && !/\d/.test(leftRaw) &&
+    (isStandaloneNumberOrMoney_Viewer_(rightRaw) || isUnitCell_Viewer_(rightRaw))
+  ) {
+    return true;
+  }
 
   const midX = (leftEnd + rightStart) / 2;
   const yCenter = (leftIt.y + rightIt.y) / 2;
@@ -493,8 +506,16 @@ function isCrossColumnBoundary_Viewer_(items, leftIt, rightIt) {
     const yDiff = Math.abs(t.y - yCenter);
     if (yDiff > 5 && yDiff <= 120) {
       distinctY.add(Math.round(t.y / 6));
-      if (t.x < midX - 1.5 && (t.x + t.w) > midX + 1.5) crossingWords++;
-      if (Math.abs(t.x - rightStart) <= 3.5) alignedRightColCount++;
+      if (t.w <= avgH * 14 && t.x < midX - 1.5 && (t.x + t.w) > midX + 1.5) crossingWords++;
+      const tEnd = t.x + t.w;
+      const tCenter = (t.x + tEnd) / 2;
+      if (
+        Math.abs(t.x - rightStart) <= 3.5 ||
+        Math.abs(tEnd - rightEnd) <= 3.5 ||
+        Math.abs(tCenter - rightCenter) <= 3.5
+      ) {
+        alignedRightColCount++;
+      }
     }
   }
 
@@ -540,6 +561,344 @@ function filterOcrNoiseTokens_Viewer_(items) {
   });
 }
 
+function isDimensionOrNumericCell_Viewer_(rawText) {
+  if (!rawText) return true;
+  const trimmed = String(rawText).trim();
+  if (!trimmed || isStandaloneNumberOrMoney_Viewer_(trimmed)) return true;
+  const norm = removeDiacriticsLower_Viewer_(trimmed)
+    .replace(/[()[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!norm) return true;
+  return /^(?:(?:[øφdwhlr]|phi)\s*)?-?\d+(?:[.,]\d+)?(?:\s*(?:mm|cm|dm|m|m2|m3|md|kg|tan|lit|%))?(?:\s*(?:[x×*\/\-–—±+]|(?:\+-))\s*(?:(?:[øφdwhlr]|phi)\s*)?-?\d+(?:[.,]\d+)?(?:\s*(?:mm|cm|dm|m|m2|m3|md|kg|tan|lit|%))?)*$/.test(norm);
+}
+
+function isUnitCell_Viewer_(rawText) {
+  if (!rawText) return true;
+  const norm = removeDiacriticsLower_Viewer_(rawText).replace(/[.\s]+/g, " ").trim();
+  if (!norm || /^[-–—]+$/.test(norm)) return true;
+  return /^(m|m2|m3|md|mm|cm|dm|km|kg|tan|lit|l|bo|cai|chiec|cay|tam|vien|cuon|thung|bao|cap|doi|he|ht|he thong|goi|tron goi|lan|phan|diem|cum|can|tang|o|lo|truc|vi tri|cong|ngay|thang|nam|ca|gio|set|pcs|ea|lot|item|unit|m2\/lop|m2\/mat|m\/lop)$/.test(norm);
+}
+
+function isExcludedColumnHeader_Viewer_(headerNorm) {
+  if (!headerNorm) return false;
+  const h = headerNorm.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!h) return false;
+  // Bảo vệ tuyệt đối các cột mô tả văn bản kỹ thuật
+  if (/(noi dung|hang muc|dien giai|ten cong tac|ten vat tu|thong so|chung loai|mo ta|xuat xu|nhan hieu|thuong hieu|nha san xuat|vi tri|khu vuc)/.test(h)) {
+    return false;
+  }
+  if (/^(stt|tt|so tt|ma|ma so|ma hieu|ma cv|code)$/.test(h)) return true;
+  if (/\b(dvt|don vi|don vi tinh|unit)\b/.test(h)) return true;
+  if (/(khoi luong|so luong|\bkl\b|\bsl\b|dien tich|the tich|trong luong|so bo|so cai|so tang|so can|he so)/.test(h)) return true;
+  if (/(don gia|thanh tien|gia tri|vat lieu|nhan cong|may thi cong|chi phi|tong cong|tong gia|\bdg\b|\bvl\b|\bnc\b|\bmtc\b|\bvat\b)/.test(h)) return true;
+  if (/(kich thuoc|chieu rong|chieu cao|chieu day|chieu dai|duong kinh|\brong\b|\bcao\b|\bday\b|\bdai\b|\bkt\b)/.test(h)) return true;
+  return false;
+}
+
+function isTableHeaderLine_Viewer_(lineCells) {
+  if (!lineCells || lineCells.length < 3) return false;
+  const joined = removeDiacriticsLower_Viewer_(lineCells.map(c => c.text).join(" "));
+  let hits = 0;
+  if (/\bstt\b/.test(joined)) hits++;
+  if (/(noi dung|hang muc|dien giai|ten vat tu|thong so|chung loai)/.test(joined)) hits++;
+  if (/(dvt|don vi|khoi luong|so luong|don gia|thanh tien|kich thuoc)/.test(joined)) hits++;
+  if (/(don gia|thanh tien)/.test(joined)) hits++;
+  return hits >= 3 || (/\bstt\b/.test(joined) && /(noi dung|hang muc|dien giai|ten vat tu)/.test(joined));
+}
+
+function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPageCols) {
+  const BIN_PX = 2;
+  const numBins = Math.max(10, Math.ceil(pageW / BIN_PX) + 2);
+  const bins = new Int32Array(numBins);
+  let multiCellRows = 0;
+
+  for (let r = 0; r < rowCellLists.length; r++) {
+    const cells = rowCellLists[r];
+    if (cells.length < 2) continue;
+    multiCellRows++;
+  }
+
+  const maxCellW = multiCellRows > 3 ? pageW * 0.50 : pageW * 0.65;
+  for (let r = 0; r < rowCellLists.length; r++) {
+    const cells = rowCellLists[r];
+    if (cells.length < 2) continue;
+    for (let c = 0; c < cells.length; c++) {
+      const cell = cells[c];
+      if ((cell.xEnd - cell.x) > maxCellW) continue;
+      const bStart = Math.max(0, Math.floor(cell.x / BIN_PX));
+      const bEnd = Math.min(numBins - 1, Math.floor(cell.xEnd / BIN_PX));
+      for (let b = bStart; b <= bEnd; b++) bins[b]++;
+    }
+  }
+
+  if (headerCells && headerCells.length >= 2) {
+    for (let c = 0; c < headerCells.length; c++) {
+      const cell = headerCells[c];
+      if ((cell.xEnd - cell.x) > pageW * 0.45) continue;
+      const bStart = Math.max(0, Math.floor(cell.x / BIN_PX));
+      const bEnd = Math.min(numBins - 1, Math.floor(cell.xEnd / BIN_PX));
+      for (let b = bStart; b <= bEnd; b++) bins[b] += 1;
+    }
+  }
+
+  const extractMergedBands = (floor) => {
+    const raw = [];
+    let inBand = false;
+    let bandStart = 0;
+    for (let b = 0; b < numBins; b++) {
+      if (bins[b] > floor) {
+        if (!inBand) { inBand = true; bandStart = b; }
+      } else if (inBand) {
+        raw.push({ minX: bandStart * BIN_PX, maxX: b * BIN_PX });
+        inBand = false;
+      }
+    }
+    if (inBand) raw.push({ minX: bandStart * BIN_PX, maxX: numBins * BIN_PX });
+
+    const merged = [];
+    for (let i = 0; i < raw.length; i++) {
+      if (merged.length > 0 && (raw[i].minX - merged[merged.length - 1].maxX) < 4) {
+        merged[merged.length - 1].maxX = raw[i].maxX;
+      } else {
+        merged.push({ minX: raw[i].minX, maxX: raw[i].maxX });
+      }
+    }
+    return merged;
+  };
+
+  const noiseFloor = multiCellRows >= 6
+    ? Math.max(2, Math.floor(multiCellRows * 0.14))
+    : (multiCellRows >= 3 ? 1 : 0);
+  let bands = extractMergedBands(noiseFloor);
+
+  if (bands.length === 0 && noiseFloor > 0) {
+    bands = extractMergedBands(0);
+  }
+
+  // Chẻ các band bị dính nhau dựa trên rãnh mật độ thấp nhất giữa các ô tiêu đề cột
+  if (headerCells && headerCells.length >= 3 && bands.length > 0) {
+    const sortedHeaders = headerCells.slice().sort((a, b) => a.x - b.x);
+    const refinedBands = [];
+
+    for (let bi = 0; bi < bands.length; bi++) {
+      const band = bands[bi];
+      const innerHeaders = sortedHeaders.filter(hc => {
+        const cx = (hc.x + hc.xEnd) / 2;
+        return cx >= band.minX - 6 && cx <= band.maxX + 6;
+      });
+
+      if (innerHeaders.length < 2) {
+        refinedBands.push(band);
+        continue;
+      }
+
+      const splitBounds = [];
+      for (let hi = 0; hi < innerHeaders.length - 1; hi++) {
+        const hLeft = innerHeaders[hi];
+        const hRight = innerHeaders[hi + 1];
+        if ((hRight.x - hLeft.xEnd) < 6) continue;
+
+        const searchStartB = Math.max(0, Math.floor((hLeft.xEnd - 2) / BIN_PX));
+        const searchEndB = Math.min(numBins - 1, Math.ceil((hRight.x + 2) / BIN_PX));
+        if (searchEndB <= searchStartB) continue;
+
+        let minVal = Infinity;
+        let sumMinIdx = 0;
+        let countMin = 0;
+        for (let b = searchStartB; b <= searchEndB; b++) {
+          if (bins[b] < minVal) {
+            minVal = bins[b];
+            sumMinIdx = b;
+            countMin = 1;
+          } else if (bins[b] === minVal) {
+            sumMinIdx += b;
+            countMin++;
+          }
+        }
+        const splitX = Math.round((sumMinIdx / Math.max(1, countMin)) * BIN_PX);
+        if (splitX > band.minX + 4 && splitX < band.maxX - 4) {
+          splitBounds.push(splitX);
+        }
+      }
+
+      if (splitBounds.length === 0) {
+        refinedBands.push(band);
+      } else {
+        let curMin = band.minX;
+        for (let si = 0; si < splitBounds.length; si++) {
+          const sx = splitBounds[si];
+          if (sx > curMin + 2) {
+            refinedBands.push({ minX: curMin, maxX: sx - 2 });
+            curMin = sx + 2;
+          }
+        }
+        if (band.maxX > curMin + 2) {
+          refinedBands.push({ minX: curMin, maxX: band.maxX });
+        }
+      }
+    }
+    if (refinedBands.length > bands.length) {
+      bands = refinedBands;
+    }
+  }
+
+  if (bands.length === 0 || (bands.length === 1 && prevPageCols && prevPageCols.length >= 3 && !headerCells)) {
+    if (prevPageCols && prevPageCols.length > 0) {
+      return prevPageCols.map(c => ({
+        minX: c.minX,
+        maxX: c.maxX,
+        boundLeft: c.boundLeft,
+        boundRight: c.boundRight,
+        headerNorm: c.headerNorm,
+        rows: []
+      }));
+    }
+    if (bands.length === 0) {
+      return [{ minX: 0, maxX: pageW, boundLeft: 0, boundRight: pageW, headerNorm: "", rows: [] }];
+    }
+  }
+
+  const cols = bands.map((b, idx) => ({
+    minX: b.minX,
+    maxX: b.maxX,
+    boundLeft: idx === 0 ? 0 : (bands[idx - 1].maxX + b.minX) / 2,
+    boundRight: idx === bands.length - 1 ? pageW : (b.maxX + bands[idx + 1].minX) / 2,
+    headerNorm: "",
+    rows: []
+  }));
+
+  // Gắn tiêu đề cột từ dòng header của chính trang này
+  if (headerCells && headerCells.length > 0) {
+    for (let h = 0; h < headerCells.length; h++) {
+      const hc = headerCells[h];
+      const cx = (hc.x + hc.xEnd) / 2;
+      let target = cols.find(col => cx >= col.boundLeft && cx <= col.boundRight);
+      if (!target) {
+        let bestDist = Infinity;
+        for (let ci = 0; ci < cols.length; ci++) {
+          const d = Math.abs(cx - (cols[ci].minX + cols[ci].maxX) / 2);
+          if (d < bestDist) { bestDist = d; target = cols[ci]; }
+        }
+      }
+      if (target) {
+        const norm = removeDiacriticsLower_Viewer_(hc.text);
+        target.headerNorm = target.headerNorm ? (target.headerNorm + " " + norm) : norm;
+      }
+    }
+  } else if (prevPageCols && prevPageCols.length > 0) {
+    // Kế thừa nhãn cột từ trang PL01 trước nếu trang này không lặp lại tiêu đề bảng
+    for (let ci = 0; ci < cols.length; ci++) {
+      const col = cols[ci];
+      let bestPrev = null;
+      let bestOv = 0;
+      for (let pi = 0; pi < prevPageCols.length; pi++) {
+        const pc = prevPageCols[pi];
+        const ov = Math.min(col.maxX, pc.maxX) - Math.max(col.minX, pc.minX);
+        if (ov > bestOv) { bestOv = ov; bestPrev = pc; }
+      }
+      if (bestPrev && bestOv >= Math.min(col.maxX - col.minX, bestPrev.maxX - bestPrev.minX) * 0.45) {
+        col.headerNorm = bestPrev.headerNorm || "";
+      }
+    }
+  }
+
+  return cols;
+}
+
+function extractBlocksForColumn_Viewer_(col, pageW) {
+  const preparedRows = col.rows;
+  if (!preparedRows || preparedRows.length === 0) return [];
+
+  const getRowEndX = (r) => {
+    const last = r.items[r.items.length - 1];
+    return last ? (last.x + last.w) : r.x;
+  };
+
+  const endXs = [];
+  const sampleGaps = [];
+  for (let i = 0; i < preparedRows.length; i++) {
+    if (preparedRows[i].items.length >= 2) endXs.push(getRowEndX(preparedRows[i]));
+    if (i > 0) {
+      const g = preparedRows[i].baselineY - preparedRows[i - 1].baselineY;
+      const refH = preparedRows[i - 1].avgH || 10;
+      if (g > 0 && g <= refH * 2.2) sampleGaps.push(g);
+    }
+  }
+
+  let colRightEdge = col.maxX || 0;
+  if (endXs.length >= 3) {
+    endXs.sort((a, b) => a - b);
+    const p88 = endXs[Math.floor(endXs.length * 0.88)];
+    if (p88 > col.minX + 35) colRightEdge = p88;
+  }
+
+  let pageBaseStep = 0;
+  if (sampleGaps.length >= 3) {
+    sampleGaps.sort((a, b) => a - b);
+    pageBaseStep = sampleGaps[Math.floor(sampleGaps.length * 0.25)];
+  }
+
+  const itemBlocks = [];
+  let curBlockItems = [];
+  let curBlockLineCount = 0;
+  let curBlockHasStt = false;
+  let curBlockIsHeading = false;
+  let prevRow = null;
+  let prevRowBaselineY = -999;
+  let prevRowAvgH = 10;
+
+  for (let rIdx = 0; rIdx < preparedRows.length; rIdx++) {
+    const rObj = preparedRows[rIdx];
+    const yGap = rObj.baselineY - prevRowBaselineY;
+    const refStep = pageBaseStep > 0
+      ? Math.max(prevRowAvgH * 1.05, Math.min(pageBaseStep, prevRowAvgH * 1.55))
+      : prevRowAvgH * 1.3;
+
+    const isSameCellGap = yGap > 0 && yGap <= refStep * 1.35;
+    const conflictsStt = curBlockHasStt && rObj.hasStt;
+    const headingBoundary = curBlockIsHeading !== rObj.isHeading;
+
+    let wordWrapBroken = false;
+    if (prevRow && colRightEdge > 0 && rObj.items.length > 0 && prevRow.items.length > 0) {
+      const prevEndX = getRowEndX(prevRow);
+      const prevLastStr = (prevRow.items[prevRow.items.length - 1].str || "").trim();
+      const firstWord = rObj.items[0];
+      const firstWordStr = (firstWord.str || "").trim();
+      const firstChar = firstWordStr.charAt(0);
+      const isVvStart = /^v\s*\.\s*v\b/i.test(firstWordStr);
+      const startsWithUpper = !isVvStart && firstChar !== "" && firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase();
+      const prevEndedJoiner = /[-–—,(/:+]$/.test(prevLastStr);
+      const remainingSpace = colRightEdge - prevEndX;
+
+      if (!prevEndedJoiner && startsWithUpper && remainingSpace > (firstWord.w + Math.max(10, prevRowAvgH * 1.5))) {
+        wordWrapBroken = true;
+      }
+    }
+
+    const isContinuation = isSameCellGap && !conflictsStt && !headingBoundary && !wordWrapBroken && curBlockLineCount > 0 && curBlockLineCount < 6;
+
+    if (isContinuation) {
+      curBlockItems.push(...rObj.items);
+      curBlockLineCount++;
+      if (rObj.hasStt) curBlockHasStt = true;
+    } else {
+      if (curBlockItems.length > 0) itemBlocks.push(curBlockItems);
+      curBlockItems = [...rObj.items];
+      curBlockLineCount = 1;
+      curBlockHasStt = rObj.hasStt;
+      curBlockIsHeading = rObj.isHeading;
+    }
+
+    prevRow = rObj;
+    prevRowBaselineY = rObj.baselineY;
+    prevRowAvgH = rObj.avgH;
+  }
+  if (curBlockItems.length > 0) itemBlocks.push(curBlockItems);
+
+  return itemBlocks;
+}
+
 function extractCleanPl01PagesFromManifest_(manifest) {
   if (!manifest || !Array.isArray(manifest.pages) || manifest.pages.length === 0) return [];
   const total = manifest.numPages || manifest.pages.length;
@@ -547,9 +906,11 @@ function extractCleanPl01PagesFromManifest_(manifest) {
   if (!apStart || apStart > total) return [];
 
   const INLINE_UNIT_NEXT_RE = /^(canh|lop|lot|phu|tang|phut|gio|ngay|thang|nam|bo|chiec|cai|mat|ben|loai|phan|dot|mm|cm|m|m2|m3|md|kg|tan|lit|ong|vien|tam|thanh|cay|soi|cuon|thung|bao|cap|doi|he|bac|buoc)$/;
-  const STT_CELL_RE = /^(?:\d{1,4}(?:\.\d{1,2}){0,2}|[IVX]{1,4}|[a-z])[.)]?$/i;
+  const STT_CELL_RE = /^(?:\d{1,4}(?:\.\d{1,2}){0,2}|[IVX]{1,4}|[A-Z]\d{0,2}|[a-z])[.)]?$/i;
 
   const resultPages = [];
+  let prevPageCols = null;
+  let prevPageW = 0;
 
   for (let pIdx = 0; pIdx < manifest.pages.length; pIdx++) {
     const p = manifest.pages[pIdx];
@@ -594,265 +955,320 @@ function extractCleanPl01PagesFromManifest_(manifest) {
       }
     }
     lines.push(curLine);
-    if (pNum === apStart) {
-      let headerLineIdx = -1;
-      for (let l = 0; l < Math.min(lines.length, 20); l++) {
-        const lineNorm = removeDiacriticsLower_Viewer_(lines[l].map(t => t.str).join(" "));
-        if (/\bstt\b/.test(lineNorm) &&
-            (lineNorm.includes("noi dung") || lineNorm.includes("hang muc") || lineNorm.includes("dien giai") || lineNorm.includes("ten vat tu"))) {
-          headerLineIdx = l;
-          break;
+
+    // 2. Tách từng dòng thành các cell theo vách ngăn cột (isCrossColumnBoundary_Viewer_)
+    const parsedLineCells = [];
+    for (let l = 0; l < lines.length; l++) {
+      const row = lines[l];
+      row.sort((a, b) => a.x - b.x);
+
+      const rawCells = [];
+      let curCell = null;
+      for (let k = 0; k < row.length; k++) {
+        const curIt = row[k];
+        if (curIt.str === "|") { curCell = null; continue; }
+        if (!curCell) {
+          curCell = [curIt];
+          rawCells.push(curCell);
+        } else {
+          const prevIt = curCell[curCell.length - 1];
+          if (isCrossColumnBoundary_Viewer_(normItems, prevIt, curIt)) {
+            curCell = [curIt];
+            rawCells.push(curCell);
+          } else {
+            curCell.push(curIt);
+          }
         }
       }
+
+      const cellObjs = [];
+      for (let c = 0; c < rawCells.length; c++) {
+        let items = rawCells[c];
+        // Tách bỏ dấu câu trang trí ở đầu ô (như gạch đầu dòng "-") trừ khi cả ô chỉ là dấu "-"
+        while (items.length > 1 && /^[^a-zA-ZÀ-ỹ0-9]+$/.test(items[0].str.trim())) {
+          items.shift();
+        }
+        items = filterOcrNoiseTokens_Viewer_(items);
+        if (items.length === 0) continue;
+
+        const text = items.map(t => t.str).join(" ").trim();
+        if (!text) continue;
+
+        const avgH = items.reduce((sum, it) => sum + it.h, 0) / items.length;
+        const baselines = items.map(it => pageH - it.y).sort((a, b) => a - b);
+        const baselineY = baselines[Math.floor(baselines.length / 2)];
+        const x = items[0].x;
+        const lastIt = items[items.length - 1];
+        const xEnd = lastIt.x + lastIt.w;
+
+        cellObjs.push({ items, x, xEnd, baselineY, avgH, text });
+      }
+
+      if (cellObjs.length > 0) parsedLineCells.push(cellObjs);
+    }
+
+    if (parsedLineCells.length === 0) continue;
+
+    // 3. Phát hiện dòng tiêu đề bảng (lưu lại để nhận diện tên cột + cắt bỏ tiêu đề đầu trang)
+    let headerCells = null;
+    let headerLineIdx = -1;
+    const headerScanLimit = Math.min(parsedLineCells.length, pNum === apStart ? 20 : 8);
+    for (let l = 0; l < headerScanLimit; l++) {
+      if (isTableHeaderLine_Viewer_(parsedLineCells[l])) {
+        headerCells = parsedLineCells[l];
+        headerLineIdx = l;
+        break;
+      }
+    }
+
+    if (pNum === apStart) {
       if (headerLineIdx !== -1) {
-        lines.splice(0, headerLineIdx + 1);
+        parsedLineCells.splice(0, headerLineIdx + 1);
       } else {
-        while (lines.length > 0) {
-          const firstRaw = removeDiacriticsLower_Viewer_(lines[0].map(t => t.str).join(" "));
+        while (parsedLineCells.length > 0) {
+          const firstRaw = removeDiacriticsLower_Viewer_(parsedLineCells[0].map(c => c.text).join(" "));
           if (/^phu luc hop dong\b|^(?:cong trinh|hang muc|goi thau|chu dau tu|dia diem)\s*:/.test(firstRaw)) {
-            lines.shift();
+            parsedLineCells.shift();
           } else {
             break;
           }
         }
       }
-      if (lines.length === 0) continue;
+    } else if (headerLineIdx !== -1) {
+      // Các trang tiếp theo lặp lại hàng tiêu đề cột -> chỉ xóa đúng hàng tiêu đề đó
+      parsedLineCells.splice(headerLineIdx, 1);
     }
-    // 2. Tách từng dòng theo vách ngăn cột (isCrossColumnBoundary_Viewer_) -> Chỉ giữ cell cột Nội dung
-    const rawRows = [];
-    const anchorXs = [];
-    const secondColXs = [];
 
-    for (let l = 0; l < lines.length; l++) {
-      const row = lines[l];
-      row.sort((a, b) => a.x - b.x);
+    if (parsedLineCells.length === 0) continue;
 
-      while (row.length > 0 && /^[^a-zA-ZÀ-ỹ0-9]+$/.test(row[0].str.trim())) {
-        row.shift();
+    // 4. Bóc sạch hoàn toàn cột STT trước khi dựng Histogram cột (kể cả số STT đứng lẻ giữa 2 dòng)
+    if (headerCells && headerCells.length > 1) {
+      const h0Norm = removeDiacriticsLower_Viewer_(headerCells[0].text).replace(/[^a-z0-9]/g, "");
+      if (headerCells[0].x < pageW * 0.16 && (h0Norm === "stt" || h0Norm === "tt")) {
+        headerCells = headerCells.slice(1);
       }
-      if (row.length === 0) continue;
+    }
 
-      const cells = [[row[0]]];
-      for (let k = 1; k < row.length; k++) {
-        const prevIt = row[k - 1];
-        const curIt = row[k];
-        if (curIt.str === "|" || isCrossColumnBoundary_Viewer_(normItems, prevIt, curIt)) {
-          if (curIt.str !== "|") cells.push([curIt]);
-        } else {
-          cells[cells.length - 1].push(curIt);
+    const col1StartXs = [];
+    for (let l = 0; l < parsedLineCells.length; l++) {
+      const lc = parsedLineCells[l];
+      if (lc.length >= 2) {
+        const c0Compact = lc[0].text.replace(/\s+/g, "");
+        if (lc[0].x < pageW * 0.16 && (STT_CELL_RE.test(c0Compact) || /^[.)]$/.test(c0Compact))) {
+          col1StartXs.push(lc[1].x);
         }
       }
+    }
+    let sttColMaxX = pageW * 0.16;
+    if (col1StartXs.length >= 2) {
+      col1StartXs.sort((a, b) => a - b);
+      sttColMaxX = Math.min(pageW * 0.16, col1StartXs[Math.floor(col1StartXs.length * 0.4)] - 2);
+    }
 
-      let hasStt = false;
-      let isGroupStt = false;
-      while (cells.length > 1) {
-        const c0Text = cells[0].map(t => t.str).join("").trim();
-        const c0X = cells[0][0].x;
-        if (c0X < pageW * 0.16 && (STT_CELL_RE.test(c0Text) || /^[.)]$/.test(c0Text))) {
-          if (/^(?:[IVX]{1,4}|[A-Z])[.)]?$/.test(c0Text)) isGroupStt = true;
-          cells.shift();
-          hasStt = true;
+    const strippedLines = [];
+    for (let l = 0; l < parsedLineCells.length; l++) {
+      const lc = parsedLineCells[l].slice();
+      let lineHasStt = false;
+      let lineIsGroupStt = false;
+
+      // Bóc cell STT độc lập ở mép trái (kể cả khi dòng chỉ có duy nhất 1 số STT căn giữa dọc)
+      while (lc.length > 0) {
+        const c0 = lc[0];
+        const c0Compact = c0.text.replace(/\s+/g, "");
+        const inSttZone = (c0.x < sttColMaxX) && (c0.xEnd <= sttColMaxX + 8 || lc.length > 1);
+        if (inSttZone && (STT_CELL_RE.test(c0Compact) || /^[.)]$/.test(c0Compact))) {
+          lineHasStt = true;
+          if (/^(?:[IVX]{1,4}|[A-Z])[.)]?$/.test(c0Compact)) lineIsGroupStt = true;
+          lc.shift();
         } else {
           break;
         }
       }
 
-      let mainCell = cells[0];
-      if (!mainCell || mainCell.length === 0) continue;
+      if (lc.length === 0) continue;
 
-      if (cells.length >= 2) {
-        const c1Text = cells[1].map(t => t.str).join(" ").trim();
-        if (isStandaloneNumberOrMoney_Viewer_(c1Text) || c1Text.length <= 8) {
-          secondColXs.push(cells[1][0].x);
-        }
-      }
-
+      // Dự phòng trường hợp STT dính sát chữ đầu ô văn bản chưa tách thành cell riêng
+      let firstItems = lc[0].items.slice();
       let sttStripped = 0;
-      while (mainCell.length > 1 && sttStripped < 2) {
-        const t0 = mainCell[0];
-        const t1 = mainCell[1];
+      while (firstItems.length > 1 && sttStripped < 2) {
+        const t0 = firstItems[0];
+        const t1 = firstItems[1];
         const s0 = t0.str.trim();
         if (!STT_CELL_RE.test(s0) && !/^[.)]$/.test(s0)) break;
-
         const gap0 = t1.x - (t0.x + t0.w);
         const avgH0 = Math.max(6, (t0.h + t1.h) / 2);
         const t1Norm = removeDiacriticsLower_Viewer_(t1.str);
         if (/^\d{1,4}$/.test(s0) && gap0 <= avgH0 * 0.75 && INLINE_UNIT_NEXT_RE.test(t1Norm)) break;
-
-        if (t0.x < pageW * 0.16 || /[.)]$/.test(s0) || gap0 > Math.max(6, avgH0 * 0.85)) {
-          if (/^(?:[IVX]{1,4}|[A-Z])[.)]?$/.test(s0)) isGroupStt = true;
-          mainCell.shift();
+        if (t0.x < sttColMaxX || /[.)]$/.test(s0) || (t0.x < pageW * 0.16 && gap0 > Math.max(6, avgH0 * 0.85))) {
+          if (/^(?:[IVX]{1,4}|[A-Z])[.)]?$/.test(s0)) lineIsGroupStt = true;
+          firstItems.shift();
           sttStripped++;
-          hasStt = true;
+          lineHasStt = true;
         } else {
           break;
         }
       }
-      mainCell = filterOcrNoiseTokens_Viewer_(mainCell);
-      if (mainCell.length === 0) continue;
-      const cellJoined = mainCell.map(t => t.str).join(" ").trim();
-      if (!cellJoined || isStandaloneNumberOrMoney_Viewer_(cellJoined)) continue;
-
-      const avgH = mainCell.reduce((sum, it) => sum + it.h, 0) / mainCell.length;
-      const baselines = mainCell.map(it => pageH - it.y).sort((a, b) => a - b);
-      const baselineY = baselines[Math.floor(baselines.length / 2)];
-      const lettersOnly = cellJoined.replace(/[^A-Za-zÀ-ỹ]/g, "");
-      const isAllCaps = lettersOnly.length >= 4 && lettersOnly === lettersOnly.toUpperCase();
-
-      const rowObj = {
-        items: mainCell,
-        x: mainCell[0].x,
-        baselineY: baselineY,
-        avgH: avgH,
-        hasStt: hasStt,
-        isHeading: isGroupStt || isAllCaps
-      };
-      rawRows.push(rowObj);
-
-      if (cellJoined.length >= 8 && rowObj.x < pageW * 0.35) {
-        anchorXs.push(rowObj.x);
+      if (firstItems.length > 0 && sttStripped > 0) {
+        lc[0] = Object.assign({}, lc[0], {
+          items: firstItems,
+          x: firstItems[0].x,
+          xEnd: firstItems[firstItems.length - 1].x + firstItems[firstItems.length - 1].w,
+          text: firstItems.map(t => t.str).join(" ").trim()
+        });
       }
+
+      strippedLines.push({ cells: lc, hasStt: lineHasStt, isGroupStt: lineIsGroupStt });
     }
 
-    if (rawRows.length === 0) continue;
+    if (strippedLines.length === 0) continue;
 
-    // 3. Khóa cứng biên trái & biên phải của cột Nội dung (chặn tuyệt đối cột ĐVT & Ghi chú mép phải)
-    let anchorX = pageW * 0.05;
-    if (anchorXs.length >= 2) {
-      anchorXs.sort((a, b) => a - b);
-      anchorX = anchorXs[Math.floor(anchorXs.length * 0.25)];
-    }
-    const maxAllowedStartX = anchorX + Math.min(45, pageW * 0.08);
+    // Dựng các cột vật lý của trang (Histogram vách ngăn) sau khi đã loại sạch STT
+    const inheritPrev = (prevPageCols && Math.abs(pageW - prevPageW) <= 25) ? prevPageCols : null;
+    const cols = detectColumnsFromCells_Viewer_(strippedLines.map(sl => sl.cells), headerCells, pageW, inheritPrev);
+    const detectedColCount = cols.length;
 
-    let descColMaxX = Infinity;
-    if (secondColXs.length >= 3) {
-      secondColXs.sort((a, b) => a - b);
-      const medSecondX = secondColXs[Math.floor(secondColXs.length * 0.5)];
-      if (medSecondX > anchorX + pageW * 0.15) {
-        descColMaxX = medSecondX - 4;
+    for (let l = 0; l < strippedLines.length; l++) {
+      const { cells: lineCells, hasStt: lineHasStt, isGroupStt: lineIsGroupStt } = strippedLines[l];
+
+      // Dự phòng nếu trang không tách được >= 3 cột: lọc bỏ từng cell là ĐVT/số liệu và giữ các cell chữ tách cột riêng
+      if (detectedColCount <= 2 && lineCells.length >= 2) {
+        const textCells = lineCells.filter(cell => {
+          const cellText = (cell.text || "").trim();
+          if (!cellText) return false;
+          if (isUnitCell_Viewer_(cellText) || isDimensionOrNumericCell_Viewer_(cellText)) return false;
+          if (cell.x < pageW * 0.16 && STT_CELL_RE.test(cellText.replace(/\s+/g, ""))) return false;
+          return true;
+        });
+        textCells.forEach((cell, tIdx) => {
+          while (cols.length <= tIdx) {
+            cols.push({ minX: cell.x, maxX: cell.xEnd, boundLeft: cell.x, boundRight: cell.xEnd, headerNorm: "", rows: [] });
+          }
+          const cellText = (cell.text || "").trim();
+          const lettersOnly = cellText.replace(/[^A-Za-zÀ-ỹ]/g, "");
+          const isAllCaps = lettersOnly.length >= 4 && lettersOnly === lettersOnly.toUpperCase();
+          cols[tIdx].rows.push({
+            items: [...cell.items],
+            x: cell.x,
+            baselineY: cell.baselineY,
+            avgH: cell.avgH,
+            hasStt: lineHasStt,
+            isGroupStt: lineIsGroupStt,
+            text: cellText,
+            isHeading: lineIsGroupStt || isAllCaps
+          });
+        });
+        continue;
       }
-    }
 
-    const preparedRows = [];
-    for (let i = 0; i < rawRows.length; i++) {
-      const r = rawRows[i];
-      if (r.x > maxAllowedStartX || r.x >= descColMaxX) continue;
-      if (descColMaxX < Infinity) {
-        r.items = r.items.filter(it => it.x < descColMaxX);
-        if (r.items.length === 0) continue;
-      }
-      preparedRows.push(r);
-    }
-    if (preparedRows.length === 0) continue;
+      const rowBucketByCol = new Map();
 
-    // 4. Tính bước dòng nội bộ theo baselineY + mép phải cột Nội dung để ngắt ô chuẩn theo quy luật Word-Wrap
-    const getRowEndX = (r) => {
-      const last = r.items[r.items.length - 1];
-      return last ? (last.x + last.w) : r.x;
-    };
+      for (let c = 0; c < lineCells.length; c++) {
+        const cell = lineCells[c];
+        const cellX = cell.x;
+        const cellXEnd = cell.xEnd;
 
-    const endXs = [];
-    const sampleGaps = [];
-    for (let i = 0; i < preparedRows.length; i++) {
-      if (preparedRows[i].items.length >= 2) {
-        endXs.push(getRowEndX(preparedRows[i]));
-      }
-      if (i > 0) {
-        const g = preparedRows[i].baselineY - preparedRows[i - 1].baselineY;
-        const refH = preparedRows[i - 1].avgH || 10;
-        if (g > 0 && g <= refH * 2.2) sampleGaps.push(g);
-      }
-    }
+        let colIdx = cols.findIndex(col => cellX >= col.boundLeft && cellX <= col.boundRight);
+        if (colIdx === -1) {
+          let bestOv = -1;
+          for (let ci = 0; ci < cols.length; ci++) {
+            const ov = Math.min(cellXEnd, cols[ci].boundRight) - Math.max(cellX, cols[ci].boundLeft);
+            if (ov > bestOv) { bestOv = ov; colIdx = ci; }
+          }
+        }
+        if (colIdx === -1) colIdx = 0;
 
-    let colRightEdge = 0;
-    if (endXs.length >= 3) {
-      endXs.sort((a, b) => a - b);
-      const p88 = endXs[Math.floor(endXs.length * 0.88)];
-      if (p88 > anchorX + pageW * 0.15) colRightEdge = p88;
-    }
-
-    let pageBaseStep = 0;
-    if (sampleGaps.length >= 3) {
-      sampleGaps.sort((a, b) => a - b);
-      pageBaseStep = sampleGaps[Math.floor(sampleGaps.length * 0.25)];
-    }
-
-    const itemBlocks = [];
-    let curBlockItems = [];
-    let curBlockLineCount = 0;
-    let curBlockHasStt = false;
-    let curBlockIsHeading = false;
-    let prevRow = null;
-    let prevRowBaselineY = -999;
-    let prevRowAvgH = 10;
-
-    for (let rIdx = 0; rIdx < preparedRows.length; rIdx++) {
-      const rObj = preparedRows[rIdx];
-      const yGap = rObj.baselineY - prevRowBaselineY;
-      const refStep = pageBaseStep > 0
-        ? Math.max(prevRowAvgH * 1.05, Math.min(pageBaseStep, prevRowAvgH * 1.55))
-        : prevRowAvgH * 1.3;
-
-      const isSameCellGap = yGap > 0 && yGap <= refStep * 1.32;
-      const conflictsStt = curBlockHasStt && rObj.hasStt;
-      const headingBoundary = curBlockIsHeading !== rObj.isHeading;
-
-      let wordWrapBroken = false;
-      if (prevRow && colRightEdge > 0 && rObj.items.length > 0 && prevRow.items.length > 0) {
-        const prevEndX = getRowEndX(prevRow);
-        const prevLastStr = (prevRow.items[prevRow.items.length - 1].str || "").trim();
-        const firstWord = rObj.items[0];
-        const firstWordStr = (firstWord.str || "").trim();
-        const firstChar = firstWordStr.charAt(0);
-        const isVvStart = /^v\s*\.\s*v\b/i.test(firstWordStr);
-        const startsWithUpper = !isVvStart && firstChar !== "" && firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase();
-        const prevEndedJoiner = /[-–—,(/:+]$/.test(prevLastStr);
-        const remainingSpace = colRightEdge - prevEndX;
-
-        if (!prevEndedJoiner && startsWithUpper && remainingSpace > (firstWord.w + Math.max(10, prevRowAvgH * 1.5))) {
-          wordWrapBroken = true;
+        if (!rowBucketByCol.has(colIdx)) {
+          rowBucketByCol.set(colIdx, {
+            items: [...cell.items],
+            x: cellX,
+            baselineY: cell.baselineY,
+            avgH: cell.avgH,
+            hasStt: lineHasStt,
+            isGroupStt: lineIsGroupStt
+          });
+        } else {
+          const existing = rowBucketByCol.get(colIdx);
+          existing.items.push(...cell.items);
+          existing.hasStt = existing.hasStt || lineHasStt;
+          existing.isGroupStt = existing.isGroupStt || lineIsGroupStt;
         }
       }
 
-      const isContinuation = isSameCellGap && !conflictsStt && !headingBoundary && !wordWrapBroken && curBlockLineCount > 0 && curBlockLineCount < 4;
+      rowBucketByCol.forEach((rObj, ci) => {
+        rObj.items.sort((a, b) => a.x - b.x);
+        const joined = rObj.items.map(t => t.str).join(" ").trim();
+        if (!joined) return;
+        const lettersOnly = joined.replace(/[^A-Za-zÀ-ỹ]/g, "");
+        const isAllCaps = lettersOnly.length >= 4 && lettersOnly === lettersOnly.toUpperCase();
+        rObj.text = joined;
+        rObj.isHeading = rObj.isGroupStt || isAllCaps;
+        cols[ci].rows.push(rObj);
+      });
+    }
 
-      if (isContinuation) {
-        curBlockItems.push(...rObj.items);
-        curBlockLineCount++;
-        if (rObj.hasStt) curBlockHasStt = true;
-      } else {
-        if (curBlockItems.length > 0) itemBlocks.push(curBlockItems);
-        curBlockItems = [...rObj.items];
-        curBlockLineCount = 1;
-        curBlockHasStt = rObj.hasStt;
-        curBlockIsHeading = rObj.isHeading;
+    // Lưu cấu trúc cột để kế thừa cho trang PL01 tiếp theo (nếu không lặp tiêu đề)
+    if (detectedColCount >= 2) {
+      prevPageCols = cols.slice(0, detectedColCount).map(c => ({
+        minX: c.minX,
+        maxX: c.maxX,
+        boundLeft: c.boundLeft,
+        boundRight: c.boundRight,
+        headerNorm: c.headerNorm
+      }));
+      prevPageW = pageW;
+    }
+
+    // 5. Phân loại từng cột: Giữ cột văn bản, loại STT / ĐVT / Khối lượng / Đơn giá / Thành tiền / Kích thước / Cột thuần số
+    const cleanBlocks = [];
+
+    for (let ci = 0; ci < cols.length; ci++) {
+      const col = cols[ci];
+      if (!col.rows || col.rows.length === 0) continue;
+
+      if (isExcludedColumnHeader_Viewer_(col.headerNorm)) continue;
+
+      let sttCnt = 0, unitCnt = 0, numDimCnt = 0, totalMeaningful = 0;
+      for (let r = 0; r < col.rows.length; r++) {
+        const txt = (col.rows[r].text || "").trim();
+        if (!txt) continue;
+        totalMeaningful++;
+        const compact = txt.replace(/\s+/g, "");
+        if (STT_CELL_RE.test(compact)) sttCnt++;
+        if (isUnitCell_Viewer_(txt)) unitCnt++;
+        if (isDimensionOrNumericCell_Viewer_(txt)) numDimCnt++;
       }
 
-      prevRow = rObj;
-      prevRowBaselineY = rObj.baselineY;
-      prevRowAvgH = rObj.avgH;
-    }
-    if (curBlockItems.length > 0) itemBlocks.push(curBlockItems);
+      if (totalMeaningful === 0) continue;
+      const sttRatio = sttCnt / totalMeaningful;
+      const unitRatio = unitCnt / totalMeaningful;
+      const numDimRatio = numDimCnt / totalMeaningful;
 
-    // 5. Chuẩn hóa văn bản & lọc tiêu đề/ký tên hành chính
-    const cleanBlocks = [];
-    for (let bIdx = 0; bIdx < itemBlocks.length; bIdx++) {
-      const blockStr = cleanPl01Punctuation_Viewer_(itemBlocks[bIdx].map(t => t.str).join(" "));
-      if (!blockStr || blockStr.length < 2 || /^[^a-zA-ZÀ-ỹ0-9]+$/.test(blockStr)) continue;
+      if (col.minX < pageW * 0.16 && sttRatio >= 0.65) continue;
+      if (unitRatio >= 0.65) continue;
+      if (numDimRatio >= 0.70) continue;
+      if ((unitCnt + numDimCnt) / totalMeaningful >= 0.85 && col.rows.every(r => (r.text || "").length <= 22)) continue;
 
-      const normBlock = removeDiacriticsLower_Viewer_(blockStr);
-      const isTableHeader = normBlock.includes("stt") &&
-        (normBlock.includes("noi dung") || normBlock.includes("hang muc") || normBlock.includes("dien giai") || normBlock.includes("ten vat tu")) &&
-        (normBlock.includes("don gia") || normBlock.includes("thanh tien") || normBlock.includes("khoi luong") || normBlock.includes("dvt"));
-      const isAdminBoilerplate =
-        /^cong hoa xa hoi chu nghia viet nam\b/.test(normBlock) ||
-        /^doc lap tu do hanh phuc\b/.test(normBlock) ||
-        (/^trang \d+( \d+)?$/.test(normBlock)) ||
-        ((/^(dai dien ben a|dai dien ben b|ben a|ben b|tong giam doc|pho tong giam doc|giam doc)\b/.test(normBlock)) && normBlock.length <= 45) ||
-        ((/^(ky ten|ky va ghi ro ho ten|dong dau)\b/.test(normBlock)) && normBlock.length <= 35);
+      // 6. Gom block độc lập cho từng cột văn bản được giữ lại
+      const colBlocks = extractBlocksForColumn_Viewer_(col, pageW);
+      for (let bIdx = 0; bIdx < colBlocks.length; bIdx++) {
+        const blockStr = cleanPl01Punctuation_Viewer_(colBlocks[bIdx].map(t => t.str).join(" "));
+        if (!blockStr || blockStr.length < 2 || /^[^a-zA-ZÀ-ỹ0-9]+$/.test(blockStr)) continue;
+        if (isDimensionOrNumericCell_Viewer_(blockStr) || isUnitCell_Viewer_(blockStr)) continue;
 
-      if (isTableHeader || isAdminBoilerplate) continue;
-      cleanBlocks.push(blockStr);
+        const normBlock = removeDiacriticsLower_Viewer_(blockStr);
+        const isTableHeader = normBlock.includes("stt") &&
+          (normBlock.includes("noi dung") || normBlock.includes("hang muc") || normBlock.includes("dien giai") || normBlock.includes("ten vat tu")) &&
+          (normBlock.includes("don gia") || normBlock.includes("thanh tien") || normBlock.includes("khoi luong") || normBlock.includes("dvt"));
+        const isAdminBoilerplate =
+          /^cong hoa xa hoi chu nghia viet nam\b/.test(normBlock) ||
+          /^doc lap tu do hanh phuc\b/.test(normBlock) ||
+          (/^trang \d+( \d+)?$/.test(normBlock)) ||
+          ((/^(dai dien ben a|dai dien ben b|ben a|ben b|tong giam doc|pho tong giam doc|giam doc)\b/.test(normBlock)) && normBlock.length <= 45) ||
+          ((/^(ky ten|ky va ghi ro ho ten|dong dau)\b/.test(normBlock)) && normBlock.length <= 35);
+
+        if (isTableHeader || isAdminBoilerplate) continue;
+        cleanBlocks.push(blockStr);
+      }
     }
 
     if (cleanBlocks.length > 0) {
@@ -1186,15 +1602,33 @@ function deleteDigitizedJsonForFile_Viewer_(fileId, optFileName) {
 }
 
 function removeFileFromPl01Index_Viewer_(fileId, maHD, rawDate) {
-  if (!fileId) return;
+  if (!fileId) return false;
+  const targetId = String(fileId).trim();
+  let removed = false;
+
   try {
-    const year = extractYearFromContract_Viewer_(maHD || "", rawDate || "", fileId);
-    const loaded = loadPl01IndexObj_(year);
-    if (loaded.file && loaded.indexObj && loaded.indexObj.files && loaded.indexObj.files[fileId]) {
-      delete loaded.indexObj.files[fileId];
-      savePl01IndexObj_(year, loaded.indexObj, loaded.file);
+    if (maHD || rawDate) {
+      const year = extractYearFromContract_Viewer_(maHD || "", rawDate || "", targetId);
+      const loaded = loadPl01IndexObj_(year);
+      if (loaded.file && loaded.indexObj && loaded.indexObj.files && loaded.indexObj.files[targetId]) {
+        delete loaded.indexObj.files[targetId];
+        savePl01IndexObj_(year, loaded.indexObj, loaded.file);
+        return true;
+      }
+    }
+
+    const metaList = getPl01IndexMeta();
+    for (let i = 0; i < metaList.length; i++) {
+      const y = metaList[i].year;
+      const loaded = loadPl01IndexObj_(y);
+      if (loaded.file && loaded.indexObj && loaded.indexObj.files && loaded.indexObj.files[targetId]) {
+        delete loaded.indexObj.files[targetId];
+        savePl01IndexObj_(y, loaded.indexObj, loaded.file);
+        removed = true;
+      }
     }
   } catch (e) {
     console.warn("Bỏ qua lỗi xóa file khỏi Index_PL01:", e.message);
   }
+  return removed;
 }

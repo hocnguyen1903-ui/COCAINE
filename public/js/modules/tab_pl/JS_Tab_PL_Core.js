@@ -14,7 +14,9 @@ function initTabPL() {
         inp0.addEventListener("focus", () => {
             const tok = localStorage.getItem('bcons_session_token');
             const idxApi = window.__BconsViewer && window.__BconsViewer.pl01Index;
-            if (tok && idxApi && !idxApi.state.ready && !idxApi.state.syncing) {
+            if (!tok || !idxApi || idxApi.state.syncing) return;
+            const lastCheck = idxApi.state.lastMetaCheckAt || 0;
+            if (!idxApi.state.ready || (Date.now() - lastCheck > 30000)) {
                 idxApi.sync(false);
             }
         });
@@ -258,32 +260,145 @@ function findPl01RecordForItem_PL(item) {
     return null;
 }
 
-function mergePl01Matches_PL(matchList) {
-    if (!matchList || matchList.length === 0) return null;
-    if (matchList.length === 1) return matchList[0];
+function mergePl01Matches_PL(branchPayloads, allHashTermsOrder, idxApi) {
+    if (!branchPayloads || branchPayloads.length === 0) return null;
 
-    let bestPct = 100;
-    let bestCount = 0;
-    let totalScore = 0;
-    let hasLowerTier = false;
-    const allGroups = [];
+    const normTerm = (q) => (idxApi && typeof idxApi.normalize === "function")
+        ? idxApi.normalize(q)
+        : normalizeText_PL(q);
 
-    matchList.forEach(m => {
-        if (m.bestPct < bestPct) bestPct = m.bestPct;
-        bestCount += m.bestCount;
-        totalScore += m.totalScore;
-        if (m.hasLowerTier) hasLowerTier = true;
-        allGroups.push(...m.groups);
+    const matchedByNorm = new Map();
+    const branchSummaries = [];
+    let primaryMatch = null;
+
+    branchPayloads.forEach(termMatches => {
+        if (!termMatches || termMatches.length === 0) return;
+
+        let branchPct = 100;
+        let branchScore = 0;
+        termMatches.forEach(m => {
+            if (m.bestPct < branchPct) branchPct = m.bestPct;
+            branchScore += m.totalScore;
+            const nk = normTerm(m.rawQuery);
+            if (nk && !matchedByNorm.has(nk)) {
+                matchedByNorm.set(nk, m);
+            }
+            if (
+                !primaryMatch ||
+                m.bestPct > primaryMatch.bestPct ||
+                (m.bestPct === primaryMatch.bestPct && m.totalScore > primaryMatch.totalScore)
+            ) {
+                primaryMatch = m;
+            }
+        });
+
+        let branchBestCount = 0;
+        let branchHasLowerTier = false;
+        termMatches.forEach(m => {
+            if (m.bestPct === branchPct) branchBestCount += m.bestCount;
+            else if (m.bestPct < branchPct) branchHasLowerTier = true;
+            if (m.hasLowerTier) branchHasLowerTier = true;
+        });
+
+        branchSummaries.push({
+            branchPct,
+            branchBestCount,
+            branchHasLowerTier,
+            branchScore
+        });
     });
 
-    allGroups.sort((a, b) => (b.pct - a.pct) || (b.count - a.count) || (a.firstPage - b.firstPage));
+    if (!primaryMatch || branchSummaries.length === 0) return null;
+
+    let bestPct = 0;
+    let totalScore = 0;
+    branchSummaries.forEach(b => {
+        if (b.branchPct > bestPct) bestPct = b.branchPct;
+        totalScore += b.branchScore;
+    });
+
+    let bestCount = 0;
+    let hasLowerTier = false;
+    branchSummaries.forEach(b => {
+        if (b.branchPct === bestPct) bestCount += b.branchBestCount;
+        else if (b.branchPct < bestPct) hasLowerTier = true;
+        if (b.branchHasLowerTier) hasLowerTier = true;
+    });
+
+    const rawSections = [];
+    const seenOrderNorms = new Set();
+    const orderedTerms = Array.isArray(allHashTermsOrder) && allHashTermsOrder.length > 0
+        ? allHashTermsOrder
+        : Array.from(matchedByNorm.values()).map(m => m.rawQuery);
+
+    orderedTerms.forEach(rawTerm => {
+        const nk = normTerm(rawTerm);
+        if (!nk || seenOrderNorms.has(nk)) return;
+        seenOrderNorms.add(nk);
+
+        const matched = matchedByNorm.get(nk);
+        const origIdx = rawSections.length;
+        if (matched) {
+            rawSections.push({
+                query: matched.rawQuery || rawTerm,
+                matched: true,
+                bestPct: matched.bestPct,
+                totalScore: matched.totalScore || 0,
+                origIdx: origIdx,
+                rawGroups: matched.groups || []
+            });
+        } else {
+            rawSections.push({
+                query: rawTerm,
+                matched: false,
+                bestPct: 0,
+                totalScore: 0,
+                origIdx: origIdx,
+                rawGroups: []
+            });
+        }
+    });
+
+    // Ưu tiên từ khóa có khớp trong hợp đồng (và đạt % / điểm cao hơn) lên trên
+    rawSections.sort((a, b) => {
+        if (a.matched !== b.matched) return a.matched ? -1 : 1;
+        if (a.matched) {
+            if (b.bestPct !== a.bestPct) return b.bestPct - a.bestPct;
+            if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+        }
+        return a.origIdx - b.origIdx;
+    });
+
+    const sections = rawSections.map((sec, sIdx) => ({
+        query: sec.query,
+        matched: sec.matched,
+        bestPct: sec.bestPct,
+        totalScore: sec.totalScore,
+        groups: sec.rawGroups.map(g => ({ ...g, sectionIdx: sIdx }))
+    }));
+
+    const allGroups = [];
+    sections.forEach(sec => {
+        if (sec.matched && sec.groups.length > 0) {
+            allGroups.push(...sec.groups);
+        }
+    });
+
+    const matchedSectionCount = sections.filter(s => s.matched).length;
+
     return {
-        ...matchList[0],
+        fileId: primaryMatch.fileId,
+        maHD: primaryMatch.maHD,
+        apStart: primaryMatch.apStart,
+        rawQuery: primaryMatch.rawQuery,
         bestPct: bestPct,
         bestCount: bestCount,
         hasLowerTier: hasLowerTier,
+        totalMatches: allGroups.reduce((acc, g) => acc + (g.count || 0), 0),
         totalScore: totalScore,
-        groups: allGroups
+        matchedSectionCount: matchedSectionCount,
+        groups: allGroups,
+        sections: sections
     };
 }
 
@@ -320,12 +435,20 @@ function filterAndSortData_PL(query) {
                 return { hashTerms, staffTerms, normalTerms };
             }).filter(pg => (pg.hashTerms.length + pg.staffTerms.length + pg.normalTerms.length) > 0);
 
+            const allHashTermsOrder = [];
+            parsedGroups.forEach(pg => {
+                pg.hashTerms.forEach(ht => {
+                    if (ht) allHashTermsOrder.push(ht);
+                });
+            });
+
             if (parsedGroups.length > 0) {
                 const matchedRows = [];
                 for (let idx = 0; idx < filtered.length; idx++) {
                     const item = filtered[idx];
-                    let bestItemMatch = null;
                     let groupMatched = false;
+                    const matchedBranchPayloads = [];
+                    let pl01Record = undefined;
 
                     for (let gIdx = 0; gIdx < parsedGroups.length; gIdx++) {
                         const pg = parsedGroups[gIdx];
@@ -336,33 +459,36 @@ function filterAndSortData_PL(query) {
 
                         if (pg.hashTerms.length === 0) {
                             groupMatched = true;
-                            break;
+                            if (!hasActiveHashSearch) break;
+                            continue;
                         }
 
                         if (item.isPL || !idxApi || !idxApi.state.ready) continue;
-                        const record = findPl01RecordForItem_PL(item);
-                        if (!record) continue;
+                        if (pl01Record === undefined) {
+                            pl01Record = findPl01RecordForItem_PL(item);
+                        }
+                        if (!pl01Record) continue;
 
                         const termMatches = [];
                         let allHashOk = true;
                         for (let h = 0; h < pg.hashTerms.length; h++) {
                             const hTerm = pg.hashTerms[h];
                             if (!hTerm) { allHashOk = false; break; }
-                            const mRes = idxApi.matchContract(record, hTerm);
+                            const mRes = idxApi.matchContract(pl01Record, hTerm);
                             if (!mRes) { allHashOk = false; break; }
                             termMatches.push(mRes);
                         }
 
                         if (allHashOk && termMatches.length > 0) {
                             groupMatched = true;
-                            const merged = mergePl01Matches_PL(termMatches);
-                            if (!bestItemMatch || merged.totalScore > bestItemMatch.totalScore) {
-                                bestItemMatch = merged;
-                            }
+                            matchedBranchPayloads.push(termMatches);
                         }
                     }
 
                     if (groupMatched) {
+                        const bestItemMatch = matchedBranchPayloads.length > 0
+                            ? mergePl01Matches_PL(matchedBranchPayloads, allHashTermsOrder, idxApi)
+                            : null;
                         if (bestItemMatch) {
                             hashContextByFileId.set(bestItemMatch.fileId, bestItemMatch);
                             hashContextByMaHD.set(item.maHD.toUpperCase(), bestItemMatch);
@@ -414,6 +540,8 @@ function filterAndSortData_PL(query) {
             const mA = a.parent._pl01Match;
             const mB = b.parent._pl01Match;
             if (mA && mB) {
+                const secDiff = (mB.matchedSectionCount || 0) - (mA.matchedSectionCount || 0);
+                if (secDiff !== 0) return secDiff;
                 const tierDiff = mB.bestPct - mA.bestPct;
                 if (tierDiff !== 0) return tierDiff;
                 const scoreDiff = mB.totalScore - mA.totalScore;
@@ -629,7 +757,7 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
 
         const targetMatchFileId = fileIdH || m.fileId;
         const badgeClick = targetMatchFileId ? `onmousedown="openDirectFile_PL('${escapeStr(targetMatchFileId)}', event);"` : "";
-        matchBadgeHTML = `<span class="pl01-match-badge" ${badgeClick} style="color: ${badgeColor}; background: ${badgeBg};">${m.bestPct}% (×${m.bestCount}${m.hasLowerTier ? '+' : ''})</span>`;matchBadgeHTML = `<span class="pl01-match-badge" ${badgeClick} style="color: ${badgeColor}; background: ${badgeBg};">${m.bestPct}% ×${m.bestCount}${m.hasLowerTier ? ' +' : ''}</span>`;
+        matchBadgeHTML = `<span class="pl01-match-badge" ${badgeClick} style="color: ${badgeColor}; background: ${badgeBg};">${m.bestPct}% ×${m.bestCount}${m.hasLowerTier ? ' +' : ''}</span>`;
     }
 
     const uploadHintHTML = window.activeHashContext_PL ? "" : `

@@ -552,6 +552,7 @@
     U.updateLoaderProgress(100);
     container.style.visibility = "visible";
     U.hideLoading();
+    SR.setSearchBoxEnabled(true);
     jumpToPageNumber(initialPage, false);
 
     const pendingBgPages = [];
@@ -1277,38 +1278,93 @@
     const dropEl = ensurePl01DropdownElement();
     if (!dropEl) return;
 
-    if (!ctx || !Array.isArray(ctx.groups) || ctx.groups.length === 0) {
+    const baseSections = (ctx && Array.isArray(ctx.sections) && ctx.sections.length > 0)
+      ? ctx.sections
+      : ((ctx && Array.isArray(ctx.groups) && ctx.groups.length > 0)
+          ? [{ query: ctx.rawQuery || "", matched: true, groups: ctx.groups }]
+          : []);
+
+    if (baseSections.length === 0) {
       activePl01VariantCards = [];
       dropEl.innerHTML = "";
       return;
     }
 
-    const dedupMap = new Map();
-    ctx.groups.forEach(g => {
-      if (!dedupMap.has(g.normKey)) {
-        dedupMap.set(g.normKey, g);
+    const rawSections = [
+      ...baseSections.filter(s => s && s.matched),
+      ...baseSections.filter(s => !s || !s.matched)
+    ];
+
+    const isMultiSection = rawSections.length > 1;
+    const perSectionCap = !isMultiSection ? 8 : (rawSections.length === 2 ? 4 : 3);
+    activePl01VariantCards = [];
+
+    const htmlParts = [];
+    rawSections.forEach((sec, sIdx) => {
+      if (sIdx > 0) {
+        htmlParts.push(`<div class="pl01-section-divider"></div>`);
       }
-    });
-    activePl01VariantCards = Array.from(dedupMap.values()).slice(0, 8);
 
-    dropEl.innerHTML = activePl01VariantCards.map((g, idx) => {
-      const tierClass = g.pct === 100 ? "tier-100" : (g.pct === 75 ? "tier-75" : (g.pct === 60 ? "tier-60" : "tier-50"));
-      const extraHTML = g.extraLocations > 0
-        ? `<span class="pl01-extra-loc">(+${g.extraLocations} vị trí khác)</span>`
-        : "";
-      const ctxHtml = highlightPl01ContextHtml(g.bestContextLine, g.matchedWords, ctx.rawQuery);
-
-      return `
-        <div class="pl01-variant-card" onclick="selectPl01VariantCard(${idx})">
-          <div class="pl01-card-row1">
-            <span class="pl01-tier-badge ${tierClass}">${g.pct}%</span>
-            <span class="pl01-key-text">${escapePl01Html(g.keyText)}</span>
-            <span class="pl01-meta-text">Tr. ${g.firstPage} (x${g.count})</span>
+      if (!sec.matched) {
+        htmlParts.push(`
+          <div class="pl01-section-empty">
+            <span class="pl01-sec-tag">#${escapePl01Html(sec.query)}</span>
+            <span class="pl01-sec-unmatched">Không khớp</span>
           </div>
-          <div class="pl01-card-row2">${ctxHtml}${extraHTML}</div>
-        </div>
-      `;
-    }).join("");
+        `);
+        return;
+      }
+
+      const dedupMap = new Map();
+      (sec.groups || []).forEach(g => {
+        if (!dedupMap.has(g.normKey)) {
+          dedupMap.set(g.normKey, g);
+        }
+      });
+      const cards = Array.from(dedupMap.values()).slice(0, perSectionCap);
+
+      if (cards.length === 0) {
+        htmlParts.push(`
+          <div class="pl01-section-empty">
+            <span class="pl01-sec-tag">#${escapePl01Html(sec.query)}</span>
+            <span class="pl01-sec-unmatched">Không khớp</span>
+          </div>
+        `);
+        return;
+      }
+
+      if (isMultiSection) {
+        htmlParts.push(`<div class="pl01-section-label">#${escapePl01Html(sec.query)}</div>`);
+      }
+
+      cards.forEach(g => {
+        const cardIdx = activePl01VariantCards.length;
+        activePl01VariantCards.push({
+          ...g,
+          sectionIdx: (g.sectionIdx !== undefined) ? g.sectionIdx : sIdx,
+          sectionQuery: sec.query
+        });
+
+        const tierClass = g.pct === 100 ? "tier-100" : (g.pct === 75 ? "tier-75" : (g.pct === 60 ? "tier-60" : "tier-50"));
+        const extraHTML = g.extraLocations > 0
+          ? `<span class="pl01-extra-loc">(+${g.extraLocations} vị trí khác)</span>`
+          : "";
+        const ctxHtml = highlightPl01ContextHtml(g.bestContextLine, g.matchedWords, sec.query || ctx.rawQuery);
+
+        htmlParts.push(`
+          <div class="pl01-variant-card" onclick="selectPl01VariantCard(${cardIdx})">
+            <div class="pl01-card-row1">
+              <span class="pl01-tier-badge ${tierClass}">${g.pct}%</span>
+              <span class="pl01-key-text">${escapePl01Html(g.keyText)}</span>
+              <span class="pl01-meta-text">Tr. ${g.firstPage} (x${g.count})</span>
+            </div>
+            <div class="pl01-card-row2">${ctxHtml}${extraHTML}</div>
+          </div>
+        `);
+      });
+    });
+
+    dropEl.innerHTML = htmlParts.join("");
   }
 
   function openPl01VariantsDropdown() {
@@ -1349,6 +1405,9 @@
     if (S.activePl01Context && Array.isArray(S.activePl01Context.groups)) {
       const cardNormPad = " " + card.normKey + " ";
       S.activePl01Context.groups.forEach(g => {
+        if (card.sectionIdx !== undefined && g.sectionIdx !== undefined && g.sectionIdx !== card.sectionIdx) {
+          return;
+        }
         if (g.pct > card.pct && g.normKey && g.normKey !== card.normKey) {
           const gNormPad = " " + g.normKey + " ";
           if (gNormPad.includes(cardNormPad)) {
@@ -1394,11 +1453,12 @@
 
     const foundMatches = await SR.executeSearch({ preferPl01: true, silentNotFound: true });
     const hasGroups = Array.isArray(ctx.groups) && ctx.groups.length > 0;
+    const isMultiSection = Array.isArray(ctx.sections) && ctx.sections.length > 1;
     const btn = document.getElementById("btn-pl01-variants");
 
     if (foundMatches && foundMatches.length > 0) {
       closePl01VariantsDropdown();
-      const showCaret = Boolean(ctx.hasLowerTier || ctx.groups.some(g => g.pct < 100));
+      const showCaret = Boolean(isMultiSection || ctx.hasLowerTier || ctx.groups.some(g => g.pct < 100));
       if (btn) btn.style.display = (showCaret && hasGroups) ? "inline-flex" : "none";
       if (showCaret && hasGroups) renderPl01VariantsDropdown(ctx);
     } else {
@@ -1433,6 +1493,7 @@
   window.handleSmartScrollUp = handleSmartScrollUp;
   window.handleSmartScrollDown = handleSmartScrollDown;
   window.handleSearchKey = SR.handleSearchKey;
+  window.handleSearchInput = SR.handleSearchInput;
   window.handleSearchSubmit = SR.handleSearchSubmit;
   window.navigateMatch = SR.navigateMatch;
   window.zoomChange = zoomChange;
@@ -1456,6 +1517,7 @@
     S.currentSessionEpoch++;
     delete S.SESSION_MANIFEST_CACHE[S.currentFileId];
 
+    SR.setSearchBoxEnabled(false);
     cancelAllPageRenders();
     if (S.pageObserver) {
       S.pageObserver.disconnect();
@@ -1528,6 +1590,7 @@
       S.currentSessionEpoch++;
       S.isPanelTransitioning = false;
       S.transitionWaitPromise = Promise.resolve();
+      SR.setSearchBoxEnabled(false);
       if (S.activeFetchAbortController) {
         S.activeFetchAbortController.abort();
         S.activeFetchAbortController = null;

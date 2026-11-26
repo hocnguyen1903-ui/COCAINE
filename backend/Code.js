@@ -606,6 +606,12 @@ function doPost(e) {
       }
       return backfillPl01IndexFromDrive(payload);
     },
+    "removeFileFromPl01Index": () => {
+      if (GLOBAL_STAFF_ROLE !== "ADMIN") {
+        throw new Error("BẢO MẬT: Chỉ ADMIN mới có quyền chỉnh sửa Index!");
+      }
+      return removeFileFromPl01Index_Viewer_(payload?.fileId, payload?.maHD, payload?.rawDate);
+    },
   };
 
   try {

@@ -694,6 +694,7 @@
   // PIPELINE SỐ HÓA JIT & LÀM SẠCH FILE GỐC
   // =========================================================================
   function processAndOptimizeFileJIT(fileId, localFileObj = null, preloadedBuffer = null) {
+    SR.setSearchBoxEnabled(false);
     const isLocalUpload = (localFileObj !== null);
     const uploadFileName = S.currentFileName;
     const myEpoch = S.currentSessionEpoch;
@@ -944,6 +945,11 @@
             bCanvas.height = 0;
           }
 
+          // Bug fix: kiểm tra epoch trước khi gán currentPdfDoc để tránh race condition khi user switch file
+          if (myEpoch !== S.currentSessionEpoch) {
+            try { activePdf.destroy(); } catch (e) {}
+            throw new Error("ABORTED");
+          }
           if (S.currentPdfDoc && S.currentPdfDoc !== activePdf) {
             try { S.currentPdfDoc.destroy(); } catch (e) {}
           }
@@ -1154,11 +1160,13 @@
   }
 
   async function loadFile(fileId, fileName, sizeMB, pl01Context = null) {
-    if (S.currentFileId === fileId && S.currentManifest) {
+    if (S.currentFileId === fileId && S.currentManifest && S.isDocumentReady) {
       S.pendingPl01Context = pl01Context || null;
       if (BV.ui.applyPl01SearchContextIfAny) await BV.ui.applyPl01SearchContextIfAny();
       return;
     }
+
+    SR.setSearchBoxEnabled(false);
 
     BV.ui.setupSearchFaviconNote();
     BV.ui.setupHandToolPanning();
@@ -1529,7 +1537,7 @@
             delete S.SESSION_MANIFEST_CACHE[job.fileId];
 
             const rawBuffer = await fetchPdfDirectOrFallback(job.fileId);
-            const pack = await prepareDigitizedUploadPdf({ name: job.fileName }, null, rawBuffer, job.fileId);
+            const pack = await prepareDigitizedUploadPdf({ name: job.fileName }, null, rawBuffer);
             await commitDigitizedUploadCache(job.fileId, job.fileName, pack.manifest, pack.pdfBuffer, true);
 
             successCount++;

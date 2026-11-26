@@ -98,7 +98,8 @@
     currentLoaderPct: 0,
     AUTO_REPAIR_ATTEMPTED: new Set(),
     transitionWaitPromise: Promise.resolve(),
-    isPanelTransitioning: false
+    isPanelTransitioning: false,
+    isDocumentReady: false
   });
 
   BV.googleScriptRun = googleScriptRun;
@@ -491,24 +492,25 @@
     "cung cap", "thi cong", "lap dat", "vat tu", "nhan cong", "may moc", "hang muc"
   ]);
 
-  function filterPl01ActiveTokens(qTokens) {
-    if (!qTokens || qTokens.length < 3) return qTokens;
+  function filterPl01ActiveEntries(entries) {
+    if (!entries || entries.length < 3) return entries;
     const kept = [];
-    for (let i = 0; i < qTokens.length; i++) {
-      if (i + 1 < qTokens.length && PL01_ADMIN_BIGRAMS.has(qTokens[i] + " " + qTokens[i + 1])) {
+    for (let i = 0; i < entries.length; i++) {
+      if (i + 1 < entries.length && PL01_ADMIN_BIGRAMS.has(entries[i].tok + " " + entries[i + 1].tok)) {
         i++;
         continue;
       }
-      if (PL01_STOP_WORDS.has(qTokens[i])) continue;
-      kept.push(qTokens[i]);
+      if (PL01_STOP_WORDS.has(entries[i].tok)) continue;
+      kept.push(entries[i]);
     }
-    return kept.length >= 2 ? kept : qTokens;
+    return kept.length >= 2 ? kept : entries;
   }
 
   const PL01_INDEX_STATE = {
     ready: false,
     syncing: false,
     syncPromise: null,
+    lastMetaCheckAt: 0,
     years: {},
     byMaHD: new Map(),
     byFileId: new Map()
@@ -579,6 +581,32 @@
     }).catch(function() { return false; });
   }
 
+  function clearLocalPl01Indexes() {
+    PL01_INDEX_STATE.years = {};
+    PL01_INDEX_STATE.byMaHD.clear();
+    PL01_INDEX_STATE.byFileId.clear();
+    PL01_INDEX_STATE.ready = false;
+    return openDB().then(function(db) {
+      return new Promise(function(resolve) {
+        const tx = db.transaction(PL01_INDEX_STORE, "readwrite");
+        tx.objectStore(PL01_INDEX_STORE).clear();
+        tx.oncomplete = function() { resolve(true); };
+        tx.onerror = function() { resolve(false); };
+      });
+    }).catch(function() { return false; });
+  }
+
+  function deleteLocalPl01IndexYear(year) {
+    return openDB().then(function(db) {
+      return new Promise(function(resolve) {
+        const tx = db.transaction(PL01_INDEX_STORE, "readwrite");
+        tx.objectStore(PL01_INDEX_STORE).delete(String(year));
+        tx.oncomplete = function() { resolve(true); };
+        tx.onerror = function() { resolve(false); };
+      });
+    }).catch(function() { return false; });
+  }
+
   function rebuildPl01MemoryMaps() {
     PL01_INDEX_STATE.byMaHD.clear();
     PL01_INDEX_STATE.byFileId.clear();
@@ -645,19 +673,28 @@
         if (localRows.length > 0) rebuildPl01MemoryMaps();
 
         const metaList = await callBackend("getPl01IndexMeta");
-        if (!Array.isArray(metaList) || metaList.length === 0) return true;
+        if (!Array.isArray(metaList)) return false;
+        PL01_INDEX_STATE.lastMetaCheckAt = Date.now();
 
-        const currentYear = String(new Date().getFullYear());
         let anyUpdated = false;
+        const remoteYears = new Set(metaList.map(m => String(m.year)));
+        const localYearKeys = Object.keys(PL01_INDEX_STATE.years);
+        for (let i = 0; i < localYearKeys.length; i++) {
+          const ly = localYearKeys[i];
+          if (!remoteYears.has(ly)) {
+            delete PL01_INDEX_STATE.years[ly];
+            await deleteLocalPl01IndexYear(ly);
+            anyUpdated = true;
+          }
+        }
 
         for (let i = 0; i < metaList.length; i++) {
           const meta = metaList[i];
           const y = String(meta.year);
           const cached = localByYear.get(y);
 
-          const isStale = !cached ||
-            (Number(meta.updatedAt) !== Number(cached.updatedAt)) ||
-            (forceRefresh && y === currentYear);
+          const isStale = forceRefresh || !cached ||
+            (Number(meta.updatedAt) !== Number(cached.updatedAt));
 
           if (!isStale) continue;
 
@@ -674,6 +711,12 @@
 
         if (anyUpdated || !PL01_INDEX_STATE.ready) {
           rebuildPl01MemoryMaps();
+        }
+        if (anyUpdated && typeof activeTabId !== "undefined" && activeTabId === "tab-plhd" && typeof executeFilter_PL === "function") {
+          const inp0 = document.getElementById("field0-pl");
+          if (inp0 && inp0.value.includes("#")) {
+            executeFilter_PL(false, false, true, true);
+          }
         }
         return true;
       } catch (err) {
@@ -698,14 +741,20 @@
     if (nQ === 0) return null;
     if (nQ === 1 && qTokens[0].length < 3) return null;
 
-    const isSingleWord = (nQ === 1);
-    const tokenMatches = (lineTok, qTok) => isSingleWord ? lineTok.startsWith(qTok) : (lineTok === qTok);
-    const tokenMatchesExact = (lineTok, qTok) => lineTok === qTok;
-    const padNeedle = (qTok) => isSingleWord ? (" " + qTok) : (" " + qTok + " ");
+    const lastIdx = nQ - 1;
+    const allEntries = qTokens.map((tok, idx) => ({ tok, qIdx: idx }));
+    const activeEntries = filterPl01ActiveEntries(allEntries);
 
-    const activeQ = filterPl01ActiveTokens(qTokens);
+    const isLastTokenIdx = (qIdx) => (qIdx === lastIdx);
+    const tokenMatchesAt = (lineTok, qTok, qIdx) =>
+      isLastTokenIdx(qIdx) ? lineTok.startsWith(qTok) : (lineTok === qTok);
+    const tokenMatchesExact = (lineTok, qTok) => lineTok === qTok;
+    const padNeedleAt = (qTok, qIdx) =>
+      isLastTokenIdx(qIdx) ? (" " + qTok) : (" " + qTok + " ");
+
+    const activeQ = activeEntries.map(e => e.tok);
     const minLineHits = (nQ <= 2) ? 1 : Math.max(2, Math.ceil(activeQ.length * 0.6));
-    const checkTokens = (nQ >= 3) ? activeQ : qTokens;
+    const checkEntries = (nQ >= 3) ? activeEntries : allEntries;
     const maxAllowedSpan = 2 * nQ; // Giới hạn mật độ: Span <= 2N từ
 
     const tokenWeight = (tok) => {
@@ -720,8 +769,9 @@
     for (let pIdx = 0; pIdx < record.pages.length; pIdx++) {
       const page = record.pages[pIdx];
       let pageHasAny = false;
-      for (let qIdx = 0; qIdx < checkTokens.length; qIdx++) {
-        if (page.pagePadNorm.includes(padNeedle(checkTokens[qIdx]))) {
+      for (let qIdx = 0; qIdx < checkEntries.length; qIdx++) {
+        const ce = checkEntries[qIdx];
+        if (page.pagePadNorm.includes(padNeedleAt(ce.tok, ce.qIdx))) {
           pageHasAny = true;
           break;
         }
@@ -732,55 +782,58 @@
         const block = page.lines[lIdx];
 
         let candidateHits = 0;
-        for (let qIdx = 0; qIdx < checkTokens.length; qIdx++) {
-          if (block.padNorm.includes(padNeedle(checkTokens[qIdx]))) candidateHits++;
+        for (let qIdx = 0; qIdx < checkEntries.length; qIdx++) {
+          const ce = checkEntries[qIdx];
+          if (block.padNorm.includes(padNeedleAt(ce.tok, ce.qIdx))) candidateHits++;
         }
         if (candidateHits < minLineHits) continue;
 
         const bTokens = tokenizeRawLineWithOffsets(block.raw);
         if (bTokens.length === 0) continue;
 
-        // TẦNG 100% / 75% (1 TỪ >= 3 ký tự: khớp chuẩn 100%, khớp tiền tố 75%)
+        // TẦNG 100% (1 TỪ >= 3 ký tự: khớp chuẩn hoặc tiền tố đều đạt 100%)
         if (nQ === 1) {
           const qt = qTokens[0];
           for (let ti = 0; ti < bTokens.length; ti++) {
-            if (tokenMatches(bTokens[ti].norm, qt)) {
+            if (tokenMatchesAt(bTokens[ti].norm, qt, 0)) {
               const isExact = tokenMatchesExact(bTokens[ti].norm, qt);
               const keyText = block.raw.slice(bTokens[ti].start, bTokens[ti].end);
               rawMatches.push({
-                pct: isExact ? 100 : 75,
+                pct: 100,
                 keyText: keyText,
                 normKey: bTokens[ti].norm,
                 pageNum: page.pageNum,
                 contextLine: block.raw,
                 matchedWords: [bTokens[ti].norm],
-                score: isExact ? 105 : 75
+                score: isExact ? 106 : 105
               });
             }
           }
           continue;
         }
 
-        // TẦNG 100% (CỤM TỪ >= 2 TỪ): Khớp liền mạch đúng thứ tự (Span = N <= 2N)
+        // TẦNG 100% (CỤM TỪ >= 2 TỪ): Khớp liền mạch đúng thứ tự (từ trước từ cuối khớp trọn vẹn, từ cuối khớp tiền tố)
         let foundTier1 = false;
         for (let ti = 0; ti <= bTokens.length - nQ; ti++) {
           let seqOk = true;
           for (let k = 0; k < nQ; k++) {
-            if (!tokenMatches(bTokens[ti + k].norm, qTokens[k])) {
+            if (!tokenMatchesAt(bTokens[ti + k].norm, qTokens[k], k)) {
               seqOk = false;
               break;
             }
           }
           if (seqOk) {
             const keyText = block.raw.slice(bTokens[ti].start, bTokens[ti + nQ - 1].end);
+            const isLastExact = tokenMatchesExact(bTokens[ti + nQ - 1].norm, qTokens[lastIdx]);
+            const matchedNorms = bTokens.slice(ti, ti + nQ).map(t => t.norm);
             rawMatches.push({
               pct: 100,
               keyText: keyText,
               normKey: normalizePl01SearchStr(keyText),
               pageNum: page.pageNum,
               contextLine: block.raw,
-              matchedWords: qTokens.slice(),
-              score: 100 + nQ
+              matchedWords: matchedNorms,
+              score: isLastExact ? (101 + nQ) : (100 + nQ)
             });
             foundTier1 = true;
           }
@@ -793,7 +846,7 @@
         for (let k = 0; k < nQ; k++) {
           const posArr = [];
           for (let ti = 0; ti < bTokens.length; ti++) {
-            if (tokenMatches(bTokens[ti].norm, qTokens[k])) posArr.push(ti);
+            if (tokenMatchesAt(bTokens[ti].norm, qTokens[k], k)) posArr.push(ti);
           }
           if (posArr.length === 0) allTokensPresent = false;
           qPosMap.push(posArr);
@@ -802,6 +855,7 @@
         // TẦNG 75%: Đủ 100% số từ trong Ô Hạng mục VÀ thỏa mãn Span <= 2N
         if (allTokensPresent) {
           let bestIndices = null;
+          let bestMatchedNorms = null;
           let minSpan = Infinity;
 
           if (nQ === 2) {
@@ -812,6 +866,7 @@
                 if (span <= maxAllowedSpan && span < minSpan) {
                   minSpan = span;
                   bestIndices = [Math.min(p0, p1), Math.max(p0, p1)];
+                  bestMatchedNorms = [bTokens[p0].norm, bTokens[p1].norm];
                 }
               }
             }
@@ -832,6 +887,7 @@
               if (span <= maxAllowedSpan) {
                 minSpan = span;
                 bestIndices = [lo, hi];
+                bestMatchedNorms = picked.map(pos => bTokens[pos].norm);
               }
             }
           }
@@ -845,7 +901,7 @@
               normKey: normalizePl01SearchStr(keyText),
               pageNum: page.pageNum,
               contextLine: block.raw,
-              matchedWords: qTokens.slice(),
+              matchedWords: bestMatchedNorms || qTokens.slice(),
               score: 78 - Math.min(3, minSpan - nQ)
             });
             continue;
@@ -854,12 +910,18 @@
 
         // TẦNG 60% (>= 3 TỪ) HOẶC TẦNG 50% (2 TỪ): Khớp 1 phần số từ VÀ thỏa mãn Span <= 2N
         const matchedHits = [];
-        for (let k = 0; k < activeQ.length; k++) {
-          const qt = activeQ[k];
+        for (let k = 0; k < activeEntries.length; k++) {
+          const ae = activeEntries[k];
+          const qt = ae.tok;
           if (nQ === 2 && (qt.length < 2 || PL01_STOP_WORDS.has(qt))) continue;
+          // Chỉ cho phép khớp tiền tố từ cuối ở tầng khớp 1 phần khi từ cuối >= 3 ký tự để tránh nhiễu
+          const allowPrefixInPartial = isLastTokenIdx(ae.qIdx) && qt.length >= 3;
           for (let ti = 0; ti < bTokens.length; ti++) {
-            if (tokenMatches(bTokens[ti].norm, qt)) {
-              matchedHits.push({ pos: ti, qt: qt, weight: tokenWeight(qt) });
+            const hit = allowPrefixInPartial
+              ? bTokens[ti].norm.startsWith(qt)
+              : (bTokens[ti].norm === qt);
+            if (hit) {
+              matchedHits.push({ pos: ti, qt: qt, actualNorm: bTokens[ti].norm, weight: tokenWeight(qt) });
             }
           }
         }
@@ -873,11 +935,13 @@
 
           for (let sIdx = 0; sIdx < matchedHits.length; sIdx++) {
             const seenQ = new Set();
+            const seenActual = new Set();
             let totalW = 0;
             for (let eIdx = sIdx; eIdx < matchedHits.length; eIdx++) {
               const span = matchedHits[eIdx].pos - matchedHits[sIdx].pos + 1;
               if (span > maxAllowedSpan) break;
 
+              seenActual.add(matchedHits[eIdx].actualNorm);
               if (!seenQ.has(matchedHits[eIdx].qt)) {
                 seenQ.add(matchedHits[eIdx].qt);
                 totalW += matchedHits[eIdx].weight;
@@ -890,7 +954,8 @@
                   bestSubRun = {
                     startPos: matchedHits[sIdx].pos,
                     endPos: matchedHits[eIdx].pos,
-                    matchedWords: Array.from(seenQ),
+                    distinctQCount: seenQ.size,
+                    matchedWords: Array.from(seenActual),
                     totalW: totalW
                   };
                 }
@@ -900,7 +965,7 @@
 
           if (bestSubRun) {
             const keyText = block.raw.slice(bTokens[bestSubRun.startPos].start, bTokens[bestSubRun.endPos].end);
-            const isHalf = (nQ === 2 && bestSubRun.matchedWords.length === 1);
+            const isHalf = (nQ === 2 && bestSubRun.distinctQCount === 1);
             const tierPct = isHalf ? 50 : 60;
             const baseScore = isHalf ? 50 : 60;
 
@@ -1007,6 +1072,7 @@
   BV.pl01Index = {
     state: PL01_INDEX_STATE,
     sync: syncPl01Indexes,
+    clearLocal: clearLocalPl01Indexes,
     matchContract: matchSinglePl01Record,
     normalize: normalizePl01SearchStr
   };

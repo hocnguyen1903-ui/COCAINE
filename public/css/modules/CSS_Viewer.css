@@ -164,6 +164,22 @@
   box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.8), 0 0 12px rgba(255, 186, 8, 0.2) !important;
 }
 
+#pl-dock-preview-panel .search-box-wrap.is-disabled {
+  opacity: 0.42 !important;
+  filter: grayscale(0.35);
+  cursor: not-allowed !important;
+  user-select: none !important;
+}
+
+#pl-dock-preview-panel .search-box-wrap.is-disabled * {
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+#pl-dock-preview-panel .search-input:disabled {
+  cursor: not-allowed !important;
+}
+
 /* MỞ KHÓA TƯƠNG TÁC CHO FAVICON ĐỂ HOVER & CLICK */
 #pl-dock-preview-panel .search-brand-icon {
   width: 15px;
@@ -656,7 +672,8 @@
   transition: background-color 0.15s ease;
 }
 
-#pl-dock-preview-panel .pl01-variant-card:last-child {
+#pl-dock-preview-panel .pl01-variant-card:last-child,
+#pl-dock-preview-panel .pl01-variant-card:has(+ .pl01-section-divider) {
   border-bottom: none;
 }
 
@@ -742,4 +759,43 @@
   font-style: italic;
   font-size: 10px;
   margin-left: 4px;
+}
+
+#pl-dock-preview-panel .pl01-section-divider {
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255, 186, 8, 0.2) 0%, rgba(255, 186, 8, 0.72) 50%, rgba(255, 186, 8, 0.2) 100%);
+  margin: 4px 10px;
+  border-radius: 2px;
+}
+
+#pl-dock-preview-panel .pl01-section-label {
+  padding: 6px 12px 1px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #00BCD4;
+  opacity: 0.9;
+}
+
+#pl-dock-preview-panel .pl01-section-empty {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  opacity: 0.48;
+  cursor: default;
+  user-select: none;
+}
+
+#pl-dock-preview-panel .pl01-sec-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #95A1AF;
+}
+
+#pl-dock-preview-panel .pl01-sec-unmatched {
+  font-size: 10.5px;
+  font-style: italic;
+  color: #95A1AF;
 }

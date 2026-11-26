@@ -884,44 +884,56 @@ function closeDataDeleteModal() {
     }
 }
 
-/**
- * Thực thi xóa dòng dữ liệu trên Sheet và cập nhật Dashboard
- */
 function executeActualDeleteData_PL() {
-    closeDataDeleteModal(); 
+    closeDataDeleteModal();
     const maToDelete = editingMaHD_PL;
-    
+
     const backupItem = SYSTEM_DATA.pl.field0.find(item => (item.display || "").split(" | ")[0].trim() === maToDelete);
     const backupIndex = SYSTEM_DATA.pl.field0.indexOf(backupItem);
 
     if (backupItem) {
+        const deletedFileIds = String(backupItem.scanId || "")
+            .split(";;")
+            .filter(Boolean)
+            .map(e => (e.split("|")[0] || "").trim())
+            .filter(Boolean);
+
         SYSTEM_DATA.pl.field0 = SYSTEM_DATA.pl.field0.filter(item => (item.display || "").split(" | ")[0].trim() !== maToDelete);
         PRECOMPUTED_PL_DATA = null;
-        
-        executeFilter_PL(false); 
+
+        executeFilter_PL(false);
         if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
         closeEditPanel_PL();
-        
-        showToast_PL(`🗑️ Đã xóa dữ liệu: <b style="color:white">${maToDelete}`, "success");
 
-        if (currentPreviewFileId_PL === targetFileId) {
-        closePreviewModal_PL(true);
-    }
-    if (window.BconsViewer && typeof window.BconsViewer.purgeLocalCacheForFile === "function") {
-        window.BconsViewer.purgeLocalCacheForFile(targetFileId);
-    }
+        if (deletedFileIds.length > 0) {
+            if (currentPreviewFileId_PL && deletedFileIds.includes(currentPreviewFileId_PL)) {
+                closePreviewModal_PL(true);
+            }
+            if (window.BconsViewer && typeof window.BconsViewer.purgeLocalCacheForFile === "function") {
+                deletedFileIds.forEach(fId => window.BconsViewer.purgeLocalCacheForFile(fId));
+            }
+        }
 
-    // 3. GỌI BACKEND CHẠY NGẦM LẶNG LẼ TRÊN SPREADSHEET VÀ DRIVE
-    callBackend("deleteScanFilePermanently", [currentScanMaHD, targetFileId])
-        .then(res => {
-            if (res && res.success) {
-                if (window.BconsViewer && window.BconsViewer.pl01Index && typeof window.BconsViewer.pl01Index.sync === "function") {
+        showToast_PL(`🗑️ Đã xóa dữ liệu: <b style="color:white">${maToDelete}</b>`, "success");
+
+        callBackend("deleteContractRow_Backend", maToDelete)
+            .then(() => {
+                publishAblyContractUpdate_Client("DELETE_DATA", maToDelete);
+                if (deletedFileIds.length > 0 && window.BconsViewer && window.BconsViewer.pl01Index && typeof window.BconsViewer.pl01Index.sync === "function") {
                     setTimeout(() => window.BconsViewer.pl01Index.sync(true), 300);
                 }
-            } else {
-                throw new Error(res ? res.error : "Không xác nhận được từ máy chủ");
-            }
-        })
+                loadSystemData(true);
+            })
+            .catch(err => {
+                if (backupIndex !== -1) {
+                    SYSTEM_DATA.pl.field0.splice(backupIndex, 0, backupItem);
+                }
+                PRECOMPUTED_PL_DATA = null;
+                executeFilter_PL(false);
+                if (typeof updateContractNo_PL === 'function') updateContractNo_PL();
+                showToast_PL(`⚠️ Thao tác xóa ${maToDelete} thất bại! Đã khôi phục dữ liệu.`, "error");
+                loadSystemData(true);
+            });
     }
 }
 
