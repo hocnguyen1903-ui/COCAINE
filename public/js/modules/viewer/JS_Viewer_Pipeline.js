@@ -590,7 +590,7 @@
 
   async function scanAppendixWithVision(pdf, ctx, canvas, skippedBlankPages, onProgress = null) {
     const SCAN_AI_SCALE = 2.85;
-    const VISION_PAGE_BUDGET = 16;
+    const VISION_PAGE_BUDGET = 30;
     let visionApiPages = 0;
     let appendixStartPage = -1;
     const appendixPages = [];
