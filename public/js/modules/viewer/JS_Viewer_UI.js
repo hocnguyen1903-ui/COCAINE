@@ -1263,8 +1263,9 @@
     const scaleY = panel.clientHeight / Math.max(1, panelRect.height);
     const wrapBottomY = (wrapRect.bottom - panelRect.top) * scaleY;
     const wrapRightX = (wrapRect.right - panelRect.left) * scaleX;
+    const wrapW = Math.round(wrapRect.width * scaleX);
 
-    const dropW = Math.max(240, Math.floor(Math.min(480, wrapRightX - 10, panel.clientWidth - 24)));
+    const dropW = Math.max(240, Math.floor(Math.min(wrapW, wrapRightX - 10, panel.clientWidth - 24)));
     const fixedLeft = Math.max(10, Math.round(wrapRightX - dropW));
 
     dropEl.style.top = `${Math.round(wrapBottomY + 8)}px`;

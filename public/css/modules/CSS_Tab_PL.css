@@ -483,8 +483,10 @@
     align-items: center;
     gap: 10px;
     overflow: hidden;
-    flex: 1;
-    padding-right: 15px;
+    flex: 1 1 0%;
+    min-width: 80px;
+    margin-right: 20px;
+    padding-right: 0 !important;
 }
 
 /* Icon PDF màu đỏ nổi bật */

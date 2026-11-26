@@ -152,6 +152,9 @@
   border-radius: 20px;
   height: 32px;
   box-sizing: border-box;
+  width: 480px;
+  max-width: calc(100% - 150px);
+  flex-shrink: 0;
   transition: all 0.3s ease;
 }
 
@@ -273,7 +276,9 @@
   font-size: 12px !important;
   font-family: inherit !important;
   font-weight: 500 !important;
-  width: 200px !important;
+  flex: 1 1 0% !important;
+  width: 0 !important;
+  min-width: 60px !important;
   padding: 2px 0 !important;
   margin: 0 8px 0 0 !important; /* 👈 Khoảng cách từ ô nhập đến số 0/0 */
   box-shadow: none !important;
