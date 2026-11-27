@@ -16,15 +16,18 @@ function extractYearFromDateString(dateStr) {
 function getNextRowAfterLastData_SO(sheet, startRow, colB, colE) {
   const lastRow = sheet.getLastRow();
   if (lastRow < startRow) return startRow;
+  const minCol = Math.min(colB, colE);
   const maxCol = Math.max(colB, colE);
-  const values = sheet.getRange(startRow, 1, lastRow - startRow + 1, maxCol).getValues();
-  
+  const values = sheet.getRange(startRow, minCol, lastRow - startRow + 1, maxCol - minCol + 1).getValues();
+  const idxB = colB - minCol;
+  const idxE = colE - minCol;
+
   let lastDataRowOffset = -1;
   for (let i = 0; i < values.length; i++) {
-    const valB = values[i][colB - 1].toString().trim();
-    const valE = values[i][colE - 1].toString().trim();
+    const valB = values[i][idxB].toString().trim();
+    const valE = values[i][idxE].toString().trim();
     if (valB !== "" || valE !== "") {
-      lastDataRowOffset = i; 
+      lastDataRowOffset = i;
     }
   }
   return lastDataRowOffset === -1 ? startRow : startRow + lastDataRowOffset + 1;
@@ -38,33 +41,30 @@ function getContractTemplateId_HD(type) {
   return ids[type];
 }
 
-function createContractFile_HD(id, name) {
+function createExportedDocCopy_(templateId, name, folderErrMsg, copyErrMsg) {
   let destinationFolder;
   try {
     destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
-  } catch(e) {
-    throw new Error("Tài khoản không có quyền truy cập Thư mục xuất file (EXPORT_FOLDER_ID).");
+  } catch (e) {
+    throw new Error(folderErrMsg || "Tài khoản không có quyền truy cập Thư mục xuất file (EXPORT_FOLDER_ID).");
   }
 
-  let file;
   try {
-    file = DriveApp.getFileById(id).makeCopy(name, destinationFolder);
-  } catch(e) {
-    throw new Error("Không thể nhân bản File Mẫu Hợp đồng. Kiểm tra quyền truy cập Template: " + e.message);
+    return DriveApp.getFileById(templateId).makeCopy(name, destinationFolder);
+  } catch (e) {
+    throw new Error((copyErrMsg || "Không thể nhân bản File Mẫu: ") + e.message);
   }
+}
 
-  // Bọc an toàn: Bỏ qua lỗi nếu Google Drive chặn quyền bật Link Sharing Public Edit
-  try {
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
-  } catch(shareErr) {
-    try {
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch(shareErr2) {
-      console.warn("Bỏ qua lỗi setSharing do chính sách bảo mật Google Drive: " + shareErr2.message);
-    }
+function replaceDocPlaceholders_(body, placeholders, values) {
+  const bodyText = body.getText();
+  for (let i = 0; i < placeholders.length; i++) {
+    const rawKey = placeholders[i];
+    if (!rawKey) continue;
+    const key = rawKey.trim();
+    if (!key.startsWith("[") || bodyText.indexOf(key) === -1) continue;
+    body.replaceText(escapeSpecialChars(key), values[i] || "");
   }
-
-  return file;
 }
 
 function escapeSpecialChars(s) { 
@@ -75,9 +75,10 @@ function escapeSpecialChars(s) {
 // --- PHÂN HỆ: HỢP ĐỒNG GỐC (HDTCXD) ---
 // ==========================================
 
-function getLatestContractNumber_HD(targetYear) {
+function getLatestContractNumber_HD(targetYear, ss) {
   const year = String(targetYear || new Date().getFullYear()).trim();
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName("SO HDTCXD BCONS - NTP");
+  const spreadsheet = ss || SpreadsheetApp.openById(SHEET_ID);
+  const sheet = spreadsheet.getSheetByName("SO HDTCXD BCONS - NTP");
   if (!sheet) return "00";
   const lastRow = sheet.getLastRow();
   if (lastRow < 3) return "00";
@@ -109,7 +110,8 @@ function getLatestContractNumber_HD(targetYear) {
 function handleFullExportProcess_HD(formData) {
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(20000); 
+    lock.waitLock(20000);
+    const ss = SpreadsheetApp.openById(SHEET_ID);
     var targetYear = extractYearFromDateString(formData.date);
     var extractedField2 = formData.field2.includes(" | ") ? formData.field2.split(" | ")[0].trim() : formData.field2;
     var extractedField3 = formData.field3.includes(" | ") ? formData.field3.split(" | ")[0].trim() : formData.field3;
@@ -118,7 +120,7 @@ function handleFullExportProcess_HD(formData) {
     var packageNameRaw = formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0;
 
     if (!formData.draftContract) {
-      var lastNumber = getLatestContractNumber_HD(targetYear); 
+      var lastNumber = getLatestContractNumber_HD(targetYear, ss);
       var nextNo = String(parseInt(lastNumber, 10) + 1).padStart(2, '0');
 
       formData.field8 = `${nextNo}/${targetYear}/HĐTCXD-${extractedField2}/${formData.location}-${extractedField3}`;
@@ -131,7 +133,7 @@ function handleFullExportProcess_HD(formData) {
       formData.fileName = `${extractedField2}_Dự thảo hợp đồng_${packageNameRaw}`;
     }
 
-    return writeToSheetAndExportDoc_HD(formData);
+    return writeToSheetAndExportDoc_HD(formData, ss);
   } catch (e) {
     throw new Error(e.message);
   } finally {
@@ -139,9 +141,9 @@ function handleFullExportProcess_HD(formData) {
   }
 }
 
-function writeToSheetAndExportDoc_HD(data) {
+function writeToSheetAndExportDoc_HD(data, ss) {
     try {
-        const spreadsheet = SpreadsheetApp.openById(SHEET_ID);
+        const spreadsheet = ss || SpreadsheetApp.openById(SHEET_ID);
         const sourceSheet = spreadsheet.getSheetByName("HDTCXD");
         if (!sourceSheet) throw new Error("Không tìm thấy sheet HDTCXD.");
 
@@ -162,8 +164,9 @@ function writeToSheetAndExportDoc_HD(data) {
 
         const lastCol = sourceSheet.getLastColumn();
         const allRow3Values = sourceSheet.getRange(3, 1, 1, lastCol).getValues()[0];
-        const allRow3Displays = sourceSheet.getRange(3, 1, 1, lastCol).getDisplayValues()[0];
-        const placeholders = sourceSheet.getRange(2, 1, 1, lastCol).getDisplayValues()[0];
+        const batchDisplay = sourceSheet.getRange(2, 1, 2, lastCol).getDisplayValues();
+        const placeholders = batchDisplay[0];
+        const allRow3Displays = batchDisplay[1];
 
         // 2. GHI SỔ THEO DÕI VÀ ĐÁNH DẤU SHEET X
         if (!data.draftContract) {
@@ -189,27 +192,24 @@ function writeToSheetAndExportDoc_HD(data) {
             targetSheet.getRange(targetRow, 2, 1, 18).setValues(logValues);
         }
 
-        // 3. TẠO VÀ XỬ LÝ DOCS
+        // 3. TẠO VÀ XỬ LÝ DOCS (Xóa đoạn thừa trước, chỉ replaceText placeholder còn trong văn bản)
         const docTemplateId = getContractTemplateId_HD(data.location);
         if (!docTemplateId) throw new Error("Không tìm thấy mẫu hợp đồng: " + data.location);
 
-        const copiedFile = createContractFile_HD(docTemplateId, data.fileName);
+        const copiedFile = createExportedDocCopy_(
+          docTemplateId,
+          data.fileName,
+          "Tài khoản không có quyền truy cập Thư mục xuất file (EXPORT_FOLDER_ID).",
+          "Không thể nhân bản File Mẫu Hợp đồng. Kiểm tra quyền truy cập Template: "
+        );
         const doc = DocumentApp.openById(copiedFile.getId());
         const body = doc.getBody();
 
-        const replaceKeys = placeholders.slice(1);
-        const replaceVals = allRow3Displays.slice(1);
-
-        replaceKeys.forEach((key, i) => {
-            if (key && key.trim().startsWith("[")) {
-                body.replaceText(escapeSpecialChars(key.trim()), replaceVals[i] || "");
-            }
-        });
-
         const sectionData = allRow3Values.slice(54, 76);
         const validSections = new Set(sectionData.map(v => v ? v.toString().trim() : null).filter(Boolean));
-        
         optimizeDocSections(body, validSections);
+
+        replaceDocPlaceholders_(body, placeholders.slice(1), allRow3Displays.slice(1));
 
         doc.saveAndClose();
                 
@@ -224,9 +224,10 @@ function writeToSheetAndExportDoc_HD(data) {
 // --- PHÂN HỆ: THÔNG BÁO KẾT QUẢ (TBKQ) ---
 // ==========================================
 
-function getLatestContractNumber_TB(targetYear) {
+function getLatestContractNumber_TB(targetYear, ss) {
   const year = String(targetYear || new Date().getFullYear()).trim();
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME_SO_TB);
+  const spreadsheet = ss || SpreadsheetApp.openById(SHEET_ID);
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME_SO_TB);
   if (!sheet) return "00";
   const lastRow = sheet.getLastRow();
   if (lastRow < 3) return "00";
@@ -269,9 +270,10 @@ function getLatestContractNumber_TB(targetYear) {
 function handleFullExportProcess_TB(formData) {
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(20000); 
+    lock.waitLock(20000);
+    const ss = SpreadsheetApp.openById(SHEET_ID);
     const targetYear = extractYearFromDateString(formData.date);
-    const lastNumber = getLatestContractNumber_TB(targetYear);
+    const lastNumber = getLatestContractNumber_TB(targetYear, ss);
     const nextNo = String(parseInt(lastNumber, 10) + 1).padStart(2, '0');
 
     formData.field6 = `${nextNo}/${targetYear}/TB/KĐT-BCONS`;
@@ -283,7 +285,7 @@ function handleFullExportProcess_TB(formData) {
     // Cấu trúc mới: Mã dự án_TBKQGT_Tên viết tắt gói thầu
     formData.fileName = `${projectName}_TBKQGT_${packageNameRaw}`;
 
-    return writeToSheetAndExportDoc_TB(formData);
+    return writeToSheetAndExportDoc_TB(formData, ss);
   } catch (e) { 
     throw new Error(e.message); 
   } finally {
@@ -291,10 +293,10 @@ function handleFullExportProcess_TB(formData) {
   }
 }
 
-function writeToSheetAndExportDoc_TB(data) {
+function writeToSheetAndExportDoc_TB(data, ss) {
   try {
-    const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sourceSheet = ss.getSheetByName(SHEET_NAME_TBKQ);
+    const spreadsheet = ss || SpreadsheetApp.openById(SHEET_ID);
+    const sourceSheet = spreadsheet.getSheetByName(SHEET_NAME_TBKQ);
     
     sourceSheet.getRange("A3:I3").setValues([[
       data.location, data.date, data.field6, data.field1, 
@@ -311,7 +313,7 @@ function writeToSheetAndExportDoc_TB(data) {
     const rowValues = batchData[1];
 
     // GHI SỔ THEO DÕI (SO THONG BAO)
-    const targetSheet = ss.getSheetByName(SHEET_NAME_SO_TB);
+    const targetSheet = spreadsheet.getSheetByName(SHEET_NAME_SO_TB);
     const targetRow = getNextRowAfterLastData_SO(targetSheet, 3, 2, 3);
     const sender = getCurrentStaffName();
 
@@ -326,45 +328,25 @@ function writeToSheetAndExportDoc_TB(data) {
       sender
     ]]);
 
-    // TẠO VÀ XỬ LÝ DOCS (BỌC BẢO VỆ QUYỀN TRUY CẬP)
+    // TẠO VÀ XỬ LÝ DOCS
     const docTemplateId = "1oyp4fMSu-AJuLY6Dvb7zZX6R1FjYLDreLBaoOsEDhEc";
-    
-    let destinationFolder;
-    try {
-        destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
-    } catch(e) {
-        throw new Error("Tài khoản không có quyền chỉnh sửa Thư mục đích (EXPORT_FOLDER).");
-    }
+    const copiedFile = createExportedDocCopy_(
+      docTemplateId,
+      data.fileName,
+      "Tài khoản không có quyền chỉnh sửa Thư mục đích (EXPORT_FOLDER).",
+      "Không thể nhân bản File Mẫu Thông báo. Kiểm tra lại quyền truy cập: "
+    );
 
-    let copiedFile;
-    try {
-        copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(data.fileName, destinationFolder);
-    } catch(e) {
-        throw new Error("Không thể nhân bản File Mẫu Thông báo. Kiểm tra lại quyền truy cập.");
-    }
-    
-    // Bỏ qua lỗi nếu Google Workspace chặn quyền bật Link Sharing Public
-    try {
-        copiedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
-    } catch(shareErr) {
-        console.warn("Bỏ qua lỗi setSharing do chính sách bảo mật nội bộ Workspace chặn: " + shareErr.message);
-    }
-    
     const doc = DocumentApp.openById(copiedFile.getId());
     const body = doc.getBody();
 
-    placeholders.forEach((key, i) => {
-      if (key && key.trim().startsWith("[")) {
-        body.replaceText(escapeSpecialChars(key.trim()), rowValues[i] || "");
-      }
-    });
-
     const validSectionsArray = rowValues.slice(24, 28).map(v => v ? v.toString().trim() : null).filter(Boolean);
     const validSections = new Set(validSectionsArray);
-    
     if (validSections.size > 0) {
       optimizeDocSections(body, validSections);
     }
+
+    replaceDocPlaceholders_(body, placeholders, rowValues);
 
     doc.saveAndClose();
     return { link: copiedFile.getUrl() };

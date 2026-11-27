@@ -77,10 +77,17 @@
     if (cachedPinned) S.pinnedDrawingNodes = new Set(JSON.parse(cachedPinned));
   } catch (e) {}
 
+  function syncDrawingButtonState() {
+    const syncBtn = document.getElementById("btn-sync-drawing");
+    if (syncBtn) syncBtn.disabled = !S.selectedProjectDrawing;
+  }
+  BD.syncDrawingButtonState = syncDrawingButtonState;
+
   // =========================================================================
   // KHỞI CHẠY MODULE & QUẢN LÝ DỰ ÁN
   // =========================================================================
   function loadDrawingModule() {
+    syncDrawingButtonState();
     if (!S.isDrawingListLoaded) fetchActiveProjectsForDrawing();
 
     setTimeout(() => {
@@ -194,6 +201,7 @@
   async function selectProject_Drawing(projectName) {
     S.currentlyRenderedProject = "";
     S.selectedProjectDrawing = projectName;
+    syncDrawingButtonState();
     const input = document.getElementById("drawing-project-search");
     const searchInput = document.getElementById("drawing-category-search");
     if (input) input.value = projectName;
@@ -298,16 +306,15 @@
   }
 
   function syncManual() {
+    if (!S.selectedProjectDrawing) return;
     fetchActiveProjectsForDrawing(true);
 
-    if (S.selectedProjectDrawing) {
-      delete S.projectFullDataCache_Drawing[S.selectedProjectDrawing.toUpperCase()];
-      const localLoader = document.getElementById("drawing-local-loader");
-      if (localLoader) localLoader.style.display = "flex";
-      S.drawingTaskCache = {};
-      S.currentlyRenderedProject = "";
-      BD.mindmap.renderMindmap(S.selectedProjectDrawing, true);
-    }
+    delete S.projectFullDataCache_Drawing[S.selectedProjectDrawing.toUpperCase()];
+    const localLoader = document.getElementById("drawing-local-loader");
+    if (localLoader) localLoader.style.display = "flex";
+    S.drawingTaskCache = {};
+    S.currentlyRenderedProject = "";
+    BD.mindmap.renderMindmap(S.selectedProjectDrawing, true);
   }
 
   function resetMindmapView() {

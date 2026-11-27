@@ -460,7 +460,7 @@
       ghost.style.opacity = "1";
       ghost.style.border = "1px solid rgba(255, 255, 255, 0.25)";
       ghost.style.borderRadius = "6px";
-      ghost.style.boxShadow = "0 12px 28px rgba(0, 0, 0, 0.85)";
+      ghost.style.boxShadow = "0 4px 10px rgba(0, 0, 0, 0.85)";
       ghost.style.transform = `scaleY(${scaleY})`;
       ghost.style.transformOrigin = "0 0";
 

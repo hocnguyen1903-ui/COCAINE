@@ -1,0 +1,66 @@
+# KEN — Bcons Contract & Drawing Management Web App
+
+## 1. Architecture
+
+- **Frontend:** Vanilla HTML/CSS/JS SPA (`index.html` + `public/`), hosted on GitHub Pages. Calls backend via `fetch()` POST `{action, data, token}` to the Google Apps Script Web App (`doPost`). API URL is in `public/js/core/JS_Variables.js`.
+- **Backend:** Google Apps Script (`backend/`), synced with `clasp`. Data in Google Sheets (`SHEET_ID`) and Drive (`MASTER_FOLDER_ID`, `ROOT_FOLDER_ID`, `EXPORT_FOLDER_ID`).
+- **CDN libs:** PDF.js, `pdf-lib`, Flatpickr, Bootstrap Icons, Ably Realtime, Cytoscape.
+
+## 2. File Map (read the relevant file directly; do NOT scan the repo)
+
+- `index.html`: 5 tabs (`tab-about`, `tab-hdtcxd`, `tab-plhd`, `tab-tbkq`, `tab-drawing`), modals, right dock preview (`#pl-dock-preview-panel`).
+- `backend/`
+  - `Code.js`: `doPost(e)` router, HMAC session auth (`BCONS2.*`), users (`User_Registry`), `getSystemData()`, Ably.
+  - `API_Drawing.js`: mindmap (`Drawing_Log`), tasks (`Task_Log`), chunked Drive upload, OCR + Gemini extraction (`extractDataFromImages`).
+  - `API_HopDong.js`: export contract (`HDTCXD`) and bid result notice (`TBKQTT`) as Google Docs.
+  - `API_PhuLuc.js`: export appendix (`PLHD`), edit/delete rows in `SO HDTCXD BCONS - NTP`, `exportToNewSpreadsheet_PL`, scan PDF upload/delete/overwrite.
+  - `API_Viewer.js`: digitized JSON cache (`[Số hóa] *.json`), Vision OCR batch, GZIP search index `Index_PL01_<YEAR>.json`.
+- `public/js/core/`: `JS_Variables.js` (globals, state, API URL), `JS_Utils.js` (format, toast, tooltip, keyboard nav), `JS_Core_API.js` (fetch wrapper, token).
+- `public/js/modules/`
+  - `tab_hd/JS_Tab_HD.js` (`CONTRACT`)
+  - `tab_pl/JS_Tab_PL_{Core,Actions,Files}.js` (`EXTENSIONS`: list, context menu, handover, scan files)
+  - `tab_tb/JS_Tab_TB.js` (`NOTICES`)
+  - `drawing/JS_Drawing_{State,Mindmap,Upload,Tasks}.js` (`DRAWING`)
+  - `viewer/JS_Viewer_{State,Search,Pipeline,UI}.js`: PDF reader, invisible text layer, AI search, PL01 page jump.
+- `public/css/`: `core/` (`CSS_Base`, `CSS_Forms`, `CSS_Components`), `modules/` (`CSS_Tab_PL`, `CSS_Viewer`, `CSS_Drawing`).
+- `gdp.js`, `watch-gas.js`: clasp push/deploy scripts.
+
+## 3. Token-Saving Rules (MANDATORY)
+
+1. Never read dump/backup files (e.g. `dump_du_lieu.txt`) or `node_modules/`.
+2. For a feature/bugfix, read only that module's files + its matching `backend/API_*.js`.
+3. For long files, use targeted `grep` or line ranges instead of reading the whole file.
+4. If something is not in the File Map, use targeted `grep` by function/action name, then update Section 2.
+5. When adding/renaming/deleting files, update Section 2.
+6. Do not rename a `doPost` action without updating both `backend/Code.js` and `public/js/`.
+
+## 4. Response Style (MANDATORY)
+
+- Be concise and get straight to the point. No preamble, no recap of the request, no closing summary unless asked.
+- Reply to the user in Vietnamese; keep code identifiers in English.
+- When offering multiple options, list the **recommended option first** and mark it "(Recommended)". Keep each option to one line plus a short trade-off.
+- Do not explain code that the user did not ask about. After an edit, state only what changed and which file.
+- Ask a question only when blocked; otherwise state the assumption and proceed.
+
+## 5. Commands
+
+- **Frontend:** open `index.html` with VS Code Live Server (or GitHub Pages).
+- **Deploy backend:** `node gdp.js` (runs `npx clasp push`; updates the fixed deployment only if code changed).
+- **Auto-push on save:** `node watch-gas.js`.
+- **Tests:** none; verify manually in the relevant tab after reload.
+
+## 6. Conventions & Safety
+
+- **Language:** comments, error messages, UI text in Vietnamese; identifiers and API actions in English `camelCase`. Backend functions use suffixes (`_Backend`, `_HD`, `_PL`, `_TB`, `_Viewer`) to avoid GAS global name collisions.
+- **Secrets:** `GEMINI_API_KEY`, `VISION_API_KEY`, `SA_CLIENT_EMAIL`, `SA_PRIVATE_KEY`, `SERVER_HMAC_SECRET` live in Script Properties. Never hardcode or log them.
+- **Data safety:** no bulk delete/overwrite on Sheets (`SO HDTCXD BCONS - NTP`, `Drawing_Log`, `Task_Log`) or Drive without confirmation. **New** backend write functions must use `LockService.getScriptLock()`.
+- **Script load order in `index.html` (keep when editing):**
+  1. CDN: `flatpickr` → `pdf.min.js` → `pdf-lib.min.js` → `ably.min-2.js`
+  2. Core: `JS_Variables.js` (first) → `JS_Utils.js` → `JS_Core_API.js`
+  3. Modules: `tab_hd` → `tab_pl` (Core → Actions → Files) → `tab_tb` → `drawing` (State → Mindmap → Upload → Tasks) → `viewer` (State → Search → Pipeline → UI)
+
+## 7. Current Work / Handoff (update before switching machines)
+
+- **Recent changes:** Updated `#` PL01 search to support 1 mandatory `"key"` phrase per `#` (`parsePl01Query` + key gate in `matchSinglePl01Record` in `public/js/modules/viewer/JS_Viewer_State.js`) and simplified match tiers to 3 levels `100% / 75% / 50%` with green/yellow/red badges (`JS_Tab_PL_Core.js`, `JS_Viewer_UI.js`, `CSS_Viewer.css`). Verified with `node --check` and Node unit snippet.
+- **In progress:** Pending manual verification in `tab-plhd` in browser and git commit/push for uncommitted local changes.
+- **Known issues:** none

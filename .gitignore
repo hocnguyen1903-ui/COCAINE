@@ -4,6 +4,7 @@ node_modules/
 venv/
 __pycache__/
 .git/
+.backups/
 
 # Thư mục build & cache
 dist/

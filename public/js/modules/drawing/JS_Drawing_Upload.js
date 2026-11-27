@@ -462,6 +462,7 @@
       const targetProj = uploadedProjectCodes[0] || S.selectedProjectDrawing;
       if (targetProj) {
         S.selectedProjectDrawing = targetProj;
+        if (typeof BD.syncDrawingButtonState === "function") BD.syncDrawingButtonState();
         S.currentlyRenderedProject = "";
         const projInput = document.getElementById("drawing-project-search");
         if (projInput) projInput.value = targetProj;

@@ -228,7 +228,7 @@ input.readonly-dark {
 .location-date-container:has(.different-date):hover,
 .location-date-container:has(.different-date).calendar-open {
     border-color: #2ECC71 !important;
-    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.25) !important;
+    box-shadow: 0 4px 10px rgba(46, 204, 113, 0.25) !important;
 }
 
 .location-dropdown {
@@ -295,7 +295,7 @@ html body .flatpickr-calendar .flatpickr-current-month .numInputWrapper input.cu
     width: 252px !important;
     box-sizing: border-box !important;
     margin-top: 0 !important;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.65) !important;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.65) !important;
     z-index: 1000002 !important;
 }
 

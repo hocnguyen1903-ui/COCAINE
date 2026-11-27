@@ -260,69 +260,44 @@ function findPl01RecordForItem_PL(item) {
     return null;
 }
 
-function mergePl01Matches_PL(branchPayloads, allHashTermsOrder, idxApi) {
-    if (!branchPayloads || branchPayloads.length === 0) return null;
+function mergePl01Matches_PL(branchMatches, allHashTermsOrder, idxApi) {
+    if (!branchMatches || branchMatches.length === 0) return null;
 
     const normTerm = (q) => (idxApi && typeof idxApi.normalize === "function")
         ? idxApi.normalize(q)
         : normalizeText_PL(q);
 
     const matchedByNorm = new Map();
-    const branchSummaries = [];
     let primaryMatch = null;
-
-    branchPayloads.forEach(termMatches => {
-        if (!termMatches || termMatches.length === 0) return;
-
-        let branchPct = 100;
-        let branchScore = 0;
-        termMatches.forEach(m => {
-            if (m.bestPct < branchPct) branchPct = m.bestPct;
-            branchScore += m.totalScore;
-            const nk = normTerm(m.rawQuery);
-            if (nk && !matchedByNorm.has(nk)) {
-                matchedByNorm.set(nk, m);
-            }
-            if (
-                !primaryMatch ||
-                m.bestPct > primaryMatch.bestPct ||
-                (m.bestPct === primaryMatch.bestPct && m.totalScore > primaryMatch.totalScore)
-            ) {
-                primaryMatch = m;
-            }
-        });
-
-        let branchBestCount = 0;
-        let branchHasLowerTier = false;
-        termMatches.forEach(m => {
-            if (m.bestPct === branchPct) branchBestCount += m.bestCount;
-            else if (m.bestPct < branchPct) branchHasLowerTier = true;
-            if (m.hasLowerTier) branchHasLowerTier = true;
-        });
-
-        branchSummaries.push({
-            branchPct,
-            branchBestCount,
-            branchHasLowerTier,
-            branchScore
-        });
-    });
-
-    if (!primaryMatch || branchSummaries.length === 0) return null;
-
     let bestPct = 0;
     let totalScore = 0;
-    branchSummaries.forEach(b => {
-        if (b.branchPct > bestPct) bestPct = b.branchPct;
-        totalScore += b.branchScore;
+
+    branchMatches.forEach(m => {
+        if (!m) return;
+        if (m.bestPct > bestPct) bestPct = m.bestPct;
+        totalScore += m.totalScore;
+        const nk = normTerm(m.rawQuery);
+        if (nk && !matchedByNorm.has(nk)) {
+            matchedByNorm.set(nk, m);
+        }
+        if (
+            !primaryMatch ||
+            m.bestPct > primaryMatch.bestPct ||
+            (m.bestPct === primaryMatch.bestPct && m.totalScore > primaryMatch.totalScore)
+        ) {
+            primaryMatch = m;
+        }
     });
+
+    if (!primaryMatch) return null;
 
     let bestCount = 0;
     let hasLowerTier = false;
-    branchSummaries.forEach(b => {
-        if (b.branchPct === bestPct) bestCount += b.branchBestCount;
-        else if (b.branchPct < bestPct) hasLowerTier = true;
-        if (b.branchHasLowerTier) hasLowerTier = true;
+    branchMatches.forEach(m => {
+        if (!m) return;
+        if (m.bestPct === bestPct) bestCount += m.bestCount;
+        else if (m.bestPct < bestPct) hasLowerTier = true;
+        if (m.hasLowerTier) hasLowerTier = true;
     });
 
     const rawSections = [];
@@ -437,9 +412,9 @@ function filterAndSortData_PL(query) {
 
             const allHashTermsOrder = [];
             parsedGroups.forEach(pg => {
-                pg.hashTerms.forEach(ht => {
-                    if (ht) allHashTermsOrder.push(ht);
-                });
+                if (pg.hashTerms.length === 1 && pg.hashTerms[0]) {
+                    allHashTermsOrder.push(pg.hashTerms[0]);
+                }
             });
 
             if (parsedGroups.length > 0) {
@@ -452,6 +427,8 @@ function filterAndSortData_PL(query) {
 
                     for (let gIdx = 0; gIdx < parsedGroups.length; gIdx++) {
                         const pg = parsedGroups[gIdx];
+                        if (pg.hashTerms.length > 1) continue;
+
                         const staffOk = pg.staffTerms.every(sq => sq === "" || item.staffStr.includes(sq));
                         if (!staffOk) continue;
                         const normOk = pg.normalTerms.every(nq => nq === "" || item.searchStr.includes(nq));
@@ -469,19 +446,12 @@ function filterAndSortData_PL(query) {
                         }
                         if (!pl01Record) continue;
 
-                        const termMatches = [];
-                        let allHashOk = true;
-                        for (let h = 0; h < pg.hashTerms.length; h++) {
-                            const hTerm = pg.hashTerms[h];
-                            if (!hTerm) { allHashOk = false; break; }
-                            const mRes = idxApi.matchContract(pl01Record, hTerm);
-                            if (!mRes) { allHashOk = false; break; }
-                            termMatches.push(mRes);
-                        }
-
-                        if (allHashOk && termMatches.length > 0) {
+                        const hTerm = pg.hashTerms[0];
+                        if (!hTerm) continue;
+                        const mRes = idxApi.matchContract(pl01Record, hTerm);
+                        if (mRes) {
                             groupMatched = true;
-                            matchedBranchPayloads.push(termMatches);
+                            matchedBranchPayloads.push(mRes);
                         }
                     }
 
@@ -750,9 +720,6 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
         } else if (m.bestPct === 75) {
             badgeColor = "#FFBA08";
             badgeBg = "rgba(255, 186, 8, 0.12)";
-        } else if (m.bestPct === 60) {
-            badgeColor = "#FF7A00";
-            badgeBg = "rgba(255, 122, 0, 0.12)";
         }
 
         const targetMatchFileId = fileIdH || m.fileId;

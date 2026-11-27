@@ -1079,25 +1079,39 @@ function exportFilteredToNewSheet_PL() {
 // ==========================================================================
 let touchStartX = 0;
 let touchStartY = 0;
+let touchStartTime = 0;
 let touchEndX = 0;
 let touchEndY = 0;
-let isSwipeAllowed = true;
+let isSwipeAllowed = false;
+
+function isBackgroundSwipeTarget(t) {
+    if (!t || t.nodeType !== 1) return false;
+    if (t === document.documentElement || t === document.body) return true;
+    if (t.classList.contains('tab-content')) return true;
+    if (t.id === 'drawing-inner-container' || t.classList.contains('drawing-main-layout')) return true;
+    if (t.classList.contains('form-container') && t.closest('#tab-about')) return true;
+    return false;
+}
+
+function hasBlockingOverlayOpen() {
+    if (document.querySelector('.info-modal-overlay.show, #edit-panel-pl.active, #transfer-panel-pl.active, #scan-panel-pl.active, #customContextMenu-pl.active, .flatpickr-calendar.open')) {
+        return true;
+    }
+    const overlayIds = [
+        'loginOverlay', 'loadingSystem', 'contractLoading',
+        'pl-dock-preview-panel', 'bellDropdown',
+        'drawing-delete-confirm-overlay', 'drawing-edit-confirm-overlay',
+        'data-delete-confirm-overlay', 'scan-delete-confirm-overlay',
+        'cancel-transfer-confirm-overlay'
+    ];
+    return overlayIds.some(id => {
+        const el = document.getElementById(id);
+        return el && window.getComputedStyle(el).display !== 'none';
+    });
+}
 
 document.addEventListener('touchstart', function(e) {
-    const t = e.target;
-    
-    // BỘ LỌC AN TOÀN: KHÔNG CHO PHÉP CHUYỂN TAB NẾU ĐANG CHẠM VÀO:
-    // 1. Bản đồ Mindmap (#cy)
-    // 2. Các danh sách đang cuộn (.smooth-dropdown)
-    // 3. Các bảng Modal đang mở (.active, .info-modal-content, .scan-delete-dialog)
-    if (t.closest('#cy') || 
-        t.closest('.smooth-dropdown') || 
-        t.closest('#edit-panel-pl.active') || 
-        t.closest('#transfer-panel-pl.active') || 
-        t.closest('#scan-panel-pl.active') || 
-        t.closest('.info-modal-content') || 
-        t.closest('.scan-delete-dialog')) {
-        
+    if (!e.touches || e.touches.length !== 1 || hasBlockingOverlayOpen() || !isBackgroundSwipeTarget(e.target)) {
         isSwipeAllowed = false;
         return;
     }
@@ -1105,11 +1119,18 @@ document.addEventListener('touchstart', function(e) {
     isSwipeAllowed = true;
     touchStartX = e.changedTouches[0].screenX;
     touchStartY = e.changedTouches[0].screenY;
+    touchStartTime = Date.now();
+}, {passive: true});
+
+document.addEventListener('touchcancel', function() {
+    isSwipeAllowed = false;
 }, {passive: true});
 
 document.addEventListener('touchend', function(e) {
     if (!isSwipeAllowed) return;
-    
+    isSwipeAllowed = false;
+    if (!e.changedTouches || e.changedTouches.length !== 1) return;
+
     touchEndX = e.changedTouches[0].screenX;
     touchEndY = e.changedTouches[0].screenY;
     handleMobileSwipe();
@@ -1118,28 +1139,27 @@ document.addEventListener('touchend', function(e) {
 function handleMobileSwipe() {
     const diffX = touchEndX - touchStartX;
     const diffY = touchEndY - touchStartY;
+    const absX = Math.abs(diffX);
+    const absY = Math.abs(diffY);
+    const elapsed = Date.now() - touchStartTime;
+    const minSwipeDist = Math.max(110, Math.round(window.innerWidth * 0.25));
 
-    // Chỉ kích hoạt nếu vuốt NGANG dài hơn vuốt DỌC (tránh nhầm khi người dùng cuộn lên xuống)
-    // Khoảng cách vuốt phải lớn hơn 50px (chống chạm nhầm)
-    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
-        
-        // Trình tự các Tab theo ý mày
-        const swipeSequence =['tab-hdtcxd', 'tab-plhd', 'tab-tbkq', 'tab-drawing'];
+    // Tránh lướt nhẹ / lướt chéo / giữ tay lâu: cần vuốt ngang rõ rệt và đủ dài
+    if (absX >= minSwipeDist && absX > absY * 1.6 && absY < 90 && elapsed <= 650) {
+        const swipeSequence = ['tab-hdtcxd', 'tab-plhd', 'tab-tbkq', 'tab-drawing'];
         let currentIndex = swipeSequence.indexOf(activeTabId);
 
         if (diffX < 0) {
-            // ---> VUỐT SANG TRÁI (Đi tới Tab tiếp theo)
             if (activeTabId === 'tab-about') {
-                openTab('tab-hdtcxd'); // Từ About vuốt trái -> Vào Hợp đồng
+                openTab('tab-hdtcxd');
             } else if (currentIndex !== -1 && currentIndex < swipeSequence.length - 1) {
                 openTab(swipeSequence[currentIndex + 1]);
             }
         } else {
-            // <--- VUỐT SANG PHẢI (Quay lại Tab trước đó)
             if (currentIndex > 0) {
                 openTab(swipeSequence[currentIndex - 1]);
             } else if (currentIndex === 0) {
-                openTab('tab-about'); // Đang ở Hợp đồng vuốt phải -> Trở về About
+                openTab('tab-about');
             }
         }
     }

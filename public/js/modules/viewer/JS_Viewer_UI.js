@@ -1345,7 +1345,7 @@
           sectionQuery: sec.query
         });
 
-        const tierClass = g.pct === 100 ? "tier-100" : (g.pct === 75 ? "tier-75" : (g.pct === 60 ? "tier-60" : "tier-50"));
+        const tierClass = g.pct === 100 ? "tier-100" : (g.pct === 75 ? "tier-75" : "tier-50");
         const extraHTML = g.extraLocations > 0
           ? `<span class="pl01-extra-loc">(+${g.extraLocations} vị trí khác)</span>`
           : "";

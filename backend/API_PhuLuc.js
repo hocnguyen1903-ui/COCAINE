@@ -18,9 +18,13 @@ function writeToSheetAndExportDoc_PL(data) {
     blCell.setNumberFormat("@"); 
     blCell.setValue(data.adjustmentIds || "");
 
-    SpreadsheetApp.flush(); 
+    SpreadsheetApp.flush();
 
-    const row3Data = sheet.getRange(3, 1, 1, 78).getValues()[0]; 
+    const lastCol = sheet.getLastColumn();
+    const row3Data = sheet.getRange(3, 1, 1, Math.max(78, lastCol)).getValues()[0];
+    const dataRange = sheet.getRange(2, 2, 2, lastCol - 1).getDisplayValues();
+    const placeholders = dataRange[0];
+    const replaceVals = dataRange[1];
 
     // 2. GHI SỔ THEO DÕI
     const targetSheet = ss.getSheetByName("SO HDTCXD BCONS - NTP");
@@ -36,67 +40,42 @@ function writeToSheetAndExportDoc_PL(data) {
     ]];
     targetSheet.getRange(targetRow, 2, 1, 18).setValues(valuesToWrite);
 
-    // 3. TẠO VÀ XỬ LÝ DOCS (CÓ BỘ BẢO VỆ QUYỀN TRUY CẬP DRIVEAPP)
+    // 3. TẠO VÀ XỬ LÝ DOCS (Folder đã share sẵn nên không cần gọi setSharing)
     const docTemplateId = "1S02EAglGKBo55f4TT_oMKawDyZcNF-Wl2GZRjO-e5G4";
     const selectedNDs = data.selectedNDs || [];
     const fileName = generateFileName_PL(data.field8);
 
-    let destinationFolder;
-    try {
-      destinationFolder = DriveApp.getFolderById(EXPORT_FOLDER_ID);
-    } catch(e) {
-      throw new Error("Tài khoản không có quyền truy cập Thư mục đích (EXPORT_FOLDER_ID).");
-    }
-
-    let copiedFile;
-    try {
-      copiedFile = DriveApp.getFileById(docTemplateId).makeCopy(fileName, destinationFolder);
-    } catch(e) {
-      throw new Error("Không thể nhân bản File Mẫu Phụ lục. Vui lòng kiểm tra quyền truy cập Template ID.");
-    }
-
-    // 🚀 BỌC AN TOÀN 1: Bỏ qua lỗi nếu Google Workspace chặn quyền bật Link Sharing Public
-    try {
-      copiedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); 
-    } catch(shareErr) {
-      console.warn("Bỏ qua lỗi setSharing do chính sách bảo mật Workspace chặn: " + shareErr.message);
-    }
+    const copiedFile = createExportedDocCopy_(
+      docTemplateId,
+      fileName,
+      "Tài khoản không có quyền truy cập Thư mục đích (EXPORT_FOLDER_ID).",
+      "Không thể nhân bản File Mẫu Phụ lục. Vui lòng kiểm tra quyền truy cập Template ID: "
+    );
 
     const copiedDoc = DocumentApp.openById(copiedFile.getId());
     const body = copiedDoc.getBody();
 
-    const lastCol = sheet.getLastColumn();
-    const dataRange = sheet.getRange(2, 2, 2, lastCol - 1).getDisplayValues();
-    const placeholders = dataRange[0];
-    const replaceVals = dataRange[1];
-
-    placeholders.forEach((placeholder, i) => {
-      if (placeholder && placeholder.trim().startsWith("[")) {
-        body.replaceText(escapeSpecialChars(placeholder.trim()), replaceVals[i] || "");
-      }
-    });
-    
-    const rawIds = row3Data[63] || ""; 
-    const computedIds = typeof computeAllActiveIds === "function" ? computeAllActiveIds(rawIds) : []; 
+    const rawIds = row3Data[63] || "";
+    const computedIds = typeof computeAllActiveIds === "function" ? computeAllActiveIds(rawIds) : [];
     const otherSections = row3Data.slice(64, 78).map(v => v.toString().trim()).filter(Boolean);
-    
     const validSectionsSet = new Set([...computedIds, ...otherSections, ...selectedNDs].map(String));
 
-    // Dùng hàm chung optimizeDocSections (thay cho vòng lặp cắt block trùng lặp)
+    // Xóa đoạn thừa trước để giảm số lượng replaceText cần thực thi
     optimizeDocSections(body, validSectionsSet);
+    replaceDocPlaceholders_(body, placeholders, replaceVals);
 
+    const isEmptyDoc = body.getText().trim() === "";
     copiedDoc.saveAndClose();
 
-    // 🚀 BỌC AN TOÀN 2: Bỏ qua lỗi nếu Google Shared Drive không cho phép xóa file rỗng
-    if (DocumentApp.openById(copiedFile.getId()).getBody().getText().trim() === "") {
+    if (isEmptyDoc) {
       try {
-        DriveApp.getFileById(copiedFile.getId()).setTrashed(true);
-      } catch(trashErr) {
+        copiedFile.setTrashed(true);
+      } catch (trashErr) {
         console.warn("Bỏ qua lỗi setTrashed do giới hạn quyền Shared Drive: " + trashErr.message);
       }
       return { link: "" };
     }
-    
+
     return { link: copiedFile.getUrl() };
 
   } catch (error) { 

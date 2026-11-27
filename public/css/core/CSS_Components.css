@@ -18,18 +18,18 @@
 .submit-button, .btn-primary-luxury, .btn-yes { background: #FFBA08 !important; color: #031c35 !important; }
 .btn-danger-luxury { background: #ff4d4d !important; color: white !important; }
 
-.submit-button:hover, .btn-primary-luxury:hover:not(:disabled),
-.btn-yes:hover, .btn-danger-luxury:hover {
+.submit-button:hover:not(:disabled), .btn-primary-luxury:hover:not(:disabled),
+.btn-yes:hover:not(:disabled), .btn-danger-luxury:hover:not(:disabled) {
     transform: translateY(-2px) scale(1.02) !important;
     filter: brightness(1.1);
 }
 
-.submit-button:hover, .btn-primary-luxury:hover, .btn-yes:hover {
-    box-shadow: 0 2px 10px rgba(255, 186, 8, 0.4) !important;
+.submit-button:hover:not(:disabled), .btn-primary-luxury:hover:not(:disabled), .btn-yes:hover:not(:disabled) {
+    box-shadow: 0 4px 10px rgba(255, 186, 8, 0.4) !important;
 }
 
-.btn-danger-luxury:hover {
-    box-shadow: 0 2px 10px rgba(255, 77, 77, 0.4) !important;
+.btn-danger-luxury:hover:not(:disabled) {
+    box-shadow: 0 4px 10px rgba(255, 77, 77, 0.4) !important;
 }
 
 .clear-button, .btn-secondary-luxury, .btn-no {
@@ -38,15 +38,16 @@
     border: 1px solid rgba(149, 161, 175, 0.3) !important;
 }
 
-.clear-button:hover, .btn-secondary-luxury:hover, .btn-no:hover {
+.clear-button:hover:not(:disabled), .btn-secondary-luxury:hover:not(:disabled), .btn-no:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.15) !important;
     color: white !important;
     border-color: white !important;
     transform: translateY(-2px) scale(1.02) !important;
 }
 
-.submit-button:active, .clear-button:active,
-.btn-primary-luxury:active, .btn-secondary-luxury:active, .btn-danger-luxury:active {
+.submit-button:active:not(:disabled), .clear-button:active:not(:disabled),
+.btn-primary-luxury:active:not(:disabled), .btn-secondary-luxury:active:not(:disabled),
+.btn-danger-luxury:active:not(:disabled), .btn-yes:active:not(:disabled), .btn-no:active:not(:disabled) {
     transform: scale(0.95) !important; box-shadow: none !important;
 }
 
@@ -58,13 +59,15 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
     border-radius: 8px !important; color: #95A1AF !important; font-size: 18px; cursor: pointer;
     transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1); outline: none; box-sizing: border-box;
 }
-.btn-info-luxury:hover { background: rgba(255, 255, 255, 0.15) !important; border-color: #FFBA08 !important; color: #FFBA08 !important; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4); }
+.btn-info-luxury:hover:not(:disabled) { background: rgba(255, 255, 255, 0.15) !important; border-color: #FFBA08 !important; color: #FFBA08 !important; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4); }
+.btn-info-luxury:active:not(:disabled) { transform: scale(0.95) !important; box-shadow: none !important; }
 
 .btn-close-info {
     width: 100%; margin-top: 15px; padding: 12px; background: #FFBA08 !important; color: #031c35 !important;
-    border: none; border-radius: 10px; font-weight: 800; cursor: pointer; transition: all 0.2s; letter-spacing: 1px; text-transform: uppercase;
+    border: none; border-radius: 10px; font-weight: 800; cursor: pointer; transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1); letter-spacing: 1px; text-transform: uppercase;
 }
-.btn-close-info:hover { filter: brightness(1.1); transform: translateY(-2px); box-shadow: 0 5px 15px rgba(255, 186, 8, 0.3); }
+.btn-close-info:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-2px) scale(1.02); box-shadow: 0 4px 10px rgba(255, 186, 8, 0.3); }
+.btn-close-info:active:not(:disabled) { transform: scale(0.95); box-shadow: none; }
 
 /* --- 2. FILE MANAGEMENT (EXISTING FILES & ACTIONS) --- */
 .existing-file-wrapper {
@@ -114,6 +117,11 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
     opacity: 1;
     visibility: visible;
 }
+.existing-file-action:has(button:disabled) { cursor: not-allowed; }
+.existing-file-action:has(button:disabled):hover .trash-note-pop {
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
 
 .note-download-cyan { color: #00BCD4 !important; border-color: rgba(255, 255, 255, 0.12) !important; }
 .note-remove-red { color: #ff4d4d !important; border-color: rgba(255, 255, 255, 0.12) !important; }
@@ -129,8 +137,9 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
     align-items: center;
     justify-content: center;
     outline: none !important;
-    transition: background-color 0.2s ease !important;
+    transition: background-color 0.2s ease, transform 0.15s ease !important;
 }
+.btn-trash-simple:active { transform: scale(0.92) !important; }
 
 .btn-download-cyan i { color: rgba(0, 188, 212, 0.72) !important; font-size: 18px !important; transition: color 0.2s ease; }
 .btn-download-cyan:hover { background: rgba(0, 188, 212, 0.12) !important; }
@@ -273,6 +282,11 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
     color: #ff4d4d;
     border-color: rgba(255, 77, 77, 0.45);
     background: rgba(255, 77, 77, 0.1);
+}
+
+.scan-queue-add-btn:active,
+.scan-queue-clear-btn:active {
+    transform: scale(0.95);
 }
 
 
@@ -438,7 +452,7 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
     border-radius: 12px;
     padding: 20px;
     width: 450px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.8);
 }
 
 #edit-panel-pl.active, #transfer-panel-pl.active, #scan-panel-pl.active {
@@ -532,7 +546,7 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
 
 #checklistModal, #checklistModal-pl {
     display: none; position: fixed; z-index: 100001; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    background: #222831; border: 1px solid #FFC000; border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); color: white;
+    background: #222831; border: 1px solid #FFC000; border-radius: 12px; padding: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.8); color: white;
 }
 #checklistModal-pl { width: 220px; padding: 16px 20px; border-color: rgba(255, 186, 8, 0.4); border-radius: 8px; }
 
@@ -841,7 +855,7 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
 .btn-bell-approve:hover {
     background-color: #27ae60 !important;
     transform: translateY(-1.5px);
-    box-shadow: 0 3px 10px rgba(46, 204, 113, 0.4);
+    box-shadow: 0 4px 10px rgba(46, 204, 113, 0.4);
 }
 .btn-bell-approve:active {
     transform: translateY(0.5px) scale(0.97);
@@ -850,56 +864,62 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
 .btn-bell-reject:hover {
     background-color: #c0392b !important;
     transform: translateY(-1.5px);
-    box-shadow: 0 3px 10px rgba(231, 76, 60, 0.4);
+    box-shadow: 0 4px 10px rgba(231, 76, 60, 0.4);
 }
 .btn-bell-reject:active {
     transform: translateY(0.5px) scale(0.97);
 }
 
-/* --- 8. NÚT ĐÓNG (X) ĐỒNG BỘ TOÀN HỆ THỐNG --- */
-.btn-close-x {
+/* --- 8. NÚT ICON HÀNH ĐỘNG NHỎ ĐỒNG BỘ TOÀN HỆ THỐNG --- */
+.btn-close-x,
+.btn-icon-edit,
+.btn-icon-sync,
+.btn-icon-delete {
     background: none !important;
     border: none !important;
-    color: rgba(255, 255, 255, 0.65) !important;
     cursor: pointer !important;
-    font-size: 16px !important;
-    padding: 2px 4px !important;
     line-height: 1 !important;
     border-radius: 4px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     flex-shrink: 0;
-    transition: color 0.2s ease, background-color 0.2s ease !important;
+    transition: color 0.2s ease, background-color 0.2s ease, transform 0.15s ease !important;
 }
 
-.btn-close-x:hover {
+.btn-close-x {
+    color: rgba(255, 255, 255, 0.65) !important;
+    font-size: 16px !important;
+    padding: 2px 4px !important;
+}
+
+.btn-close-x:hover:not(:disabled) {
     color: #ff4d4d !important;
     background: rgba(255, 77, 77, 0.12) !important;
     transform: none !important;
 }
 
 .btn-icon-edit,
+.btn-icon-sync,
 .btn-icon-delete {
-    background: none !important;
-    border: none !important;
-    cursor: pointer !important;
     padding: 3px 4px !important;
-    line-height: 1 !important;
-    border-radius: 4px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex-shrink: 0;
-    transition: color 0.2s ease, background-color 0.2s ease !important;
+}
+
+.btn-icon-edit,
+.btn-icon-sync {
+    color: rgba(255, 186, 8, 0.72) !important;
 }
 
 .btn-icon-edit {
-    color: rgba(255, 186, 8, 0.72) !important;
     font-size: 15px !important;
 }
 
-.btn-icon-edit:hover {
+.btn-icon-sync {
+    font-size: 19.2px !important;
+}
+
+.btn-icon-edit:hover:not(:disabled),
+.btn-icon-sync:hover:not(:disabled) {
     color: #FFBA08 !important;
     background: rgba(255, 186, 8, 0.14) !important;
     transform: none !important;
@@ -910,8 +930,15 @@ button:disabled { opacity: 0.2 !important; cursor: not-allowed !important; filte
     font-size: 14.5px !important;
 }
 
-.btn-icon-delete:hover {
+.btn-icon-delete:hover:not(:disabled) {
     color: #ff4d4d !important;
     background: rgba(255, 77, 77, 0.12) !important;
     transform: none !important;
+}
+
+.btn-close-x:active:not(:disabled),
+.btn-icon-edit:active:not(:disabled),
+.btn-icon-sync:active:not(:disabled),
+.btn-icon-delete:active:not(:disabled) {
+    transform: scale(0.92) !important;
 }

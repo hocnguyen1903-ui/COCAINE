@@ -485,7 +485,7 @@
   }
 
   // =========================================================================
-  // PL01 YEARLY SHARDED INDEX CACHE & 4-TIER SEARCH ENGINE
+  // PL01 YEARLY SHARDED INDEX CACHE & 3-TIER SEARCH ENGINE
   // =========================================================================
   const PL01_STOP_WORDS = new Set(["va", "cac", "tai", "theo"]);
   const PL01_ADMIN_BIGRAMS = new Set([
@@ -732,14 +732,42 @@
     return runSync;
   }
 
-  function matchSinglePl01Record(record, rawQuery) {
-    const cleanQ = normalizePl01SearchStr(rawQuery);
-    if (!cleanQ) return null;
+  function parsePl01Query(rawQuery) {
+    const raw = String(rawQuery || "").trim();
+    const quoteMatch = /"([^"]+)"/.exec(raw);
+    let hasKey = false;
+    let keyTokens = [];
+    let orderedTokens = [];
+    let extraEntries = [];
+    let keyStartIdxInQ = -1;
 
-    const qTokens = cleanQ.split(" ").filter(Boolean);
+    if (quoteMatch) {
+      keyTokens = normalizePl01SearchStr(quoteMatch[1]).split(" ").filter(Boolean);
+      if (keyTokens.length > 0) {
+        hasKey = true;
+        const beforeTokens = normalizePl01SearchStr(raw.slice(0, quoteMatch.index)).split(" ").filter(Boolean);
+        const afterTokens = normalizePl01SearchStr(raw.slice(quoteMatch.index + quoteMatch[0].length)).split(" ").filter(Boolean);
+        keyStartIdxInQ = beforeTokens.length;
+        orderedTokens = [...beforeTokens, ...keyTokens, ...afterTokens];
+        beforeTokens.forEach((tok, idx) => extraEntries.push({ tok, qIdx: idx }));
+        const afterOffset = beforeTokens.length + keyTokens.length;
+        afterTokens.forEach((tok, idx) => extraEntries.push({ tok, qIdx: afterOffset + idx }));
+      }
+    }
+
+    if (!hasKey) {
+      orderedTokens = normalizePl01SearchStr(raw).split(" ").filter(Boolean);
+    }
+
+    return { hasKey, keyTokens, keyStartIdxInQ, extraEntries, qTokens: orderedTokens };
+  }
+
+  function matchSinglePl01Record(record, rawQuery) {
+    const parsed = parsePl01Query(rawQuery);
+    const { hasKey, keyTokens, keyStartIdxInQ, extraEntries, qTokens } = parsed;
     const nQ = qTokens.length;
     if (nQ === 0) return null;
-    if (nQ === 1 && qTokens[0].length < 3) return null;
+    if (!hasKey && nQ === 1 && qTokens[0].length < 3) return null;
 
     const lastIdx = nQ - 1;
     const allEntries = qTokens.map((tok, idx) => ({ tok, qIdx: idx }));
@@ -748,9 +776,17 @@
     const isLastTokenIdx = (qIdx) => (qIdx === lastIdx);
     const tokenMatchesAt = (lineTok, qTok, qIdx) =>
       isLastTokenIdx(qIdx) ? lineTok.startsWith(qTok) : (lineTok === qTok);
+    const keyTokenMatchesAt = (lineTok, kTok, kIdx) => {
+      const qIdx = keyStartIdxInQ + kIdx;
+      return (isLastTokenIdx(qIdx) && kTok.length >= 3)
+        ? lineTok.startsWith(kTok)
+        : (lineTok === kTok);
+    };
     const tokenMatchesExact = (lineTok, qTok) => lineTok === qTok;
-    const padNeedleAt = (qTok, qIdx) =>
-      isLastTokenIdx(qIdx) ? (" " + qTok) : (" " + qTok + " ");
+    const padNeedleAt = (qTok, qIdx, requireMinPrefixLen = false) => {
+      const usePrefix = isLastTokenIdx(qIdx) && (!requireMinPrefixLen || qTok.length >= 3);
+      return usePrefix ? (" " + qTok) : (" " + qTok + " ");
+    };
 
     const activeQ = activeEntries.map(e => e.tok);
     const minLineHits = (nQ <= 2) ? 1 : Math.max(2, Math.ceil(activeQ.length * 0.6));
@@ -768,56 +804,117 @@
 
     for (let pIdx = 0; pIdx < record.pages.length; pIdx++) {
       const page = record.pages[pIdx];
-      let pageHasAny = false;
-      for (let qIdx = 0; qIdx < checkEntries.length; qIdx++) {
-        const ce = checkEntries[qIdx];
-        if (page.pagePadNorm.includes(padNeedleAt(ce.tok, ce.qIdx))) {
-          pageHasAny = true;
-          break;
+      if (hasKey) {
+        let pageHasKey = true;
+        for (let k = 0; k < keyTokens.length; k++) {
+          if (!page.pagePadNorm.includes(padNeedleAt(keyTokens[k], keyStartIdxInQ + k, true))) {
+            pageHasKey = false;
+            break;
+          }
         }
+        if (!pageHasKey) continue;
+      } else {
+        let pageHasAny = false;
+        for (let qIdx = 0; qIdx < checkEntries.length; qIdx++) {
+          const ce = checkEntries[qIdx];
+          if (page.pagePadNorm.includes(padNeedleAt(ce.tok, ce.qIdx))) {
+            pageHasAny = true;
+            break;
+          }
+        }
+        if (!pageHasAny) continue;
       }
-      if (!pageHasAny) continue;
 
       for (let lIdx = 0; lIdx < page.lines.length; lIdx++) {
         const block = page.lines[lIdx];
 
-        let candidateHits = 0;
-        for (let qIdx = 0; qIdx < checkEntries.length; qIdx++) {
-          const ce = checkEntries[qIdx];
-          if (block.padNorm.includes(padNeedleAt(ce.tok, ce.qIdx))) candidateHits++;
+        if (hasKey) {
+          let lineHasKeyTokens = true;
+          for (let k = 0; k < keyTokens.length; k++) {
+            if (!block.padNorm.includes(padNeedleAt(keyTokens[k], keyStartIdxInQ + k, true))) {
+              lineHasKeyTokens = false;
+              break;
+            }
+          }
+          if (!lineHasKeyTokens) continue;
+        } else {
+          let candidateHits = 0;
+          for (let qIdx = 0; qIdx < checkEntries.length; qIdx++) {
+            const ce = checkEntries[qIdx];
+            if (block.padNorm.includes(padNeedleAt(ce.tok, ce.qIdx))) candidateHits++;
+          }
+          if (candidateHits < minLineHits) continue;
         }
-        if (candidateHits < minLineHits) continue;
 
         const bTokens = tokenizeRawLineWithOffsets(block.raw);
         if (bTokens.length === 0) continue;
 
-        // TẦNG 100% (1 TỪ >= 3 ký tự: khớp chuẩn hoặc tiền tố đều đạt 100%)
-        if (nQ === 1) {
-          const qt = qTokens[0];
-          for (let ti = 0; ti < bTokens.length; ti++) {
-            if (tokenMatchesAt(bTokens[ti].norm, qt, 0)) {
-              const isExact = tokenMatchesExact(bTokens[ti].norm, qt);
-              const keyText = block.raw.slice(bTokens[ti].start, bTokens[ti].end);
+        let keyRanges = null;
+        if (hasKey) {
+          keyRanges = [];
+          const nKey = keyTokens.length;
+          for (let ti = 0; ti <= bTokens.length - nKey; ti++) {
+            let seqOk = true;
+            for (let k = 0; k < nKey; k++) {
+              if (!keyTokenMatchesAt(bTokens[ti + k].norm, keyTokens[k], k)) {
+                seqOk = false;
+                break;
+              }
+            }
+            if (seqOk) keyRanges.push({ start: ti, end: ti + nKey - 1 });
+          }
+          if (keyRanges.length === 0) continue; // Chốt chặn bắt buộc phải có key liền mạch
+        }
+
+        // TẦNG 100% (1 TỪ HOẶC CHỈ CÓ KEY KHÔNG TỪ PHỤ)
+        if (nQ === 1 || (hasKey && extraEntries.length === 0)) {
+          if (hasKey) {
+            for (let ki = 0; ki < keyRanges.length; ki++) {
+              const kr = keyRanges[ki];
+              const keyText = block.raw.slice(bTokens[kr.start].start, bTokens[kr.end].end);
+              const matchedNorms = bTokens.slice(kr.start, kr.end + 1).map(t => t.norm);
+              const isLastExact = tokenMatchesExact(bTokens[kr.end].norm, keyTokens[keyTokens.length - 1]);
               rawMatches.push({
                 pct: 100,
                 keyText: keyText,
-                normKey: bTokens[ti].norm,
+                normKey: normalizePl01SearchStr(keyText),
                 pageNum: page.pageNum,
                 contextLine: block.raw,
-                matchedWords: [bTokens[ti].norm],
-                score: isExact ? 106 : 105
+                matchedWords: matchedNorms,
+                score: isLastExact ? (101 + keyTokens.length) : (100 + keyTokens.length)
               });
+            }
+          } else {
+            const qt = qTokens[0];
+            for (let ti = 0; ti < bTokens.length; ti++) {
+              if (tokenMatchesAt(bTokens[ti].norm, qt, 0)) {
+                const isExact = tokenMatchesExact(bTokens[ti].norm, qt);
+                const keyText = block.raw.slice(bTokens[ti].start, bTokens[ti].end);
+                rawMatches.push({
+                  pct: 100,
+                  keyText: keyText,
+                  normKey: bTokens[ti].norm,
+                  pageNum: page.pageNum,
+                  contextLine: block.raw,
+                  matchedWords: [bTokens[ti].norm],
+                  score: isExact ? 106 : 105
+                });
+              }
             }
           }
           continue;
         }
 
-        // TẦNG 100% (CỤM TỪ >= 2 TỪ): Khớp liền mạch đúng thứ tự (từ trước từ cuối khớp trọn vẹn, từ cuối khớp tiền tố)
+        // TẦNG 100% (CỤM TỪ >= 2 TỪ): Khớp liền mạch đúng thứ tự
         let foundTier1 = false;
         for (let ti = 0; ti <= bTokens.length - nQ; ti++) {
           let seqOk = true;
           for (let k = 0; k < nQ; k++) {
-            if (!tokenMatchesAt(bTokens[ti + k].norm, qTokens[k], k)) {
+            const inKey = hasKey && k >= keyStartIdxInQ && k < keyStartIdxInQ + keyTokens.length;
+            const ok = inKey
+              ? keyTokenMatchesAt(bTokens[ti + k].norm, keyTokens[k - keyStartIdxInQ], k - keyStartIdxInQ)
+              : tokenMatchesAt(bTokens[ti + k].norm, qTokens[k], k);
+            if (!ok) {
               seqOk = false;
               break;
             }
@@ -840,7 +937,153 @@
         }
         if (foundTier1) continue;
 
-        // TÌM TẤT CẢ VỊ TRÍ XUẤT HIỆN CỦA TỪNG TỪ KHÓA TRONG BLOCK Ô
+        // TẦNG 75%: Đủ 100% số từ trong Ô Hạng mục VÀ thỏa mãn Span <= 2N
+        if (hasKey) {
+          const extraPosMap = [];
+          let allExtrasPresent = true;
+          for (let ei = 0; ei < extraEntries.length; ei++) {
+            const ee = extraEntries[ei];
+            const posArr = [];
+            for (let ti = 0; ti < bTokens.length; ti++) {
+              if (tokenMatchesAt(bTokens[ti].norm, ee.tok, ee.qIdx)) posArr.push(ti);
+            }
+            if (posArr.length === 0) allExtrasPresent = false;
+            extraPosMap.push(posArr);
+          }
+
+          if (allExtrasPresent) {
+            let bestIndices = null;
+            let bestMatchedNorms = null;
+            let minSpan = Infinity;
+
+            for (let ki = 0; ki < keyRanges.length; ki++) {
+              const kr = keyRanges[ki];
+              const used = new Set();
+              for (let p = kr.start; p <= kr.end; p++) used.add(p);
+
+              const picked = [];
+              let valid = true;
+              const mid = (kr.start + kr.end) / 2;
+              for (let ei = 0; ei < extraPosMap.length; ei++) {
+                let bestPos = -1;
+                let bestDist = Infinity;
+                for (let pi = 0; pi < extraPosMap[ei].length; pi++) {
+                  const pos = extraPosMap[ei][pi];
+                  if (used.has(pos)) continue;
+                  const dist = Math.abs(pos - mid);
+                  if (dist < bestDist) {
+                    bestDist = dist;
+                    bestPos = pos;
+                  }
+                }
+                if (bestPos === -1) { valid = false; break; }
+                used.add(bestPos);
+                picked.push(bestPos);
+              }
+
+              if (valid) {
+                const lo = Math.min(kr.start, ...picked);
+                const hi = Math.max(kr.end, ...picked);
+                const span = hi - lo + 1;
+                if (span <= maxAllowedSpan && span < minSpan) {
+                  minSpan = span;
+                  bestIndices = [lo, hi];
+                  bestMatchedNorms = [
+                    ...bTokens.slice(kr.start, kr.end + 1).map(t => t.norm),
+                    ...picked.map(pos => bTokens[pos].norm)
+                  ];
+                }
+              }
+            }
+
+            if (bestIndices) {
+              const [lo, hi] = bestIndices;
+              const keyText = block.raw.slice(bTokens[lo].start, bTokens[hi].end);
+              rawMatches.push({
+                pct: 75,
+                keyText: keyText,
+                normKey: normalizePl01SearchStr(keyText),
+                pageNum: page.pageNum,
+                contextLine: block.raw,
+                matchedWords: bestMatchedNorms || qTokens.slice(),
+                score: 78 - Math.min(3, minSpan - nQ)
+              });
+              continue;
+            }
+          }
+
+          // TẦNG 50% (KHI CÓ KEY): Đã chắc chắn khớp Key, thiếu hoặc xa từ phụ
+          const extraHitsAll = [];
+          for (let ei = 0; ei < extraEntries.length; ei++) {
+            const ee = extraEntries[ei];
+            if (ee.tok.length < 2 || PL01_STOP_WORDS.has(ee.tok)) continue;
+            const allowPrefix = isLastTokenIdx(ee.qIdx) && ee.tok.length >= 3;
+            for (let ti = 0; ti < bTokens.length; ti++) {
+              const hit = allowPrefix
+                ? bTokens[ti].norm.startsWith(ee.tok)
+                : (bTokens[ti].norm === ee.tok);
+              if (hit) {
+                extraHitsAll.push({ pos: ti, tok: ee.tok, actualNorm: bTokens[ti].norm, weight: tokenWeight(ee.tok) });
+              }
+            }
+          }
+
+          let bestKr = keyRanges[0];
+          let bestStart = bestKr.start;
+          let bestEnd = bestKr.end;
+          let bestScore = -1;
+          let bestMatchedSet = new Set(bTokens.slice(bestKr.start, bestKr.end + 1).map(t => t.norm));
+
+          for (let ki = 0; ki < keyRanges.length; ki++) {
+            const kr = keyRanges[ki];
+            const seenAll = new Set();
+            const seenNearby = new Set();
+            const actualMatched = new Set(bTokens.slice(kr.start, kr.end + 1).map(t => t.norm));
+            let totalExtraW = 0;
+            let lo = kr.start;
+            let hi = kr.end;
+
+            for (let hiIdx = 0; hiIdx < extraHitsAll.length; hiIdx++) {
+              const eh = extraHitsAll[hiIdx];
+              if (eh.pos >= kr.start && eh.pos <= kr.end) continue;
+              if (!seenAll.has(eh.tok)) {
+                seenAll.add(eh.tok);
+                totalExtraW += eh.weight;
+              }
+              actualMatched.add(eh.actualNorm);
+
+              const candLo = Math.min(lo, eh.pos);
+              const candHi = Math.max(hi, eh.pos);
+              if ((candHi - candLo + 1) <= maxAllowedSpan) {
+                lo = candLo;
+                hi = candHi;
+                seenNearby.add(eh.tok);
+              }
+            }
+
+            const candScore = seenNearby.size * 10 + seenAll.size * 5 + totalExtraW - (hi - lo);
+            if (candScore > bestScore) {
+              bestScore = candScore;
+              bestStart = lo;
+              bestEnd = hi;
+              bestMatchedSet = actualMatched;
+            }
+          }
+
+          const keyText = block.raw.slice(bTokens[bestStart].start, bTokens[bestEnd].end);
+          rawMatches.push({
+            pct: 50,
+            keyText: keyText,
+            normKey: normalizePl01SearchStr(keyText),
+            pageNum: page.pageNum,
+            contextLine: block.raw,
+            matchedWords: Array.from(bestMatchedSet),
+            score: 50 + Math.min(20, Math.max(0, bestScore))
+          });
+          continue;
+        }
+
+        // TÌM TẤT CẢ VỊ TRÍ XUẤT HIỆN CỦA TỪNG TỪ KHÓA TRONG BLOCK Ô (KHÔNG CÓ KEY)
         const qPosMap = [];
         let allTokensPresent = true;
         for (let k = 0; k < nQ; k++) {
@@ -908,7 +1151,7 @@
           }
         }
 
-        // TẦNG 60% (>= 3 TỪ) HOẶC TẦNG 50% (2 TỪ): Khớp 1 phần số từ VÀ thỏa mãn Span <= 2N
+        // TẦNG 50%: Khớp 1 phần số từ VÀ thỏa mãn Span <= 2N
         const matchedHits = [];
         for (let k = 0; k < activeEntries.length; k++) {
           const ae = activeEntries[k];
@@ -965,18 +1208,14 @@
 
           if (bestSubRun) {
             const keyText = block.raw.slice(bTokens[bestSubRun.startPos].start, bTokens[bestSubRun.endPos].end);
-            const isHalf = (nQ === 2 && bestSubRun.distinctQCount === 1);
-            const tierPct = isHalf ? 50 : 60;
-            const baseScore = isHalf ? 50 : 60;
-
             rawMatches.push({
-              pct: tierPct,
+              pct: 50,
               keyText: keyText,
               normKey: normalizePl01SearchStr(keyText),
               pageNum: page.pageNum,
               contextLine: block.raw,
               matchedWords: bestSubRun.matchedWords,
-              score: baseScore + Math.min(14, bestSubRun.totalW)
+              score: 50 + Math.min(20, bestSubRun.distinctQCount * 3 + bestSubRun.totalW)
             });
           }
         }

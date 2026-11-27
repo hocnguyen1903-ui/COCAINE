@@ -34,7 +34,7 @@
   flex-shrink: 0;
   overflow: hidden;
   contain: layout style;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45) !important;
 }
 
 /* ĐỒNG BỘ THANH CUỘN LUXURY VÀNG GOLD 6PX CHO KHUNG PREVIEW */
@@ -346,7 +346,7 @@
   align-items: center;
   justify-content: center;
   line-height: 1;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.15s ease;
 }
 
 #pl-dock-preview-panel #btn-prev {
@@ -358,14 +358,8 @@
   color: #FFBA08;
 }
 
-#pl-dock-preview-panel .nav-arrow-btn:disabled {
-  opacity: 0.25;
-  cursor: not-allowed;
-}
-
-#pl-dock-preview-panel .nav-arrow-btn:hover:not(:disabled) {
-  background: rgba(255, 186, 8, 0.25);
-  color: #FFBA08;
+#pl-dock-preview-panel .nav-arrow-btn:active:not(:disabled) {
+  transform: scale(0.92);
 }
 
 #pl-dock-preview-panel .nav-arrow-btn:disabled {
@@ -384,13 +378,17 @@
   letter-spacing: 0.6px;
   line-height: 1;
   padding: 5px 9px;
-  transition: background 0.2s, color 0.2s;
+  transition: background 0.2s, color 0.2s, transform 0.15s ease;
   user-select: none;
 }
 
 #pl-dock-preview-panel .prv-btn:hover {
   background: #FFBA08;
   color: #031c35;
+}
+
+#pl-dock-preview-panel .prv-btn:active {
+  transform: scale(0.95);
 }
 
 /* 5. THANH ĐIỀU KHIỂN NỔI (CAPSULE FLOATING BAR) */
@@ -414,7 +412,7 @@
   gap: 4px;
   z-index: 60;
   user-select: none;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
 }
 
 #pl-dock-preview-panel .floating-control-bar span {
@@ -445,7 +443,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: background 0.15s, color 0.15s, opacity 0.2s, width 0.2s, margin 0.2s;
+  transition: background 0.15s, color 0.15s, opacity 0.2s, width 0.2s, margin 0.2s, transform 0.15s ease;
 }
 
 #pl-dock-preview-panel .capsule-btn.is-hidden {
@@ -460,6 +458,10 @@
 #pl-dock-preview-panel .capsule-btn:hover {
   background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
+}
+
+#pl-dock-preview-panel .capsule-btn:active {
+  transform: scale(0.92);
 }
 
 #pl-dock-preview-panel .page-jump-input {
@@ -612,13 +614,21 @@
   justify-content: center;
   font-size: 9px;
   flex-shrink: 0;
-  transition: background-color 0.18s ease, transform 0.18s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.15s ease;
+}
+
+#pl-dock-preview-panel .pl01-variants-btn i {
+  transition: transform 0.18s ease;
 }
 
 #pl-dock-preview-panel .pl01-variants-btn:hover,
 #pl-dock-preview-panel .pl01-variants-btn.open {
   background: rgba(255, 186, 8, 0.3);
   border-color: #FFBA08;
+}
+
+#pl-dock-preview-panel .pl01-variants-btn:active {
+  transform: scale(0.92);
 }
 
 #pl-dock-preview-panel .pl01-variants-btn.open i {
@@ -706,11 +716,6 @@
 #pl-dock-preview-panel .pl01-tier-badge.tier-75 {
   color: #FFBA08;
   background: rgba(255, 186, 8, 0.12);
-}
-
-#pl-dock-preview-panel .pl01-tier-badge.tier-60 {
-  color: #FF7A00;
-  background: rgba(255, 122, 0, 0.12);
 }
 
 #pl-dock-preview-panel .pl01-tier-badge.tier-50 {

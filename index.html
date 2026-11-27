@@ -398,7 +398,7 @@
                     <div id="dropdown-field0-pl" class="smooth-dropdown"></div>
 
                     <div id="edit-panel-pl"
-                        style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); width: 700px; height: 360px; background: #031c35; border: 1px solid #FFBA08; border-radius: 12px; z-index: 1001; display: none; flex-direction: column; box-shadow: 0 0 10px rgba(0,0,0,0.5); overflow: hidden;">
+                        style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); width: 700px; height: 360px; background: #031c35; border: 1px solid #FFBA08; border-radius: 12px; z-index: 1001; display: none; flex-direction: column; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5); overflow: hidden;">
                         <div
                             style="display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);">
                             <div id="ep-header-title" style="line-height: 1.3;"></div>
@@ -444,7 +444,7 @@
                     </div>
 
                     <div id="transfer-panel-pl"
-                        style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); width: 700px; background: #031c35; border: 1px solid #FFBA08; border-radius: 12px; z-index: 1001; display: none; flex-direction: column; box-shadow: 0 0 10px rgba(0,0,0,0.5); overflow: hidden;">
+                        style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); width: 700px; background: #031c35; border: 1px solid #FFBA08; border-radius: 12px; z-index: 1001; display: none; flex-direction: column; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5); overflow: hidden;">
                         <div
                             style="display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);">
                             <div id="tp-header-title" style="line-height: 1.4;"></div>
@@ -481,7 +481,7 @@
                         </div>
                     </div>
                     <div id="scan-panel-pl"
-                        style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); width: 700px; background: #031c35; border: 1px solid #FFBA08; border-radius: 12px; z-index: 1002; display: none; flex-direction: column; box-shadow: 0 0 10px rgba(0,0,0,0.5); overflow: hidden;">
+                        style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); width: 700px; background: #031c35; border: 1px solid #FFBA08; border-radius: 12px; z-index: 1002; display: none; flex-direction: column; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5); overflow: hidden;">
 
                         <div
                             style="display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);">
@@ -753,8 +753,12 @@
                                     onkeydown="if(event.key==='Enter') executeCategorySearch(this.value)"
                                     onclick="this.select()" autocomplete="off">
                             </div>
-                            <button id="btn-sync-drawing" class="btn-sync-box" onclick="syncManual()"
-                                title="Làm mới dữ liệu"><i class="bi bi-arrow-repeat"></i></button>
+                            <div class="existing-file-action"
+                                style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0;">
+                                <button type="button" id="btn-sync-drawing" class="btn-icon-sync"
+                                    onclick="syncManual()" disabled><i class="bi bi-arrow-repeat"></i></button>
+                                <div class="trash-note-pop">Sync</div>
+                            </div>
                         </div>
                     </div>
 
@@ -1132,7 +1136,7 @@
                     style="flex: 1; height: 44px; border-radius: 10px !important; font-size: 13px; font-weight: bold;"
                     onclick="cancelDeleteDrawing_Client()">CANCEL</button>
                 <button type="button" class="btn-danger-luxury"
-                    style="flex: 1; height: 44px; background: #ff4d4d !important; border-radius: 10px !important; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);"
+                    style="flex: 1; height: 44px; background: #ff4d4d !important; border-radius: 10px !important; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 10px rgba(255, 77, 77, 0.3);"
                     id="confirmDeleteDrawingBtn">CONFIRM</button>
             </div>
         </div>
@@ -1188,7 +1192,7 @@
                     style="flex: 1; height: 44px; border-radius: 10px !important; font-size: 13px; font-weight: bold;"
                     onclick="closeDataDeleteModal()">CANCEL</button>
                 <button type="button" class="btn-danger-luxury"
-                    style="flex: 1; height: 44px; background: #ff4d4d !important; border-radius: 10px !important; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);"
+                    style="flex: 1; height: 44px; background: #ff4d4d !important; border-radius: 10px !important; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 10px rgba(255, 77, 77, 0.3);"
                     onclick="executeActualDeleteData_PL()">CONFIRM</button>
             </div>
         </div>
@@ -1216,7 +1220,7 @@
                     style="flex: 1; height: 44px; border-radius: 10px !important; font-size: 13px; font-weight: bold;"
                     onclick="cancelDeleteScan_PL()">CANCEL</button>
                 <button type="button" class="btn-danger-luxury"
-                    style="flex: 1; height: 44px; background: #ff4d4d !important; border-radius: 10px !important; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(255, 77, 77, 0.3);"
+                    style="flex: 1; height: 44px; background: #ff4d4d !important; border-radius: 10px !important; color: white; font-weight: bold; font-size: 13px; box-shadow: 0 4px 10px rgba(255, 77, 77, 0.3);"
                     onclick="executeActualDelete_PL()">CONFIRM</button>
             </div>
         </div>
@@ -1270,6 +1274,134 @@
     <script src="public/js/modules/viewer/JS_Viewer_Pipeline.js"></script>
     <script src="public/js/modules/viewer/JS_Viewer_UI.js"></script>
 
+    <!-- DEV AUTO-RELOAD (Chỉ chạy trên localhost / 127.0.0.1, tự tắt khi deploy GitHub Pages) -->
+    <script>
+        (function () {
+            const host = window.location.hostname;
+            const isLocal = (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]");
+            const isHttp = (window.location.protocol === "http:" || window.location.protocol === "https:");
+            if (!isLocal || !isHttp) return;
+
+            const targets = [window.location.pathname || "/index.html"];
+            document.querySelectorAll('link[rel="stylesheet"][href^="public/"], script[src^="public/"]').forEach(el => {
+                const u = el.getAttribute("href") || el.getAttribute("src");
+                if (u && !targets.includes(u)) targets.push(u);
+            });
+
+            const baseline = new Map();
+            const forceGet = new Set();
+            let checking = false;
+            let reloadTimer = null;
+
+            function hashText(str) {
+                let h = 2166136261;
+                for (let i = 0; i < str.length; i++) {
+                    h ^= str.charCodeAt(i);
+                    h = Math.imul(h, 16777619);
+                }
+                return (h >>> 0).toString(16) + ":" + str.length;
+            }
+
+            async function fingerprint(url) {
+                if (!forceGet.has(url)) {
+                    const res = await fetch(url, { method: "HEAD", cache: "no-store" });
+                    if (res.ok) {
+                        const etag = res.headers.get("etag") || "";
+                        const lm = res.headers.get("last-modified") || "";
+                        const cl = res.headers.get("content-length") || "";
+                        if (etag || lm) return `H|${etag}|${lm}|${cl}`;
+                    }
+                    forceGet.add(url);
+                }
+                const res = await fetch(url, { method: "GET", cache: "no-store" });
+                if (!res.ok) return null;
+                let txt = await res.text();
+                if (url === targets[0]) {
+                    txt = txt.replace(/<script[^>]*___vscode_livepreview[^>]*>[\s\S]*?<\/script>/gi, "");
+                }
+                return "G|" + hashText(txt);
+            }
+
+            async function initBaseline() {
+                await Promise.all(targets.map(async (u) => {
+                    try {
+                        const fp = await fingerprint(u);
+                        if (fp) baseline.set(u, fp);
+                    } catch (_) {}
+                }));
+            }
+
+            async function checkUpdates() {
+                if (checking || reloadTimer) return;
+                checking = true;
+                try {
+                    const changed = [];
+                    await Promise.all(targets.map(async (u) => {
+                        try {
+                            const fp = await fingerprint(u);
+                            if (!fp) return;
+                            const prev = baseline.get(u);
+                            if (prev && prev !== fp) {
+                                changed.push(u);
+                            } else if (!prev) {
+                                baseline.set(u, fp);
+                            }
+                        } catch (_) {}
+                    }));
+
+                    if (changed.length > 0) {
+                        reloadTimer = setTimeout(() => {
+                            Promise.all(changed.map(u => fetch(u, { cache: "reload" }).catch(() => {})))
+                                .finally(() => window.location.reload());
+                        }, 300);
+                    }
+                } finally {
+                    checking = false;
+                }
+            }
+
+            initBaseline().then(() => {
+                setInterval(checkUpdates, 1500);
+            });
+
+            // SHOW PREVIEW ZOOM (Chỉ chạy bên trong iframe Show Preview ở localhost; không chạy trên trình duyệt ngoài / GitHub Pages)
+            const isInPreviewFrame = (window.self !== window.top) || Boolean(document.querySelector('script[src*="___vscode_livepreview"]'));
+            if (!isInPreviewFrame) return;
+
+            const ZOOM_KEY = "__ken_dev_preview_zoom";
+            let prvZoom = parseFloat(sessionStorage.getItem(ZOOM_KEY) || "1");
+            if (isNaN(prvZoom) || prvZoom < 0.5 || prvZoom > 1.5) prvZoom = 1;
+
+            function applyPreviewZoom(nextZoom) {
+                prvZoom = Math.round(Math.max(0.5, Math.min(1.5, nextZoom)) * 100) / 100;
+                document.documentElement.style.zoom = prvZoom === 1 ? "" : String(prvZoom);
+                try { sessionStorage.setItem(ZOOM_KEY, String(prvZoom)); } catch (_) {}
+            }
+
+            if (prvZoom !== 1) applyPreviewZoom(prvZoom);
+
+            window.addEventListener("wheel", (e) => {
+                if (!e.altKey || e.ctrlKey || e.metaKey) return;
+                e.preventDefault();
+                applyPreviewZoom(prvZoom + (e.deltaY < 0 ? 0.05 : -0.05));
+            }, { passive: false });
+
+            window.addEventListener("keydown", (e) => {
+                if (!e.altKey || e.ctrlKey || e.metaKey) return;
+                if (e.key === "=" || e.key === "+") {
+                    e.preventDefault();
+                    applyPreviewZoom(prvZoom + 0.05);
+                } else if (e.key === "-" || e.key === "_") {
+                    e.preventDefault();
+                    applyPreviewZoom(prvZoom - 0.05);
+                } else if (e.key === "0") {
+                    e.preventDefault();
+                    applyPreviewZoom(1);
+                }
+            });
+        })();
+    </script>
+
     <!-- KHUNG PREVIEW DOCK BÊN PHẢI (BCONS NATIVE VIEWER) -->
     <div id="pl-dock-preview-panel">
         <div class="dock-preview-header">
@@ -1299,7 +1431,7 @@
             </div>
 
             <div class="dock-preview-actions" style="margin-left: 10px;">
-                <button type="button" onclick="closePreviewModal_PL()" title="Đóng preview (ESC)">
+                <button type="button" class="btn-close-x" onclick="closePreviewModal_PL()" title="Đóng preview (ESC)">
                     <i class="bi bi-x-lg"></i>
                 </button>
             </div>

@@ -1,0 +1,67 @@
+{
+  "auto-backup": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "edit_file|write_file|replace_file_content|write_to_file|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node backup-hook.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "safety-gate": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command|read_file|view_file|edit_file|write_file|replace_file_content|write_to_file|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node safety-hook.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "syntax-guard": {
+    "enabled": true,
+    "PostToolUse": [
+      {
+        "matcher": "edit_file|write_file|replace_file_content|write_to_file|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node post-edit-hook.js",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
+  "session-context": {
+    "enabled": true,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node session-start-hook.js",
+        "timeout": 10
+      }
+    ]
+  },
+  "stop-verify": {
+    "enabled": true,
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node stop-verify-hook.js",
+        "timeout": 15
+      }
+    ]
+  }
+}
