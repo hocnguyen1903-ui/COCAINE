@@ -7,7 +7,9 @@ function readStdinJson() {
   return new Promise((resolve) => {
     let raw = "";
     process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => { raw += chunk; });
+    process.stdin.on("data", (chunk) => {
+      raw += chunk;
+    });
     process.stdin.on("end", () => {
       try {
         resolve(raw.trim() ? JSON.parse(raw) : {});
@@ -21,8 +23,8 @@ function readStdinJson() {
 function getWorkspaceRoot(payload) {
   return path.resolve(
     (payload && Array.isArray(payload.workspacePaths) && payload.workspacePaths[0]) ||
-    (payload && payload.cwd) ||
-    path.resolve(__dirname, "..")
+      (payload && payload.cwd) ||
+      path.resolve(__dirname, "..")
   );
 }
 
@@ -75,9 +77,70 @@ function checkFileSyntax(filePath) {
   return null;
 }
 
+const IGNORED_TOP_DIRS = new Set([".backups", ".git", "node_modules", ".vscode"]);
+const IGNORED_BASENAMES = new Set(["package-lock.json", "dump_du_lieu.txt"]);
+const FORMATTABLE_EXTS = new Set([".js", ".mjs", ".cjs", ".css", ".html", ".htm", ".json", ".md"]);
+
+function isIgnoredRelPath(relPath) {
+  if (!relPath) return true;
+  const parts = relPath.split(/[\\/]/);
+  if (IGNORED_TOP_DIRS.has(parts[0])) return true;
+  const base = path.basename(relPath);
+  if (IGNORED_BASENAMES.has(base)) return true;
+  if (/\.min\.(js|css)$/i.test(base) || /\.log$/i.test(base)) return true;
+  return false;
+}
+
+function isFormattableFile(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return FORMATTABLE_EXTS.has(ext);
+}
+
+function findPrettierBin(workspaceRoot) {
+  const binName = process.platform === "win32" ? "prettier.cmd" : "prettier";
+  const localBin = path.join(workspaceRoot, "node_modules", ".bin", binName);
+  if (fs.existsSync(localBin)) return localBin;
+
+  try {
+    execFileSync(binName, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return binName;
+  } catch (_) {
+    return null;
+  }
+}
+
+function formatFileWithPrettier(filePath, workspaceRoot) {
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return { ok: true, skipped: true, reason: "not-a-file" };
+  }
+  if (!isFormattableFile(filePath)) {
+    return { ok: true, skipped: true, reason: "unsupported-ext" };
+  }
+  const prettierBin = findPrettierBin(workspaceRoot);
+  if (!prettierBin) {
+    return { ok: false, skipped: true, reason: "prettier-not-installed" };
+  }
+
+  try {
+    execFileSync(prettierBin, ["--write", filePath], {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: process.platform === "win32"
+    });
+    return { ok: true, skipped: false };
+  } catch (err) {
+    return { ok: false, skipped: false, reason: (err.stderr || err.message || "Prettier failed").trim() };
+  }
+}
+
 module.exports = {
   readStdinJson,
   getWorkspaceRoot,
   isSubPath,
-  checkFileSyntax
+  checkFileSyntax,
+  isIgnoredRelPath,
+  isFormattableFile,
+  findPrettierBin,
+  formatFileWithPrettier
 };

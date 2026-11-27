@@ -1,0 +1,10 @@
+#!/bin/sh
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "[pre-commit] Khong tim thay node, bo qua format/kiem tra." >&2
+  exit 0
+fi
+
+ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+exec node "$ROOT_DIR/.githooks/pre-commit.js"

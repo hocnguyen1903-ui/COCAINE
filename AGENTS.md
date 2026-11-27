@@ -24,6 +24,8 @@
   - `viewer/JS_Viewer_{State,Search,Pipeline,UI}.js`: PDF reader, invisible text layer, AI search, PL01 page jump.
 - `public/css/`: `core/` (`CSS_Base`, `CSS_Forms`, `CSS_Components`), `modules/` (`CSS_Tab_PL`, `CSS_Viewer`, `CSS_Drawing`).
 - `gdp.js`, `watch-gas.js`: clasp push/deploy scripts.
+- `.agents/`: Antigravity lifecycle hooks (`hooks.json`, `format-hook.js`, `post-edit-hook.js`, `backup-hook.js`, `safety-hook.js`, `session-start-hook.js`, `stop-verify-hook.js`, `hook-utils.js`).
+- `.githooks/`: Git hooks (`pre-commit`, `pre-commit.js`) + `.prettierrc.json`, `.prettierignore`.
 
 ## 3. Token-Saving Rules (MANDATORY)
 
@@ -47,6 +49,7 @@
 - **Frontend:** open `index.html` with VS Code Live Server (or GitHub Pages).
 - **Deploy backend:** `node gdp.js` (runs `npx clasp push`; updates the fixed deployment only if code changed).
 - **Auto-push on save:** `node watch-gas.js`.
+- **Format code:** `npm run format` / `npm run format:check` (cần `npm install` để cài Prettier; tự chạy qua `PostToolUse` và Git `pre-commit`).
 - **Tests:** none; verify manually in the relevant tab after reload.
 
 ## 6. Conventions & Safety
@@ -61,6 +64,6 @@
 
 ## 7. Current Work / Handoff (update before switching machines)
 
-- **Recent changes:** Updated `#` PL01 search to support 1 mandatory `"key"` phrase per `#` (`parsePl01Query` + key gate in `matchSinglePl01Record` in `public/js/modules/viewer/JS_Viewer_State.js`) and simplified match tiers to 3 levels `100% / 75% / 50%` with green/yellow/red badges (`JS_Tab_PL_Core.js`, `JS_Viewer_UI.js`, `CSS_Viewer.css`). Verified with `node --check` and Node unit snippet.
-- **In progress:** Pending manual verification in `tab-plhd` in browser and git commit/push for uncommitted local changes.
+- **Recent changes:** Refactored dashboard drag-and-drop in `tab-plhd` to Contract-only batch auto-upload (`AUTO-UPLOAD FILE` via `openBatchScanPanel_PL`): removed per-row `Up file here` hints (`JS_Tab_PL_Core.js`) and per-row dragover, added whole-frame border highlight `#dropdown-field0-pl.dashboard-file-dragover` (`CSS_Tab_PL.css`), added filename-based matching by `(project, contractNo, year)` with English statuses `OK` / `DUPLICATE` / `NOT FOUND` (`JS_Tab_PL_Files.js`, `CSS_Components.css`) blocking upload when any file is `DUPLICATE` or `NOT FOUND`, smoothed post-upload collapse animations (`removeScanFile_PL`, `hideScanProgress_PL`), and simplified delete progress toast (`"⏳ Đang xóa file, vui lòng đợi..."`). Verified with `node --check` and Node unit tests (`ALL NO-REPLACE CHECKS PASSED`).
+- **In progress:** Pending manual browser verification in `tab-plhd`, backend `clasp` deploy check (if `backend/API_PhuLuc.js` / `backend/API_Viewer.js` changes aren't deployed yet), and git commit/push for uncommitted local changes.
 - **Known issues:** none

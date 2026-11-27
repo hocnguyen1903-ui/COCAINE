@@ -6,7 +6,10 @@ const VIEWER_CHUNK_SIZE = 2500000;
 const VIEWER_RAW_PER_CHUNK = (VIEWER_CHUNK_SIZE / 4) * 3;
 
 function getJsonCacheName_Viewer_(fileName) {
-  const cleanBase = (fileName || "").normalize("NFC").replace(/\.pdf$/i, "").trim();
+  const cleanBase = (fileName || "")
+    .normalize("NFC")
+    .replace(/\.pdf$/i, "")
+    .trim();
   return "[Số hóa] " + (cleanBase || "TaiLieu") + ".json";
 }
 
@@ -44,15 +47,19 @@ function getDriveCacheFast(fileId, fileName) {
     const scriptCache = CacheService.getScriptCache();
     const folder = getFolderForFile_Viewer_(fileId);
     const targetJsonName = getJsonCacheName_Viewer_(fileName);
-    const cleanBase = (fileName || "").normalize("NFC").replace(/\.pdf$/i, "").trim();
+    const cleanBase = (fileName || "")
+      .normalize("NFC")
+      .replace(/\.pdf$/i, "")
+      .trim();
 
     let targetFile = findFileByName_Viewer_(folder, targetJsonName);
     if (!targetFile) {
       targetFile = findFileByName_Viewer_(folder, targetJsonName.normalize("NFD"));
     }
     if (!targetFile && cleanBase) {
-      targetFile = findFileByName_Viewer_(folder, cleanBase + ".json") ||
-                   findFileByName_Viewer_(folder, (cleanBase + ".json").normalize("NFD"));
+      targetFile =
+        findFileByName_Viewer_(folder, cleanBase + ".json") ||
+        findFileByName_Viewer_(folder, (cleanBase + ".json").normalize("NFD"));
     }
 
     if (targetFile) {
@@ -202,7 +209,7 @@ function callCloudVisionApiBatch(imagesBase64Array) {
 
     for (let i = 0; i < imagesBase64Array.length; i += MAX_VISION_BATCH) {
       const slice = imagesBase64Array.slice(i, i + MAX_VISION_BATCH);
-      const requests = slice.map(function(b64) {
+      const requests = slice.map(function (b64) {
         return {
           image: { content: String(b64).replace(/^data:image\/\w+;base64,/, "") },
           features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
@@ -227,7 +234,7 @@ function callCloudVisionApiBatch(imagesBase64Array) {
       }
     }
 
-    return allResponses.map(function(resp) {
+    return allResponses.map(function (resp) {
       if (!resp || !resp.fullTextAnnotation || !resp.fullTextAnnotation.pages) {
         return { words: [], rotation: 0 };
       }
@@ -236,13 +243,20 @@ function callCloudVisionApiBatch(imagesBase64Array) {
       const imgW = pObj.width || 0;
       const imgH = pObj.height || 0;
 
-      let angle0 = 0, angle90 = 0, angle180 = 0, angle270 = 0;
+      let angle0 = 0,
+        angle90 = 0,
+        angle180 = 0,
+        angle270 = 0;
       const rawWords = [];
 
-      pObj.blocks.forEach(function(b) {
-        b.paragraphs.forEach(function(p) {
-          p.words.forEach(function(w) {
-            const str = w.symbols.map(function(s) { return s.text; }).join("");
+      pObj.blocks.forEach(function (b) {
+        b.paragraphs.forEach(function (p) {
+          p.words.forEach(function (w) {
+            const str = w.symbols
+              .map(function (s) {
+                return s.text;
+              })
+              .join("");
             const trimmedStr = str.trim();
             if (
               trimmedStr.length === 1 &&
@@ -265,7 +279,10 @@ function callCloudVisionApiBatch(imagesBase64Array) {
               }
             }
 
-            let minX = null, minY = null, maxX = null, maxY = null;
+            let minX = null,
+              minY = null,
+              maxX = null,
+              maxY = null;
             for (let i = 0; i < v.length; i++) {
               const vx = v[i].x || 0;
               const vy = v[i].y || 0;
@@ -299,8 +316,11 @@ function callCloudVisionApiBatch(imagesBase64Array) {
       else if (detectedAngle === 270) pdfRotation = 90;
       else if (detectedAngle === 180) pdfRotation = 180;
 
-      const correctedWords = rawWords.map(function(w) {
-        let nx = w.x, ny = w.y, nw = w.w, nh = w.h;
+      const correctedWords = rawWords.map(function (w) {
+        let nx = w.x,
+          ny = w.y,
+          nw = w.w,
+          nh = w.h;
 
         if (pdfRotation === 270) {
           nx = w.y;
@@ -320,7 +340,7 @@ function callCloudVisionApiBatch(imagesBase64Array) {
         return { str: w.str, x: nx, y: ny, w: nw, h: nh };
       });
 
-      const cleanWords = correctedWords.filter(function(cw) {
+      const cleanWords = correctedWords.filter(function (cw) {
         const s = (cw.str || "").trim();
         if (s.length !== 1 || !/^[A-Za-zÀ-ỹ]$/.test(s)) return true;
         const area = Math.max(1, cw.w * cw.h);
@@ -391,9 +411,7 @@ function getPdfBase64Chunk(fileId, chunkIndex) {
 // =========================================================================
 
 function getIndexRootFolderId_Viewer_() {
-  return (typeof ROOT_FOLDER_ID !== "undefined" && ROOT_FOLDER_ID)
-    ? ROOT_FOLDER_ID
-    : "1SmlwbdIfTTQAaGTl2sEtRU-KFEYmx9Xc";
+  return typeof ROOT_FOLDER_ID !== "undefined" && ROOT_FOLDER_ID ? ROOT_FOLDER_ID : "1SmlwbdIfTTQAaGTl2sEtRU-KFEYmx9Xc";
 }
 
 function getIndexFileName_Viewer_(year) {
@@ -486,7 +504,8 @@ function isCrossColumnBoundary_Viewer_(items, leftIt, rightIt) {
   const leftRaw = (leftIt.str || "").trim();
   if (
     gap > Math.max(7, avgH * 0.75) &&
-    leftRaw && !/\d/.test(leftRaw) &&
+    leftRaw &&
+    !/\d/.test(leftRaw) &&
     (isStandaloneNumberOrMoney_Viewer_(rightRaw) || isUnitCell_Viewer_(rightRaw))
   ) {
     return true;
@@ -506,7 +525,7 @@ function isCrossColumnBoundary_Viewer_(items, leftIt, rightIt) {
     const yDiff = Math.abs(t.y - yCenter);
     if (yDiff > 5 && yDiff <= 120) {
       distinctY.add(Math.round(t.y / 6));
-      if (t.w <= avgH * 14 && t.x < midX - 1.5 && (t.x + t.w) > midX + 1.5) crossingWords++;
+      if (t.w <= avgH * 14 && t.x < midX - 1.5 && t.x + t.w > midX + 1.5) crossingWords++;
       const tEnd = t.x + t.w;
       const tCenter = (t.x + tEnd) / 2;
       if (
@@ -531,9 +550,9 @@ function isCrossColumnBoundary_Viewer_(items, leftIt, rightIt) {
 function filterOcrNoiseTokens_Viewer_(items) {
   if (!items || items.length < 3) return items;
 
-  const hs = items.map(it => it.h || 10).sort((a, b) => a - b);
+  const hs = items.map((it) => it.h || 10).sort((a, b) => a - b);
   const medH = hs[Math.floor(hs.length / 2)] || 10;
-  const ys = items.map(it => it.y || 0).sort((a, b) => a - b);
+  const ys = items.map((it) => it.y || 0).sort((a, b) => a - b);
   const medY = ys[Math.floor(ys.length / 2)] || 0;
 
   return items.filter((cur, idx) => {
@@ -547,8 +566,8 @@ function filterOcrNoiseTokens_Viewer_(items) {
     const curH = Math.max(1, cur.h || 1);
 
     // 1. Bị từ liền trước hoặc liền sau chồng lấn hộp tọa độ >= 35% bề rộng (OCR đọc lặp nét)
-    const overlapPrev = (prev.x + prev.w) - cur.x;
-    const overlapNext = (cur.x + curW) - next.x;
+    const overlapPrev = prev.x + prev.w - cur.x;
+    const overlapNext = cur.x + curW - next.x;
     if (overlapPrev >= curW * 0.35 || overlapNext >= curW * 0.35) return false;
 
     // 2. Chiều cao nhỏ bất thường (< 55% chuẩn dòng) -> vết mực/bụi scan
@@ -570,35 +589,57 @@ function isDimensionOrNumericCell_Viewer_(rawText) {
     .replace(/\s+/g, " ")
     .trim();
   if (!norm) return true;
-  return /^(?:(?:[øφdwhlr]|phi)\s*)?-?\d+(?:[.,]\d+)?(?:\s*(?:mm|cm|dm|m|m2|m3|md|kg|tan|lit|%))?(?:\s*(?:[x×*\/\-–—±+]|(?:\+-))\s*(?:(?:[øφdwhlr]|phi)\s*)?-?\d+(?:[.,]\d+)?(?:\s*(?:mm|cm|dm|m|m2|m3|md|kg|tan|lit|%))?)*$/.test(norm);
+  return /^(?:(?:[øφdwhlr]|phi)\s*)?-?\d+(?:[.,]\d+)?(?:\s*(?:mm|cm|dm|m|m2|m3|md|kg|tan|lit|%))?(?:\s*(?:[x×*\/\-–—±+]|(?:\+-))\s*(?:(?:[øφdwhlr]|phi)\s*)?-?\d+(?:[.,]\d+)?(?:\s*(?:mm|cm|dm|m|m2|m3|md|kg|tan|lit|%))?)*$/.test(
+    norm
+  );
 }
 
 function isUnitCell_Viewer_(rawText) {
   if (!rawText) return true;
-  const norm = removeDiacriticsLower_Viewer_(rawText).replace(/[.\s]+/g, " ").trim();
+  const norm = removeDiacriticsLower_Viewer_(rawText)
+    .replace(/[.\s]+/g, " ")
+    .trim();
   if (!norm || /^[-–—]+$/.test(norm)) return true;
-  return /^(m|m2|m3|md|mm|cm|dm|km|kg|tan|lit|l|bo|cai|chiec|cay|tam|vien|cuon|thung|bao|cap|doi|he|ht|he thong|goi|tron goi|lan|phan|diem|cum|can|tang|o|lo|truc|vi tri|cong|ngay|thang|nam|ca|gio|set|pcs|ea|lot|item|unit|m2\/lop|m2\/mat|m\/lop)$/.test(norm);
+  return /^(m|m2|m3|md|mm|cm|dm|km|kg|tan|lit|l|bo|cai|chiec|cay|tam|vien|cuon|thung|bao|cap|doi|he|ht|he thong|goi|tron goi|lan|phan|diem|cum|can|tang|o|lo|truc|vi tri|cong|ngay|thang|nam|ca|gio|set|pcs|ea|lot|item|unit|m2\/lop|m2\/mat|m\/lop)$/.test(
+    norm
+  );
 }
 
 function isExcludedColumnHeader_Viewer_(headerNorm) {
   if (!headerNorm) return false;
-  const h = headerNorm.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const h = headerNorm
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!h) return false;
   // Bảo vệ tuyệt đối các cột mô tả văn bản kỹ thuật
-  if (/(noi dung|hang muc|dien giai|ten cong tac|ten vat tu|thong so|chung loai|mo ta|xuat xu|nhan hieu|thuong hieu|nha san xuat|vi tri|khu vuc)/.test(h)) {
+  if (
+    /(noi dung|hang muc|dien giai|ten cong tac|ten vat tu|thong so|chung loai|mo ta|xuat xu|nhan hieu|thuong hieu|nha san xuat|vi tri|khu vuc)/.test(
+      h
+    )
+  ) {
     return false;
   }
   if (/^(stt|tt|so tt|ma|ma so|ma hieu|ma cv|code)$/.test(h)) return true;
   if (/\b(dvt|don vi|don vi tinh|unit)\b/.test(h)) return true;
-  if (/(khoi luong|so luong|\bkl\b|\bsl\b|dien tich|the tich|trong luong|so bo|so cai|so tang|so can|he so)/.test(h)) return true;
-  if (/(don gia|thanh tien|gia tri|vat lieu|nhan cong|may thi cong|chi phi|tong cong|tong gia|\bdg\b|\bvl\b|\bnc\b|\bmtc\b|\bvat\b)/.test(h)) return true;
-  if (/(kich thuoc|chieu rong|chieu cao|chieu day|chieu dai|duong kinh|\brong\b|\bcao\b|\bday\b|\bdai\b|\bkt\b)/.test(h)) return true;
+  if (/(khoi luong|so luong|\bkl\b|\bsl\b|dien tich|the tich|trong luong|so bo|so cai|so tang|so can|he so)/.test(h))
+    return true;
+  if (
+    /(don gia|thanh tien|gia tri|vat lieu|nhan cong|may thi cong|chi phi|tong cong|tong gia|\bdg\b|\bvl\b|\bnc\b|\bmtc\b|\bvat\b)/.test(
+      h
+    )
+  )
+    return true;
+  if (
+    /(kich thuoc|chieu rong|chieu cao|chieu day|chieu dai|duong kinh|\brong\b|\bcao\b|\bday\b|\bdai\b|\bkt\b)/.test(h)
+  )
+    return true;
   return false;
 }
 
 function isTableHeaderLine_Viewer_(lineCells) {
   if (!lineCells || lineCells.length < 3) return false;
-  const joined = removeDiacriticsLower_Viewer_(lineCells.map(c => c.text).join(" "));
+  const joined = removeDiacriticsLower_Viewer_(lineCells.map((c) => c.text).join(" "));
   let hits = 0;
   if (/\bstt\b/.test(joined)) hits++;
   if (/(noi dung|hang muc|dien giai|ten vat tu|thong so|chung loai)/.test(joined)) hits++;
@@ -619,13 +660,13 @@ function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPa
     multiCellRows++;
   }
 
-  const maxCellW = multiCellRows > 3 ? pageW * 0.50 : pageW * 0.65;
+  const maxCellW = multiCellRows > 3 ? pageW * 0.5 : pageW * 0.65;
   for (let r = 0; r < rowCellLists.length; r++) {
     const cells = rowCellLists[r];
     if (cells.length < 2) continue;
     for (let c = 0; c < cells.length; c++) {
       const cell = cells[c];
-      if ((cell.xEnd - cell.x) > maxCellW) continue;
+      if (cell.xEnd - cell.x > maxCellW) continue;
       const bStart = Math.max(0, Math.floor(cell.x / BIN_PX));
       const bEnd = Math.min(numBins - 1, Math.floor(cell.xEnd / BIN_PX));
       for (let b = bStart; b <= bEnd; b++) bins[b]++;
@@ -635,7 +676,7 @@ function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPa
   if (headerCells && headerCells.length >= 2) {
     for (let c = 0; c < headerCells.length; c++) {
       const cell = headerCells[c];
-      if ((cell.xEnd - cell.x) > pageW * 0.45) continue;
+      if (cell.xEnd - cell.x > pageW * 0.45) continue;
       const bStart = Math.max(0, Math.floor(cell.x / BIN_PX));
       const bEnd = Math.min(numBins - 1, Math.floor(cell.xEnd / BIN_PX));
       for (let b = bStart; b <= bEnd; b++) bins[b] += 1;
@@ -648,7 +689,10 @@ function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPa
     let bandStart = 0;
     for (let b = 0; b < numBins; b++) {
       if (bins[b] > floor) {
-        if (!inBand) { inBand = true; bandStart = b; }
+        if (!inBand) {
+          inBand = true;
+          bandStart = b;
+        }
       } else if (inBand) {
         raw.push({ minX: bandStart * BIN_PX, maxX: b * BIN_PX });
         inBand = false;
@@ -658,7 +702,7 @@ function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPa
 
     const merged = [];
     for (let i = 0; i < raw.length; i++) {
-      if (merged.length > 0 && (raw[i].minX - merged[merged.length - 1].maxX) < 4) {
+      if (merged.length > 0 && raw[i].minX - merged[merged.length - 1].maxX < 4) {
         merged[merged.length - 1].maxX = raw[i].maxX;
       } else {
         merged.push({ minX: raw[i].minX, maxX: raw[i].maxX });
@@ -667,9 +711,7 @@ function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPa
     return merged;
   };
 
-  const noiseFloor = multiCellRows >= 6
-    ? Math.max(2, Math.floor(multiCellRows * 0.14))
-    : (multiCellRows >= 3 ? 1 : 0);
+  const noiseFloor = multiCellRows >= 6 ? Math.max(2, Math.floor(multiCellRows * 0.14)) : multiCellRows >= 3 ? 1 : 0;
   let bands = extractMergedBands(noiseFloor);
 
   if (bands.length === 0 && noiseFloor > 0) {
@@ -683,7 +725,7 @@ function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPa
 
     for (let bi = 0; bi < bands.length; bi++) {
       const band = bands[bi];
-      const innerHeaders = sortedHeaders.filter(hc => {
+      const innerHeaders = sortedHeaders.filter((hc) => {
         const cx = (hc.x + hc.xEnd) / 2;
         return cx >= band.minX - 6 && cx <= band.maxX + 6;
       });
@@ -697,7 +739,7 @@ function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPa
       for (let hi = 0; hi < innerHeaders.length - 1; hi++) {
         const hLeft = innerHeaders[hi];
         const hRight = innerHeaders[hi + 1];
-        if ((hRight.x - hLeft.xEnd) < 6) continue;
+        if (hRight.x - hLeft.xEnd < 6) continue;
 
         const searchStartB = Math.max(0, Math.floor((hLeft.xEnd - 2) / BIN_PX));
         const searchEndB = Math.min(numBins - 1, Math.ceil((hRight.x + 2) / BIN_PX));
@@ -745,7 +787,7 @@ function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPa
 
   if (bands.length === 0 || (bands.length === 1 && prevPageCols && prevPageCols.length >= 3 && !headerCells)) {
     if (prevPageCols && prevPageCols.length > 0) {
-      return prevPageCols.map(c => ({
+      return prevPageCols.map((c) => ({
         minX: c.minX,
         maxX: c.maxX,
         boundLeft: c.boundLeft,
@@ -773,17 +815,20 @@ function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPa
     for (let h = 0; h < headerCells.length; h++) {
       const hc = headerCells[h];
       const cx = (hc.x + hc.xEnd) / 2;
-      let target = cols.find(col => cx >= col.boundLeft && cx <= col.boundRight);
+      let target = cols.find((col) => cx >= col.boundLeft && cx <= col.boundRight);
       if (!target) {
         let bestDist = Infinity;
         for (let ci = 0; ci < cols.length; ci++) {
           const d = Math.abs(cx - (cols[ci].minX + cols[ci].maxX) / 2);
-          if (d < bestDist) { bestDist = d; target = cols[ci]; }
+          if (d < bestDist) {
+            bestDist = d;
+            target = cols[ci];
+          }
         }
       }
       if (target) {
         const norm = removeDiacriticsLower_Viewer_(hc.text);
-        target.headerNorm = target.headerNorm ? (target.headerNorm + " " + norm) : norm;
+        target.headerNorm = target.headerNorm ? target.headerNorm + " " + norm : norm;
       }
     }
   } else if (prevPageCols && prevPageCols.length > 0) {
@@ -795,7 +840,10 @@ function detectColumnsFromCells_Viewer_(rowCellLists, headerCells, pageW, prevPa
       for (let pi = 0; pi < prevPageCols.length; pi++) {
         const pc = prevPageCols[pi];
         const ov = Math.min(col.maxX, pc.maxX) - Math.max(col.minX, pc.minX);
-        if (ov > bestOv) { bestOv = ov; bestPrev = pc; }
+        if (ov > bestOv) {
+          bestOv = ov;
+          bestPrev = pc;
+        }
       }
       if (bestPrev && bestOv >= Math.min(col.maxX - col.minX, bestPrev.maxX - bestPrev.minX) * 0.45) {
         col.headerNorm = bestPrev.headerNorm || "";
@@ -812,7 +860,7 @@ function extractBlocksForColumn_Viewer_(col, pageW) {
 
   const getRowEndX = (r) => {
     const last = r.items[r.items.length - 1];
-    return last ? (last.x + last.w) : r.x;
+    return last ? last.x + last.w : r.x;
   };
 
   const endXs = [];
@@ -851,9 +899,8 @@ function extractBlocksForColumn_Viewer_(col, pageW) {
   for (let rIdx = 0; rIdx < preparedRows.length; rIdx++) {
     const rObj = preparedRows[rIdx];
     const yGap = rObj.baselineY - prevRowBaselineY;
-    const refStep = pageBaseStep > 0
-      ? Math.max(prevRowAvgH * 1.05, Math.min(pageBaseStep, prevRowAvgH * 1.55))
-      : prevRowAvgH * 1.3;
+    const refStep =
+      pageBaseStep > 0 ? Math.max(prevRowAvgH * 1.05, Math.min(pageBaseStep, prevRowAvgH * 1.55)) : prevRowAvgH * 1.3;
 
     const isSameCellGap = yGap > 0 && yGap <= refStep * 1.35;
     const conflictsStt = curBlockHasStt && rObj.hasStt;
@@ -867,16 +914,26 @@ function extractBlocksForColumn_Viewer_(col, pageW) {
       const firstWordStr = (firstWord.str || "").trim();
       const firstChar = firstWordStr.charAt(0);
       const isVvStart = /^v\s*\.\s*v\b/i.test(firstWordStr);
-      const startsWithUpper = !isVvStart && firstChar !== "" && firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase();
+      const startsWithUpper =
+        !isVvStart &&
+        firstChar !== "" &&
+        firstChar === firstChar.toUpperCase() &&
+        firstChar !== firstChar.toLowerCase();
       const prevEndedJoiner = /[-–—,(/:+]$/.test(prevLastStr);
       const remainingSpace = colRightEdge - prevEndX;
 
-      if (!prevEndedJoiner && startsWithUpper && remainingSpace > (firstWord.w + Math.max(10, prevRowAvgH * 1.5))) {
+      if (!prevEndedJoiner && startsWithUpper && remainingSpace > firstWord.w + Math.max(10, prevRowAvgH * 1.5)) {
         wordWrapBroken = true;
       }
     }
 
-    const isContinuation = isSameCellGap && !conflictsStt && !headingBoundary && !wordWrapBroken && curBlockLineCount > 0 && curBlockLineCount < 6;
+    const isContinuation =
+      isSameCellGap &&
+      !conflictsStt &&
+      !headingBoundary &&
+      !wordWrapBroken &&
+      curBlockLineCount > 0 &&
+      curBlockLineCount < 6;
 
     if (isContinuation) {
       curBlockItems.push(...rObj.items);
@@ -905,7 +962,8 @@ function extractCleanPl01PagesFromManifest_(manifest) {
   const apStart = Number(manifest.appendixStartPage);
   if (!apStart || apStart > total) return [];
 
-  const INLINE_UNIT_NEXT_RE = /^(canh|lop|lot|phu|tang|phut|gio|ngay|thang|nam|bo|chiec|cai|mat|ben|loai|phan|dot|mm|cm|m|m2|m3|md|kg|tan|lit|ong|vien|tam|thanh|cay|soi|cuon|thung|bao|cap|doi|he|bac|buoc)$/;
+  const INLINE_UNIT_NEXT_RE =
+    /^(canh|lop|lot|phu|tang|phut|gio|ngay|thang|nam|bo|chiec|cai|mat|ben|loai|phan|dot|mm|cm|m|m2|m3|md|kg|tan|lit|ong|vien|tam|thanh|cay|soi|cuon|thung|bao|cap|doi|he|bac|buoc)$/;
   const STT_CELL_RE = /^(?:\d{1,4}(?:\.\d{1,2}){0,2}|[IVX]{1,4}|[A-Z]\d{0,2}|[a-z])[.)]?$/i;
 
   const resultPages = [];
@@ -914,7 +972,7 @@ function extractCleanPl01PagesFromManifest_(manifest) {
 
   for (let pIdx = 0; pIdx < manifest.pages.length; pIdx++) {
     const p = manifest.pages[pIdx];
-    const pNum = Number(p.pageNum) || (pIdx + 1);
+    const pNum = Number(p.pageNum) || pIdx + 1;
     if (pNum < apStart || !Array.isArray(p.textItems) || p.textItems.length === 0) continue;
 
     const pageW = Number(p.width) || 595;
@@ -934,7 +992,7 @@ function extractCleanPl01PagesFromManifest_(manifest) {
     }
 
     if (normItems.length === 0) continue;
-    normItems.sort((a, b) => (a.topY - b.topY) || (a.x - b.x));
+    normItems.sort((a, b) => a.topY - b.topY || a.x - b.x);
 
     // 1. Gom các từ nằm trên cùng 1 dòng ngang
     const lines = [];
@@ -966,7 +1024,10 @@ function extractCleanPl01PagesFromManifest_(manifest) {
       let curCell = null;
       for (let k = 0; k < row.length; k++) {
         const curIt = row[k];
-        if (curIt.str === "|") { curCell = null; continue; }
+        if (curIt.str === "|") {
+          curCell = null;
+          continue;
+        }
         if (!curCell) {
           curCell = [curIt];
           rawCells.push(curCell);
@@ -991,11 +1052,14 @@ function extractCleanPl01PagesFromManifest_(manifest) {
         items = filterOcrNoiseTokens_Viewer_(items);
         if (items.length === 0) continue;
 
-        const text = items.map(t => t.str).join(" ").trim();
+        const text = items
+          .map((t) => t.str)
+          .join(" ")
+          .trim();
         if (!text) continue;
 
         const avgH = items.reduce((sum, it) => sum + it.h, 0) / items.length;
-        const baselines = items.map(it => pageH - it.y).sort((a, b) => a - b);
+        const baselines = items.map((it) => pageH - it.y).sort((a, b) => a - b);
         const baselineY = baselines[Math.floor(baselines.length / 2)];
         const x = items[0].x;
         const lastIt = items[items.length - 1];
@@ -1026,7 +1090,7 @@ function extractCleanPl01PagesFromManifest_(manifest) {
         parsedLineCells.splice(0, headerLineIdx + 1);
       } else {
         while (parsedLineCells.length > 0) {
-          const firstRaw = removeDiacriticsLower_Viewer_(parsedLineCells[0].map(c => c.text).join(" "));
+          const firstRaw = removeDiacriticsLower_Viewer_(parsedLineCells[0].map((c) => c.text).join(" "));
           if (/^phu luc hop dong\b|^(?:cong trinh|hang muc|goi thau|chu dau tu|dia diem)\s*:/.test(firstRaw)) {
             parsedLineCells.shift();
           } else {
@@ -1075,7 +1139,7 @@ function extractCleanPl01PagesFromManifest_(manifest) {
       while (lc.length > 0) {
         const c0 = lc[0];
         const c0Compact = c0.text.replace(/\s+/g, "");
-        const inSttZone = (c0.x < sttColMaxX) && (c0.xEnd <= sttColMaxX + 8 || lc.length > 1);
+        const inSttZone = c0.x < sttColMaxX && (c0.xEnd <= sttColMaxX + 8 || lc.length > 1);
         if (inSttZone && (STT_CELL_RE.test(c0Compact) || /^[.)]$/.test(c0Compact))) {
           lineHasStt = true;
           if (/^(?:[IVX]{1,4}|[A-Z])[.)]?$/.test(c0Compact)) lineIsGroupStt = true;
@@ -1113,7 +1177,10 @@ function extractCleanPl01PagesFromManifest_(manifest) {
           items: firstItems,
           x: firstItems[0].x,
           xEnd: firstItems[firstItems.length - 1].x + firstItems[firstItems.length - 1].w,
-          text: firstItems.map(t => t.str).join(" ").trim()
+          text: firstItems
+            .map((t) => t.str)
+            .join(" ")
+            .trim()
         });
       }
 
@@ -1123,8 +1190,13 @@ function extractCleanPl01PagesFromManifest_(manifest) {
     if (strippedLines.length === 0) continue;
 
     // Dựng các cột vật lý của trang (Histogram vách ngăn) sau khi đã loại sạch STT
-    const inheritPrev = (prevPageCols && Math.abs(pageW - prevPageW) <= 25) ? prevPageCols : null;
-    const cols = detectColumnsFromCells_Viewer_(strippedLines.map(sl => sl.cells), headerCells, pageW, inheritPrev);
+    const inheritPrev = prevPageCols && Math.abs(pageW - prevPageW) <= 25 ? prevPageCols : null;
+    const cols = detectColumnsFromCells_Viewer_(
+      strippedLines.map((sl) => sl.cells),
+      headerCells,
+      pageW,
+      inheritPrev
+    );
     const detectedColCount = cols.length;
 
     for (let l = 0; l < strippedLines.length; l++) {
@@ -1132,7 +1204,7 @@ function extractCleanPl01PagesFromManifest_(manifest) {
 
       // Dự phòng nếu trang không tách được >= 3 cột: lọc bỏ từng cell là ĐVT/số liệu và giữ các cell chữ tách cột riêng
       if (detectedColCount <= 2 && lineCells.length >= 2) {
-        const textCells = lineCells.filter(cell => {
+        const textCells = lineCells.filter((cell) => {
           const cellText = (cell.text || "").trim();
           if (!cellText) return false;
           if (isUnitCell_Viewer_(cellText) || isDimensionOrNumericCell_Viewer_(cellText)) return false;
@@ -1141,7 +1213,14 @@ function extractCleanPl01PagesFromManifest_(manifest) {
         });
         textCells.forEach((cell, tIdx) => {
           while (cols.length <= tIdx) {
-            cols.push({ minX: cell.x, maxX: cell.xEnd, boundLeft: cell.x, boundRight: cell.xEnd, headerNorm: "", rows: [] });
+            cols.push({
+              minX: cell.x,
+              maxX: cell.xEnd,
+              boundLeft: cell.x,
+              boundRight: cell.xEnd,
+              headerNorm: "",
+              rows: []
+            });
           }
           const cellText = (cell.text || "").trim();
           const lettersOnly = cellText.replace(/[^A-Za-zÀ-ỹ]/g, "");
@@ -1167,12 +1246,15 @@ function extractCleanPl01PagesFromManifest_(manifest) {
         const cellX = cell.x;
         const cellXEnd = cell.xEnd;
 
-        let colIdx = cols.findIndex(col => cellX >= col.boundLeft && cellX <= col.boundRight);
+        let colIdx = cols.findIndex((col) => cellX >= col.boundLeft && cellX <= col.boundRight);
         if (colIdx === -1) {
           let bestOv = -1;
           for (let ci = 0; ci < cols.length; ci++) {
             const ov = Math.min(cellXEnd, cols[ci].boundRight) - Math.max(cellX, cols[ci].boundLeft);
-            if (ov > bestOv) { bestOv = ov; colIdx = ci; }
+            if (ov > bestOv) {
+              bestOv = ov;
+              colIdx = ci;
+            }
           }
         }
         if (colIdx === -1) colIdx = 0;
@@ -1196,7 +1278,10 @@ function extractCleanPl01PagesFromManifest_(manifest) {
 
       rowBucketByCol.forEach((rObj, ci) => {
         rObj.items.sort((a, b) => a.x - b.x);
-        const joined = rObj.items.map(t => t.str).join(" ").trim();
+        const joined = rObj.items
+          .map((t) => t.str)
+          .join(" ")
+          .trim();
         if (!joined) return;
         const lettersOnly = joined.replace(/[^A-Za-zÀ-ỹ]/g, "");
         const isAllCaps = lettersOnly.length >= 4 && lettersOnly === lettersOnly.toUpperCase();
@@ -1208,7 +1293,7 @@ function extractCleanPl01PagesFromManifest_(manifest) {
 
     // Lưu cấu trúc cột để kế thừa cho trang PL01 tiếp theo (nếu không lặp tiêu đề)
     if (detectedColCount >= 2) {
-      prevPageCols = cols.slice(0, detectedColCount).map(c => ({
+      prevPageCols = cols.slice(0, detectedColCount).map((c) => ({
         minX: c.minX,
         maxX: c.maxX,
         boundLeft: c.boundLeft,
@@ -1227,7 +1312,10 @@ function extractCleanPl01PagesFromManifest_(manifest) {
 
       if (isExcludedColumnHeader_Viewer_(col.headerNorm)) continue;
 
-      let sttCnt = 0, unitCnt = 0, numDimCnt = 0, totalMeaningful = 0;
+      let sttCnt = 0,
+        unitCnt = 0,
+        numDimCnt = 0,
+        totalMeaningful = 0;
       for (let r = 0; r < col.rows.length; r++) {
         const txt = (col.rows[r].text || "").trim();
         if (!txt) continue;
@@ -1245,26 +1333,35 @@ function extractCleanPl01PagesFromManifest_(manifest) {
 
       if (col.minX < pageW * 0.16 && sttRatio >= 0.65) continue;
       if (unitRatio >= 0.65) continue;
-      if (numDimRatio >= 0.70) continue;
-      if ((unitCnt + numDimCnt) / totalMeaningful >= 0.85 && col.rows.every(r => (r.text || "").length <= 22)) continue;
+      if (numDimRatio >= 0.7) continue;
+      if ((unitCnt + numDimCnt) / totalMeaningful >= 0.85 && col.rows.every((r) => (r.text || "").length <= 22))
+        continue;
 
       // 6. Gom block độc lập cho từng cột văn bản được giữ lại
       const colBlocks = extractBlocksForColumn_Viewer_(col, pageW);
       for (let bIdx = 0; bIdx < colBlocks.length; bIdx++) {
-        const blockStr = cleanPl01Punctuation_Viewer_(colBlocks[bIdx].map(t => t.str).join(" "));
+        const blockStr = cleanPl01Punctuation_Viewer_(colBlocks[bIdx].map((t) => t.str).join(" "));
         if (!blockStr || blockStr.length < 2 || /^[^a-zA-ZÀ-ỹ0-9]+$/.test(blockStr)) continue;
         if (isDimensionOrNumericCell_Viewer_(blockStr) || isUnitCell_Viewer_(blockStr)) continue;
 
         const normBlock = removeDiacriticsLower_Viewer_(blockStr);
-        const isTableHeader = normBlock.includes("stt") &&
-          (normBlock.includes("noi dung") || normBlock.includes("hang muc") || normBlock.includes("dien giai") || normBlock.includes("ten vat tu")) &&
-          (normBlock.includes("don gia") || normBlock.includes("thanh tien") || normBlock.includes("khoi luong") || normBlock.includes("dvt"));
+        const isTableHeader =
+          normBlock.includes("stt") &&
+          (normBlock.includes("noi dung") ||
+            normBlock.includes("hang muc") ||
+            normBlock.includes("dien giai") ||
+            normBlock.includes("ten vat tu")) &&
+          (normBlock.includes("don gia") ||
+            normBlock.includes("thanh tien") ||
+            normBlock.includes("khoi luong") ||
+            normBlock.includes("dvt"));
         const isAdminBoilerplate =
           /^cong hoa xa hoi chu nghia viet nam\b/.test(normBlock) ||
           /^doc lap tu do hanh phuc\b/.test(normBlock) ||
-          (/^trang \d+( \d+)?$/.test(normBlock)) ||
-          ((/^(dai dien ben a|dai dien ben b|ben a|ben b|tong giam doc|pho tong giam doc|giam doc)\b/.test(normBlock)) && normBlock.length <= 45) ||
-          ((/^(ky ten|ky va ghi ro ho ten|dong dau)\b/.test(normBlock)) && normBlock.length <= 35);
+          /^trang \d+( \d+)?$/.test(normBlock) ||
+          (/^(dai dien ben a|dai dien ben b|ben a|ben b|tong giam doc|pho tong giam doc|giam doc)\b/.test(normBlock) &&
+            normBlock.length <= 45) ||
+          (/^(ky ten|ky va ghi ro ho ten|dong dau)\b/.test(normBlock) && normBlock.length <= 35);
 
         if (isTableHeader || isAdminBoilerplate) continue;
         cleanBlocks.push(blockStr);
@@ -1371,9 +1468,10 @@ function updatePl01IndexInternal_(fileId, manifestOrJsonString, optMeta) {
   const meta = optMeta || resolveContractMetaForFileId_(fileId);
   if (!meta.maHD || /^PL\d+/i.test(meta.maHD)) return false;
 
-  const manifest = (typeof manifestOrJsonString === "string")
-    ? JSON.parse(decompressGzipString_Viewer_(manifestOrJsonString))
-    : manifestOrJsonString;
+  const manifest =
+    typeof manifestOrJsonString === "string"
+      ? JSON.parse(decompressGzipString_Viewer_(manifestOrJsonString))
+      : manifestOrJsonString;
 
   const pages = extractCleanPl01PagesFromManifest_(manifest);
   const loaded = loadPl01IndexObj_(meta.year);
@@ -1474,7 +1572,10 @@ function backfillPl01IndexFromDrive(options) {
     byYear[year].push({ fileId: mainEntry.fileId, fileName: mainEntry.fileName, maHD: maHD });
   }
 
-  let processed = 0, skipped = 0, failed = 0, timedOut = false;
+  let processed = 0,
+    skipped = 0,
+    failed = 0,
+    timedOut = false;
   const yearsUpdated = [];
 
   const years = Object.keys(byYear).sort((a, b) => Number(b) - Number(a));
@@ -1503,13 +1604,17 @@ function backfillPl01IndexFromDrive(options) {
       try {
         const folder = getFolderForFile_Viewer_(item.fileId);
         const jsonName = getJsonCacheName_Viewer_(item.fileName);
-        const cleanBase = item.fileName.normalize("NFC").replace(/\.pdf$/i, "").trim();
+        const cleanBase = item.fileName
+          .normalize("NFC")
+          .replace(/\.pdf$/i, "")
+          .trim();
 
-        let jsonFile = findFileByName_Viewer_(folder, jsonName) ||
-                       findFileByName_Viewer_(folder, jsonName.normalize("NFD"));
+        let jsonFile =
+          findFileByName_Viewer_(folder, jsonName) || findFileByName_Viewer_(folder, jsonName.normalize("NFD"));
         if (!jsonFile && cleanBase) {
-          jsonFile = findFileByName_Viewer_(folder, cleanBase + ".json") ||
-                     findFileByName_Viewer_(folder, (cleanBase + ".json").normalize("NFD"));
+          jsonFile =
+            findFileByName_Viewer_(folder, cleanBase + ".json") ||
+            findFileByName_Viewer_(folder, (cleanBase + ".json").normalize("NFD"));
         }
 
         if (!jsonFile) {
@@ -1573,25 +1678,28 @@ function deleteDigitizedJsonForFile_Viewer_(fileId, optFileName) {
     if (!cleanBase) return;
 
     const jsonMain = getJsonCacheName_Viewer_(resolvedName);
-    const candidateNames = Array.from(new Set([
-      jsonMain,
-      jsonMain.normalize("NFD"),
-      cleanBase + ".json",
-      (cleanBase + ".json").normalize("NFD")
-    ]));
+    const candidateNames = Array.from(
+      new Set([jsonMain, jsonMain.normalize("NFD"), cleanBase + ".json", (cleanBase + ".json").normalize("NFD")])
+    );
 
     const parents = file.getParents();
     while (parents.hasNext()) {
       const folder = parents.next();
-      candidateNames.forEach(name => {
+      candidateNames.forEach((name) => {
         const files = folder.getFilesByName(name);
         while (files.hasNext()) {
           const jf = files.next();
           if (jf.isTrashed()) continue;
           try {
-            Drive.Files.remove(jf.getId());
+            if (Drive.Files && typeof Drive.Files.delete === "function") {
+              Drive.Files.delete(jf.getId(), { supportsAllDrives: true });
+            } else {
+              jf.setTrashed(true);
+            }
           } catch (remErr) {
-            try { jf.setTrashed(true); } catch (trashErr) {}
+            try {
+              jf.setTrashed(true);
+            } catch (trashErr) {}
           }
         }
       });

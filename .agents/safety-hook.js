@@ -10,7 +10,8 @@ const SENSITIVE_FILE_PATTERNS = [
 
 const DENY_CMD_PATTERNS = [
   /\b(rm\s+-[a-z]*r[a-z]*f|rm\s+-[a-z]*f[a-z]*r)\s+([\/\\]|~|\$HOME|%USERPROFILE%|\.\.)\b/i,
-  /\b(format|diskpart)\b/i,
+  /\bdiskpart\b/i,
+  /\bformat\s+([a-z]:|\/dev\/|\/q\b|\/fs:|\/y\b)/i,
   /\b(cat|type|get-content|gc|more|less|head|tail)\b[^\r\n]*(\.env\b|\.clasprc\.json|\.(pem|key)\b|service[-_]?account)/i
 ];
 
@@ -38,17 +39,21 @@ function isSensitivePath(p) {
   if (toolName === "run_command") {
     const cmd = String(args.CommandLine || "");
     if (DENY_CMD_PATTERNS.some((re) => re.test(cmd))) {
-      process.stdout.write(JSON.stringify({
-        decision: "deny",
-        reason: "Blocked potentially destructive command or secret exposure by safety-gate hook."
-      }));
+      process.stdout.write(
+        JSON.stringify({
+          decision: "deny",
+          reason: "Blocked potentially destructive command or secret exposure by safety-gate hook."
+        })
+      );
       return;
     }
     if (FORCE_ASK_CMD_PATTERNS.some((re) => re.test(cmd))) {
-      process.stdout.write(JSON.stringify({
-        decision: "force_ask",
-        reason: "Destructive Git/file/deploy operation requires explicit confirmation."
-      }));
+      process.stdout.write(
+        JSON.stringify({
+          decision: "force_ask",
+          reason: "Destructive Git/file/deploy operation requires explicit confirmation."
+        })
+      );
       return;
     }
     process.stdout.write(JSON.stringify({ decision: "ask" }));
@@ -57,10 +62,12 @@ function isSensitivePath(p) {
 
   const targetPath = args.Path || args.TargetFile || args.path || "";
   if (isSensitivePath(targetPath)) {
-    process.stdout.write(JSON.stringify({
-      decision: "deny",
-      reason: `Blocked access to sensitive file (${path.basename(targetPath)}) by safety-gate hook.`
-    }));
+    process.stdout.write(
+      JSON.stringify({
+        decision: "deny",
+        reason: `Blocked access to sensitive file (${path.basename(targetPath)}) by safety-gate hook.`
+      })
+    );
     return;
   }
 

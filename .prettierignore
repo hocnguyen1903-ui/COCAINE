@@ -1,0 +1,9 @@
+node_modules/
+.backups/
+.git/
+.vscode/
+dump_du_lieu.txt
+package-lock.json
+*.min.js
+*.min.css
+*.log

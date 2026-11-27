@@ -6,6 +6,12 @@
     "gdp": "./gdp.js"
   },
   "scripts": {
-    "gdp": "node gdp.js"
+    "gdp": "node gdp.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "git config core.hooksPath .githooks"
+  },
+  "devDependencies": {
+    "prettier": "^3.10.1"
   }
 }

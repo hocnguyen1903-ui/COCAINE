@@ -19,7 +19,7 @@ function runGit(cwd, args) {
 
   const summaryLines = [
     `[SessionStart Hook] Git branch: ${branch} | Uncommitted changes: ${lines.length}`,
-    "Active workspace hooks: auto-backup (.backups/), safety-gate, syntax-guard, stop-verify."
+    "Active workspace hooks: auto-backup (.backups/), safety-gate, format-code, syntax-guard, stop-verify."
   ];
 
   if (lines.length > 0) {
@@ -27,13 +27,15 @@ function runGit(cwd, args) {
     summaryLines.push(`Changed files: ${preview}${lines.length > 12 ? ` (+${lines.length - 12} more)` : ""}`);
   }
 
-  process.stdout.write(JSON.stringify({
-    injectSteps: [
-      {
-        systemMessage: {
-          systemMessage: summaryLines.join("\n")
+  process.stdout.write(
+    JSON.stringify({
+      injectSteps: [
+        {
+          systemMessage: {
+            systemMessage: summaryLines.join("\n")
+          }
         }
-      }
-    ]
-  }));
+      ]
+    })
+  );
 })();

@@ -29,6 +29,21 @@
       }
     ]
   },
+  "format-code": {
+    "enabled": true,
+    "PostToolUse": [
+      {
+        "matcher": "edit_file|write_file|replace_file_content|write_to_file|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node format-hook.js",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
   "syntax-guard": {
     "enabled": true,
     "PostToolUse": [
