@@ -25,7 +25,7 @@
     backface-visibility: hidden;
     perspective: 1000px;
 
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8) !important;
 
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -104,11 +104,11 @@
     transform: translate3d(0, 0, 0);
 }
 
-.list-dashboard-locked {
-    filter: grayscale(0.75) !important;
+#dropdown-field0-pl.list-dashboard-locked {
+    filter: blur(2.5px) grayscale(0.55) !important;
     pointer-events: none !important;
-    opacity: 0.15 !important;
-    transition: all 0.3s ease;
+    opacity: 0.25 !important;
+    transition: opacity 0.22s ease;
 }
 
 /* ==========================================================================
@@ -135,7 +135,7 @@
     text-rendering: optimizeLegibility !important;
     filter: blur(0) !important;
 
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8) !important;
     transform: translate3d(0, -5px, 0);
 
     transition:
@@ -277,8 +277,8 @@
 .file-status-group .file-icon {
     position: relative;
     display: inline-block;
-    width: 6.25px; /* 7.5 * 0.8 = 6px chẵn */
-    height: 6.25px;
+    width: 6px;
+    height: 6px;
     flex-shrink: 0;
 }
 
@@ -299,8 +299,8 @@
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 12.5px; /* 👈 12.5 * scale(0.5) = 6.25px */
-    height: 12.5px;
+    width: 12px; /* 👈 12 * scale(0.5) = 6px */
+    height: 12px;
     border-radius: 50%;
     box-sizing: border-box;
     pointer-events: none;
@@ -358,6 +358,7 @@
 
 /* 1. Dashboard bên trái & Preview bên phải: CÙNG CHẠY TRÊN GPU VỚI CÙNG QUỸ ĐẠO 0.45S */
 #tab-plhd .form-container {
+    min-width: 760px;
     background-color: rgba(48, 56, 68, 0.2) !important;
     backdrop-filter: blur(60px) !important;
     -webkit-backdrop-filter: blur(60px) !important;
@@ -380,7 +381,7 @@
     -webkit-backdrop-filter: blur(60px) !important;
     border: none !important;
     border-radius: 10px !important;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8) !important;
     z-index: 999990 !important; /* ĐÃ ĐỔI: Thấp hơn Header (1.000.000) để Header luôn nằm trên */
     display: none;
     flex-direction: column;

@@ -410,8 +410,10 @@ function getPdfBase64Chunk(fileId, chunkIndex) {
 // HẠ TẦNG INDEX SHARDING THEO NĂM (Index_PL01_<YEAR>.json) & BACKFILL
 // =========================================================================
 
+const PL01_INDEX_FOLDER_ID_VIEWER = "1MwHH66jXjXZycSYvyAmC9DeVq0XvKwgW";
+
 function getIndexRootFolderId_Viewer_() {
-  return typeof ROOT_FOLDER_ID !== "undefined" && ROOT_FOLDER_ID ? ROOT_FOLDER_ID : "1SmlwbdIfTTQAaGTl2sEtRU-KFEYmx9Xc";
+  return PL01_INDEX_FOLDER_ID_VIEWER;
 }
 
 function getIndexFileName_Viewer_(year) {

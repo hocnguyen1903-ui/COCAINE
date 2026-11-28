@@ -1,4 +1,3 @@
-
 // ==========================================================================
 // NHÓM UTILITIES: ĐỊNH DẠNG & CÔNG CỤ HỖ TRỢ
 // ==========================================================================
@@ -6,11 +5,11 @@
 /**
  * 1. Hàm đổ dữ liệu chi nhánh (Location)
  */
-window.setupLocation = function(selectId, onchangeFunc) {
+window.setupLocation = function (selectId, onchangeFunc) {
     const loc = document.getElementById(selectId);
     if (loc) {
-        loc.innerHTML = LIST_LOCATIONS.map(o => `<option value="${o}">${o}</option>`).join("");
-        if (typeof onchangeFunc === 'function') loc.onchange = onchangeFunc;
+        loc.innerHTML = LIST_LOCATIONS.map((o) => `<option value="${o}">${o}</option>`).join("");
+        if (typeof onchangeFunc === "function") loc.onchange = onchangeFunc;
         console.log("✅ Location Ready: " + selectId);
     }
 };
@@ -20,7 +19,7 @@ window.setupLocation = function(selectId, onchangeFunc) {
  */
 function debounce(func, delay) {
     let timeout;
-    return function(...args) {
+    return function (...args) {
         clearTimeout(timeout);
         timeout = setTimeout(() => func.apply(this, args), delay);
     };
@@ -30,14 +29,14 @@ function debounce(func, delay) {
  * 3. Chuyển đổi Date Object sang chuỗi ngày tháng Tiếng Việt
  */
 function formatDateToVietnamese(date) {
-    return `ngày ${String(date.getDate()).padStart(2, '0')} tháng ${String(date.getMonth() + 1).padStart(2, '0')} năm ${date.getFullYear()}`;
+    return `ngày ${String(date.getDate()).padStart(2, "0")} tháng ${String(date.getMonth() + 1).padStart(2, "0")} năm ${date.getFullYear()}`;
 }
 
 /**
  * 4. Xử lý chuỗi an toàn để chèn vào HTML Attribute
  */
-function escapeStr(str) { 
-    return (str || "").toString().replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;"); 
+function escapeStr(str) {
+    return (str || "").toString().replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;");
 }
 
 /**
@@ -51,7 +50,7 @@ function formatInput_HD(input) {
             ["radio-payment-container-hd", "cont-field6-hd", "cont-field7-hd"].forEach(showFieldSmoothly);
         }
     } else if (input.name === "field5-hd") {
-        input.value = value.slice(0, 2); 
+        input.value = value.slice(0, 2);
     } else if (input.name === "field7-hd") {
         input.value = value.slice(0, 3);
     }
@@ -64,17 +63,17 @@ function formatInput_PL(input) {
     const val = input.value;
     // Kiểm tra nhận diện dấu trừ (-) nằm ở vị trí đầu tiên của ô nhập liệu
     const isNegative = val.startsWith("-");
-    
+
     // Loại bỏ sạch các ký tự không phải số (\D)
     let cleanVal = val.replace(/\D/g, "");
-    
+
     // Định dạng phân tách dấu chấm hàng nghìn
     if (cleanVal !== "") {
         cleanVal = cleanVal.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
     }
-    
+
     // Ghép dấu trừ âm quay lại đầu chuỗi nếu có
-    input.value = isNegative ? ("-" + cleanVal) : cleanVal;
+    input.value = isNegative ? "-" + cleanVal : cleanVal;
 }
 
 /**
@@ -85,15 +84,15 @@ function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback)
         return;
     }
 
-    const isCommitKey = (e.key === "Enter" || e.key === "Tab");
+    const isCommitKey = e.key === "Enter" || e.key === "Tab";
 
     const drop = document.getElementById(dropId);
-    
-    const isVisible = drop && (
-        drop.classList.contains("show") || 
-        drop.classList.contains("open-smooth") || 
-        window.getComputedStyle(drop).visibility === "visible"
-    );
+
+    const isVisible =
+        drop &&
+        (drop.classList.contains("show") ||
+            drop.classList.contains("open-smooth") ||
+            window.getComputedStyle(drop).visibility === "visible");
 
     if (!isVisible) {
         if (isCommitKey && nextInputId) {
@@ -141,11 +140,10 @@ function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback)
                 item.classList.remove("active");
             }
         });
-    } 
-    else if (isCommitKey) {
+    } else if (isCommitKey) {
         e.preventDefault();
-        
-        if (dropId === 'drop-field5-hd' && currentFocusIndex === -1) {
+
+        if (dropId === "drop-field5-hd" && currentFocusIndex === -1) {
             drop.classList.remove("show");
             setTimeout(() => {
                 const nextField = document.getElementById(nextInputId);
@@ -156,12 +154,12 @@ function masterKeyboardNav(e, dropId, itemSelector, nextInputId, selectCallback)
             }, 100);
             return;
         }
-        
-        const targetItem = (currentFocusIndex >= 0) ? items[currentFocusIndex] : items[0];
+
+        const targetItem = currentFocusIndex >= 0 ? items[currentFocusIndex] : items[0];
         if (targetItem) {
             setTimeout(() => {
-                selectCallback(targetItem); 
-                currentFocusIndex = -1; 
+                selectCallback(targetItem);
+                currentFocusIndex = -1;
                 const nextField = document.getElementById(nextInputId);
                 if (nextField) {
                     nextField.focus();
@@ -180,10 +178,12 @@ function renderDropdownList(inputId, dropId, data, mapFunc) {
     const drop = document.getElementById(dropId);
     if (!input || !drop) return;
     const query = input.value.toLowerCase().trim();
-    const filtered = data.filter(i => {
-        const str = typeof i === 'object' ? (i.searchString || i.display || "") : i;
-        return str.toString().toLowerCase().includes(query);
-    }).slice(0, 50);
+    const filtered = data
+        .filter((i) => {
+            const str = typeof i === "object" ? i.searchString || i.display || "" : i;
+            return str.toString().toLowerCase().includes(query);
+        })
+        .slice(0, 50);
     if (filtered.length > 0) {
         drop.innerHTML = filtered.map(mapFunc).join("");
         drop.classList.add("show");
@@ -196,14 +196,18 @@ function renderDropdownList(inputId, dropId, data, mapFunc) {
 async function compressPDFEngine(file, progressCallback) {
     const originalRAF = window.requestAnimationFrame;
     const originalCancelRAF = window.cancelAnimationFrame;
-    window.requestAnimationFrame = function(callback) { return window.setTimeout(callback, 16); };
-    window.cancelAnimationFrame = function(id) { window.clearTimeout(id); };
+    window.requestAnimationFrame = function (callback) {
+        return window.setTimeout(callback, 16);
+    };
+    window.cancelAnimationFrame = function (id) {
+        window.clearTimeout(id);
+    };
 
     try {
         const fileArrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument(fileArrayBuffer).promise;
         const { jsPDF } = window.jspdf;
-        const newPdfDoc = new jsPDF('p', 'mm', 'a4');
+        const newPdfDoc = new jsPDF("p", "mm", "a4");
         const a4Width = newPdfDoc.internal.pageSize.getWidth();
         const totalPages = pdf.numPages;
 
@@ -211,30 +215,31 @@ async function compressPDFEngine(file, progressCallback) {
             const page = await pdf.getPage(i);
             const viewport = page.getViewport({ scale: 2 });
             let imgData;
-            if (typeof OffscreenCanvas !== 'undefined') {
+            if (typeof OffscreenCanvas !== "undefined") {
                 const canvas = new OffscreenCanvas(viewport.width, viewport.height);
-                const ctx = canvas.getContext('2d', { alpha: false });
+                const ctx = canvas.getContext("2d", { alpha: false });
                 await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-                const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.5 });
+                const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.5 });
                 imgData = await new Promise((resolve) => {
                     const reader = new FileReader();
                     reader.onloadend = () => resolve(reader.result);
                     reader.readAsDataURL(blob);
                 });
             } else {
-                const canvas = document.createElement('canvas');
-                canvas.width = viewport.width; canvas.height = viewport.height;
-                const ctx = canvas.getContext('2d', { alpha: false });
+                const canvas = document.createElement("canvas");
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                const ctx = canvas.getContext("2d", { alpha: false });
                 await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-                imgData = canvas.toDataURL('image/jpeg', 0.5);
+                imgData = canvas.toDataURL("image/jpeg", 0.5);
             }
             if (i > 1) newPdfDoc.addPage();
             const imgProps = newPdfDoc.getImageProperties(imgData);
             const pdfHeight = (imgProps.height * a4Width) / imgProps.width;
-            newPdfDoc.addImage(imgData, 'JPEG', 0, 0, a4Width, pdfHeight);
+            newPdfDoc.addImage(imgData, "JPEG", 0, 0, a4Width, pdfHeight);
             progressCallback(Math.round((i / totalPages) * 80));
         }
-        return newPdfDoc.output('datauristring').split(',')[1];
+        return newPdfDoc.output("datauristring").split(",")[1];
     } finally {
         window.requestAnimationFrame = originalRAF;
         window.cancelAnimationFrame = originalCancelRAF;
@@ -254,9 +259,28 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
     if (!isInput) displayEl.textContent = formatDateToVietnamese(today);
     else displayEl.value = "";
 
-    const activeLocale = (typeof flatpickr !== 'undefined' && flatpickr.l10ns && flatpickr.l10ns.vi) 
-        ? flatpickr.l10ns.vi 
-        : "vi";
+    const activeLocale =
+        typeof flatpickr !== "undefined" && flatpickr.l10ns && flatpickr.l10ns.vi ? flatpickr.l10ns.vi : "vi";
+
+    function getNormalizedRect(el) {
+        const r = el.getBoundingClientRect();
+        const tab = el.closest(".tab-content");
+        const z = tab ? parseFloat(window.getComputedStyle(tab).zoom) || 1 : 1;
+        if (z !== 1 && el.offsetWidth > 0) {
+            const ratio = r.width / el.offsetWidth;
+            if (Math.abs(ratio - 1) < Math.abs(ratio - z)) {
+                return {
+                    top: r.top * z,
+                    left: r.left * z,
+                    bottom: r.bottom * z,
+                    right: r.right * z,
+                    width: r.width * z,
+                    height: r.height * z
+                };
+            }
+        }
+        return r;
+    }
 
     function positionCalendarCleanly(instance) {
         const cal = instance.calendarContainer;
@@ -265,12 +289,18 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
         const scrollY = window.scrollY || window.pageYOffset;
 
         if (container && !isInput) {
-            const cRect = container.getBoundingClientRect();
-            const dRect = displayEl.getBoundingClientRect();
+            const cRect = getNormalizedRect(container);
+            const dRect = getNormalizedRect(displayEl);
             const targetW = Math.round(cRect.width) || 252;
-            const targetLeft = Math.max(scrollX + 8, Math.min(cRect.left + scrollX, scrollX + window.innerWidth - targetW - 8));
+            const targetLeft = Math.max(
+                scrollX + 8,
+                Math.min(cRect.left + scrollX, scrollX + window.innerWidth - targetW - 8)
+            );
             const targetTop = cRect.bottom + 8 + scrollY;
-            const arrowX = Math.max(16, Math.min(targetW - 24, (dRect.left + dRect.width / 2) - (targetLeft - scrollX) - 5));
+            const arrowX = Math.max(
+                16,
+                Math.min(targetW - 24, dRect.left + dRect.width / 2 - (targetLeft - scrollX) - 5)
+            );
 
             cal.style.setProperty("width", targetW + "px", "important");
             cal.classList.remove("arrowBottom");
@@ -282,11 +312,11 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
         } else {
             const calW = cal.offsetWidth || 252;
             const calH = cal.offsetHeight || 275;
-            const iRect = displayEl.getBoundingClientRect();
+            const iRect = getNormalizedRect(displayEl);
             const rawLeft = iRect.left + scrollX;
             const targetLeft = Math.max(scrollX + 8, Math.min(rawLeft, scrollX + window.innerWidth - calW - 8));
-            const openBelow = (iRect.bottom + 8 + calH <= window.innerHeight) || (iRect.top - calH - 8 < 0);
-            const targetTop = openBelow ? (iRect.bottom + 8 + scrollY) : (iRect.top - calH - 8 + scrollY);
+            const openBelow = iRect.bottom + 8 + calH <= window.innerHeight || iRect.top - calH - 8 < 0;
+            const targetTop = openBelow ? iRect.bottom + 8 + scrollY : iRect.top - calH - 8 + scrollY;
 
             cal.classList.toggle("arrowTop", openBelow);
             cal.classList.toggle("arrowBottom", !openBelow);
@@ -301,14 +331,14 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
         defaultDate: today,
         dateFormat: "d/m/Y",
         locale: activeLocale,
-        positionElement: (container && !isInput) ? container : undefined,
-        
+        positionElement: container && !isInput ? container : undefined,
+
         parseDate: (datestr, format) => {
             if (!datestr) return today;
             if (datestr instanceof Date) return datestr;
-            if (typeof datestr === 'number') return new Date(datestr);
-            
-            if (typeof datestr === 'string') {
+            if (typeof datestr === "number") return new Date(datestr);
+
+            if (typeof datestr === "string") {
                 const cleanStr = datestr.trim();
                 const vnMatch = cleanStr.match(/ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/i);
                 if (vnMatch) {
@@ -316,7 +346,11 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
                 }
                 const slashMatch = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
                 if (slashMatch) {
-                    return new Date(parseInt(slashMatch[3], 10), parseInt(slashMatch[2], 10) - 1, parseInt(slashMatch[1], 10));
+                    return new Date(
+                        parseInt(slashMatch[3], 10),
+                        parseInt(slashMatch[2], 10) - 1,
+                        parseInt(slashMatch[1], 10)
+                    );
                 }
                 const nativeParsed = new Date(cleanStr);
                 if (!isNaN(nativeParsed.getTime())) return nativeParsed;
@@ -324,7 +358,7 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
             return today;
         },
 
-        onReady: function(selectedDates, dateStr, instance) {
+        onReady: function (selectedDates, dateStr, instance) {
             const clearBtn = document.createElement("div");
             clearBtn.className = "flatpickr-clear-btn";
             clearBtn.textContent = "RESET TO TODAY";
@@ -339,9 +373,9 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
             };
             instance.calendarContainer.appendChild(clearBtn);
         },
-        onOpen: (selectedDates, dateStr, instance) => { 
-            if (container) container.classList.add("calendar-open"); 
-            displayEl.classList.add("text-open"); 
+        onOpen: (selectedDates, dateStr, instance) => {
+            if (container) container.classList.add("calendar-open");
+            displayEl.classList.add("text-open");
             positionCalendarCleanly(instance);
             requestAnimationFrame(() => positionCalendarCleanly(instance));
         },
@@ -351,9 +385,9 @@ function setupLuxuryCalendar(inputSelector, displayId, onChangeExtra) {
         onYearChange: (selectedDates, dateStr, instance) => {
             requestAnimationFrame(() => positionCalendarCleanly(instance));
         },
-        onClose: () => { 
-            if (container) container.classList.remove("calendar-open"); 
-            displayEl.classList.remove("text-open"); 
+        onClose: () => {
+            if (container) container.classList.remove("calendar-open");
+            displayEl.classList.remove("text-open");
         },
         onChange: (dates, dateStr, instance) => {
             const selDate = dates[0];
@@ -408,9 +442,9 @@ function downloadScanFile_PL(id, event) {
         return;
     }
     const downloadUrl = "https://drive.google.com/uc?export=download&id=" + id;
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = downloadUrl;
-    a.style.display = 'none';
+    a.style.display = "none";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -424,12 +458,14 @@ function handleTouchStart_Mobile(e, element, maHD, isTransferred) {
     mobileTouchTimer = setTimeout(() => {
         const touch = e.touches[0];
         const mockEvent = {
-            preventDefault: () => {}, stopPropagation: () => {},
-            clientX: touch.clientX, clientY: touch.clientY
+            preventDefault: () => {},
+            stopPropagation: () => {},
+            clientX: touch.clientX,
+            clientY: touch.clientY
         };
         if (navigator.vibrate) navigator.vibrate(40);
         showContextMenu_PL(mockEvent, element, maHD, isTransferred);
-    }, 600); 
+    }, 600);
 }
 
 function handleTouchEnd_Mobile() {
@@ -439,11 +475,11 @@ function handleTouchEnd_Mobile() {
 function handleDoubleTap_Scan(e, id, fileName) {
     const now = new Date().getTime();
     const timesince = now - lastTap_Scan;
-    if ((timesince < 300) && (timesince > 0)) {
-        e.preventDefault(); 
+    if (timesince < 300 && timesince > 0) {
+        e.preventDefault();
         if (navigator.vibrate) navigator.vibrate(40);
         // Nhấp đúp vào file scan trong bảng quản lý file: Mở trực tiếp trên Google Drive
-        window.open(`https://drive.google.com/file/d/${id}/view`, '_blank');
+        window.open(`https://drive.google.com/file/d/${id}/view`, "_blank");
         lastTap_Scan = 0;
     } else {
         lastTap_Scan = now;
@@ -463,21 +499,22 @@ function handleKeyDown_PL(e, nextInputId) {
 
 async function lazyLoadDrawingLibs() {
     if (isDrawingLibsLoaded) return Promise.resolve();
-    if (isDrawingLibsLoading) return new Promise(resolve => {
-        const check = setInterval(() => {
-            if (isDrawingLibsLoaded) {
-                clearInterval(check);
-                resolve();
-            }
-        }, 100);
-    });
+    if (isDrawingLibsLoading)
+        return new Promise((resolve) => {
+            const check = setInterval(() => {
+                if (isDrawingLibsLoaded) {
+                    clearInterval(check);
+                    resolve();
+                }
+            }, 100);
+        });
 
     isDrawingLibsLoading = true;
-    
+
     // Hàm nạp Script dưới dạng Promise
     const loadScript = (src) => {
         return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
+            const script = document.createElement("script");
             script.src = src;
             script.onload = resolve;
             script.onerror = reject;
@@ -489,7 +526,8 @@ async function lazyLoadDrawingLibs() {
         // ✅ BỎ nạp lại pdf.js 2.16.105 (vì index.html đã nạp bản 3.11.174)
         // Đảm bảo workerSrc vẫn giữ bản 3.11.174 nếu cần:
         if (window.pdfjsLib && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
         }
 
         const libsToLoad = [
@@ -552,7 +590,7 @@ function ensureBgRafWorker() {
         const url = URL.createObjectURL(blob);
         bgRafWorker = new Worker(url);
         URL.revokeObjectURL(url);
-        bgRafWorker.onmessage = function(e) {
+        bgRafWorker.onmessage = function (e) {
             const id = e.data;
             const cb = BG_RAF_CALLBACKS.get(id);
             if (!cb) return;
@@ -612,7 +650,7 @@ function enableBackgroundRafBypass() {
     isBgRafPatched = true;
     ensureBgRafWorker();
 
-    window.requestAnimationFrame = function(cb) {
+    window.requestAnimationFrame = function (cb) {
         if (document.hidden) return scheduleBgRaf(cb);
         const nativeId = ORIG_RAF((ts) => {
             PENDING_NATIVE_RAFS.delete(nativeId);
@@ -622,7 +660,7 @@ function enableBackgroundRafBypass() {
         return nativeId;
     };
 
-    window.cancelAnimationFrame = function(id) {
+    window.cancelAnimationFrame = function (id) {
         if (cancelBgRaf(id)) return;
         PENDING_NATIVE_RAFS.delete(id);
         ORIG_CANCEL_RAF(id);

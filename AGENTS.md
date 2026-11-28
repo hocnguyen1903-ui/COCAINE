@@ -9,6 +9,7 @@
 ## 2. File Map (read the relevant file directly; do NOT scan the repo)
 
 - `index.html`: 5 tabs (`tab-about`, `tab-hdtcxd`, `tab-plhd`, `tab-tbkq`, `tab-drawing`), modals, right dock preview (`#pl-dock-preview-panel`).
+- `Dictionary.json`: PL01 `#` search config (`scoring_config`, `manual_synonyms`, `stop_words`, `auto_extracted`).
 - `backend/`
   - `Code.js`: `doPost(e)` router, HMAC session auth (`BCONS2.*`), users (`User_Registry`), `getSystemData()`, Ably.
   - `API_Drawing.js`: mindmap (`Drawing_Log`), tasks (`Task_Log`), chunked Drive upload, OCR + Gemini extraction (`extractDataFromImages`).
@@ -38,10 +39,10 @@
 
 ## 4. Response Style (MANDATORY)
 
-- Be concise and get straight to the point. No preamble, no recap of the request, no closing summary unless asked.
+- Ultra-concise, focus directly on the issue/result. Keep normal replies to 1–4 short lines; no preamble, no recap, no closing fluff.
+- Never list detailed CSS properties, pixel values, line-by-line code details, or function internals unless the user explicitly asks. After an edit, state only the outcome (1 short line) + file link(s).
 - Reply to the user in Vietnamese; keep code identifiers in English.
 - When offering multiple options, list the **recommended option first** and mark it "(Recommended)". Keep each option to one line plus a short trade-off.
-- Do not explain code that the user did not ask about. After an edit, state only what changed and which file.
 - Ask a question only when blocked; otherwise state the assumption and proceed.
 
 ## 5. Commands
@@ -64,6 +65,11 @@
 
 ## 7. Current Work / Handoff (update before switching machines)
 
-- **Recent changes:** Refactored dashboard drag-and-drop in `tab-plhd` to Contract-only batch auto-upload (`AUTO-UPLOAD FILE` via `openBatchScanPanel_PL`): removed per-row `Up file here` hints (`JS_Tab_PL_Core.js`) and per-row dragover, added whole-frame border highlight `#dropdown-field0-pl.dashboard-file-dragover` (`CSS_Tab_PL.css`), added filename-based matching by `(project, contractNo, year)` with English statuses `OK` / `DUPLICATE` / `NOT FOUND` (`JS_Tab_PL_Files.js`, `CSS_Components.css`) blocking upload when any file is `DUPLICATE` or `NOT FOUND`, smoothed post-upload collapse animations (`removeScanFile_PL`, `hideScanProgress_PL`), and simplified delete progress toast (`"⏳ Đang xóa file, vui lòng đợi..."`). Verified with `node --check` and Node unit tests (`ALL NO-REPLACE CHECKS PASSED`).
-- **In progress:** Pending manual browser verification in `tab-plhd`, backend `clasp` deploy check (if `backend/API_PhuLuc.js` / `backend/API_Viewer.js` changes aren't deployed yet), and git commit/push for uncommitted local changes.
+- **Recent changes:**
+  - Renamed batch upload title to `DROP & AUTO-SORT` (`JS_Tab_PL_Files.js`), renamed `tab-plhd` heading to `QUẢN LÝ HỢP ĐỒNG & PHỤ LỤC` (`index.html`), and aligned `#scan-queue-badge` (`STATUS`) height/size with `.scan-status-pill` (`CSS_Components.css`).
+  - Removed global `0.8` UI zoom across CSS/JS to run at native `1:1`, refactored Show Preview zoom (`--prv-zoom`, max `1.8`, `index.html`), fixed preview zoom positioning/panning/scroll-state (`JS_Tab_PL_Files.js`, `JS_Tab_PL_Actions.js`, `JS_Viewer_UI.js`, `JS_Utils.js`, `JS_Core_API.js`), and rescaled `.global-tooltip-bcons` (`1.25×`, `0.5px` border/divider, `6px` arrow, `+20%` divider spacing, `CSS_Components.css`).
+  - Standardized `box-shadow` across the project to `0 5px 12px rgba(..., 0.8)` (`0 3px 8px rgba(..., 0.8)` for buttons/small icons) and added light dashboard blur `#dropdown-field0-pl.list-dashboard-locked` (`CSS_Tab_PL.css`).
+  - Fixed `'NAM` staff search token prefix matching (`JS_Tab_PL_Core.js`), added double-click copy on contract ID (`Copied ID: ...`) and amounts (`Copied: ...`) (`JS_Tab_PL_Core.js`), and added Ably broadcasts for `UPLOAD_FILE` / `DELETE_FILE` (`JS_Tab_PL_Files.js`, `JS_Core_API.js`).
+  - Optimized tab/modal animations (removed `backdrop-filter` animation & `transition: all` on delete modals) and fixed split-preview close cleanup (`tab-anim-done`, `JS_Tab_PL_Files.js`, `CSS_Base.css`). Also tightened `AGENTS.md` Section 4 response brevity.
+- **In progress:** Pending manual browser/Show Preview check and git commit/push for uncommitted local changes.
 - **Known issues:** none

@@ -35,24 +35,28 @@ async function openTab(tabId, triggerIntro = true) {
         tabTimeout = null;
     }
 
-    localStorage.setItem('bcons_hub_last_tab', tabId);
+    localStorage.setItem("bcons_hub_last_tab", tabId);
     const targetTab = document.getElementById(tabId);
     if (!targetTab) return;
 
     // ĐỒNG BỘ: Tự động lướt tắt Dock Preview nếu đang mở khi chuyển sang tab khác
-    if (tabId !== 'tab-plhd' && typeof closePreviewModal_PL === 'function') {
+    if (tabId !== "tab-plhd" && typeof closePreviewModal_PL === "function") {
         closePreviewModal_PL(true);
     }
 
     // 🚀 XIN SẴN DRIVE TOKEN NGẦM KHI MỞ TAB PL (TRỊ KHỰNG 0% / 15%)
-    if (tabId === 'tab-plhd') {
+    if (tabId === "tab-plhd") {
         const warmDelay = isInitialLoad ? 600 : 250;
         setTimeout(() => {
-            if (localStorage.getItem('bcons_session_token') && window.BconsViewer) {
-                if (typeof window.BconsViewer.warmToken === 'function') {
+            if (localStorage.getItem("bcons_session_token") && window.BconsViewer) {
+                if (typeof window.BconsViewer.warmToken === "function") {
                     window.BconsViewer.warmToken();
                 }
-                if (window.BconsViewer.pl01Index && !window.BconsViewer.pl01Index.state.ready && !window.BconsViewer.pl01Index.state.syncing) {
+                if (
+                    window.BconsViewer.pl01Index &&
+                    !window.BconsViewer.pl01Index.state.ready &&
+                    !window.BconsViewer.pl01Index.state.syncing
+                ) {
                     window.BconsViewer.pl01Index.sync(false);
                 }
             }
@@ -60,7 +64,7 @@ async function openTab(tabId, triggerIntro = true) {
     }
 
     // 🚀 KHỞI TẠO ĐỒNG BỘ TỨC THÌ CHO TAB DRAWING
-    if (tabId === 'tab-drawing') {
+    if (tabId === "tab-drawing") {
         const projInput = document.getElementById("drawing-project-search");
         if (projInput) {
             projInput.disabled = false;
@@ -68,98 +72,122 @@ async function openTab(tabId, triggerIntro = true) {
         }
 
         // Chỉ kích hoạt cập nhật ngầm danh sách dự án khi đã có phiên đăng nhập hợp lệ
-        const sessionTok = localStorage.getItem('bcons_session_token');
-        if (sessionTok && sessionTok.startsWith("BCONS2.") && typeof fetchActiveProjectsForDrawing === 'function') {
+        const sessionTok = localStorage.getItem("bcons_session_token");
+        if (sessionTok && sessionTok.startsWith("BCONS2.") && typeof fetchActiveProjectsForDrawing === "function") {
             fetchActiveProjectsForDrawing();
         }
 
         setTimeout(async () => {
-            if (typeof lazyLoadDrawingLibs === 'function' && !isDrawingLibsLoaded) {
+            if (typeof lazyLoadDrawingLibs === "function" && !isDrawingLibsLoaded) {
                 try {
                     await lazyLoadDrawingLibs();
                 } catch (e) {
                     console.error("Lỗi nạp thư viện khi mở Tab Drawing:", e);
                 }
             }
-            if (typeof loadDrawingModule === 'function') {
-                loadDrawingModule(); 
+            if (typeof loadDrawingModule === "function") {
+                loadDrawingModule();
             }
             initDrawingUploadZone();
         }, 150);
     }
 
-    const allTabs = document.querySelectorAll('.tab-content');
+    const allTabs = document.querySelectorAll(".tab-content");
     const currentTab = document.getElementById(activeTabId);
 
     if (currentTab && !isInitialLoad) {
         const currentIndex = TAB_MAP[activeTabId] || 0;
         const targetIndex = TAB_MAP[tabId] || 0;
 
-        allTabs.forEach(t => {
-            t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
+        allTabs.forEach((t) => {
+            t.classList.remove(
+                "slide-in-right",
+                "slide-in-left",
+                "slide-out-left",
+                "slide-out-right",
+                "instant-fade",
+                "tab-anim-done"
+            );
             if (t.id !== activeTabId && t.id !== tabId) {
-                t.style.display = 'none';
+                t.style.display = "none";
             }
         });
 
         if (currentIndex < targetIndex) {
-            currentTab.classList.add('slide-out-left');
-            targetTab.classList.add('slide-in-right');
+            currentTab.classList.add("slide-out-left");
+            targetTab.classList.add("slide-in-right");
         } else {
-            currentTab.classList.add('slide-out-right');
-            targetTab.classList.add('slide-in-left');
+            currentTab.classList.add("slide-out-right");
+            targetTab.classList.add("slide-in-left");
         }
 
-        targetTab.style.display = 'flex';
+        targetTab.style.display = "flex";
 
         tabTimeout = setTimeout(() => {
-            allTabs.forEach(t => {
+            allTabs.forEach((t) => {
                 if (t.id !== tabId) {
-                    t.style.display = 'none';
-                    t.classList.remove('slide-out-left', 'slide-out-right');
+                    t.style.display = "none";
+                    t.classList.remove("slide-out-left", "slide-out-right");
                 }
             });
             tabTimeout = null;
         }, 400);
-
     } else {
-        allTabs.forEach(t => {
-            t.style.display = 'none';
-            t.classList.remove('slide-in-right', 'slide-in-left', 'slide-out-left', 'slide-out-right', 'instant-fade');
+        allTabs.forEach((t) => {
+            t.style.display = "none";
+            t.classList.remove(
+                "slide-in-right",
+                "slide-in-left",
+                "slide-out-left",
+                "slide-out-right",
+                "instant-fade",
+                "tab-anim-done"
+            );
         });
-        targetTab.classList.add('instant-fade');
-        targetTab.style.display = 'flex';
+        targetTab.classList.add("instant-fade");
+        targetTab.style.display = "flex";
     }
 
     activeTabId = tabId;
-    
-    document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
-    const btnId = tabId === 'tab-hdtcxd' ? 'btn-hd' : tabId === 'tab-plhd' ? 'btn-pl' : tabId === 'tab-tbkq' ? 'btn-tbkq' : tabId === 'tab-drawing' ? 'btn-drawing' : 'btn-about';
+
+    document.querySelectorAll(".menu a").forEach((a) => a.classList.remove("active"));
+    const btnId =
+        tabId === "tab-hdtcxd"
+            ? "btn-hd"
+            : tabId === "tab-plhd"
+              ? "btn-pl"
+              : tabId === "tab-tbkq"
+                ? "btn-tbkq"
+                : tabId === "tab-drawing"
+                  ? "btn-drawing"
+                  : "btn-about";
     const menuBtn = document.getElementById(btnId);
-    if (menuBtn) menuBtn.classList.add('active');
+    if (menuBtn) menuBtn.classList.add("active");
 
     if (isInitialLoad) isInitialLoad = false;
 
-    allTabs.forEach(t => {
+    allTabs.forEach((t) => {
         if (t.id !== tabId) {
-            const otherContainer = t.querySelector('.location-date-container');
-            if (otherContainer) otherContainer.classList.remove('active-intro');
+            const otherContainer = t.querySelector(".location-date-container");
+            if (otherContainer) otherContainer.classList.remove("active-intro");
         }
     });
-    const currentLocDateContainer = targetTab.querySelector('.location-date-container');
+    const currentLocDateContainer = targetTab.querySelector(".location-date-container");
     if (currentLocDateContainer) {
-        setTimeout(() => { currentLocDateContainer.classList.add('active-intro'); }, 150);
+        setTimeout(() => {
+            currentLocDateContainer.classList.add("active-intro");
+        }, 150);
     }
 
-    if (typeof updateAppScrollState === 'function') {
+    if (typeof updateAppScrollState === "function") {
         updateAppScrollState();
     }
 }
 
 async function loadSystemData(isSilent = false) {
-    let token = localStorage.getItem('bcons_session_token');
+    let token = localStorage.getItem("bcons_session_token");
     if (token && !token.startsWith("BCONS2.")) {
-        localStorage.removeItem('bcons_session_token');
+        localStorage.removeItem("bcons_session_token");
         token = null;
     }
 
@@ -184,39 +212,40 @@ async function loadSystemData(isSilent = false) {
     }
 
     // Nếu đang mở các panel chỉnh sửa/bàn giao/scan thì không can thiệp ngầm
-    const isPanelActive = document.getElementById('edit-panel-pl')?.classList.contains('active') ||
-                          document.getElementById('transfer-panel-pl')?.classList.contains('active') ||
-                          document.getElementById('scan-panel-pl')?.classList.contains('active');
+    const isPanelActive =
+        document.getElementById("edit-panel-pl")?.classList.contains("active") ||
+        document.getElementById("transfer-panel-pl")?.classList.contains("active") ||
+        document.getElementById("scan-panel-pl")?.classList.contains("active");
     if (isPanelActive && isSilent) return;
 
-    const name = localStorage.getItem('bcons_staff_identity');
-    const displayEl = document.getElementById('staffNameDisplay');
+    const name = localStorage.getItem("bcons_staff_identity");
+    const displayEl = document.getElementById("staffNameDisplay");
     if (displayEl && name) displayEl.textContent = name;
 
     // 1. NẠP DỮ LIỆU TỪ CACHE MỚI NHẤT TRONG LOCALSTORAGE LẬP TỨC (0ms)
     try {
-        const cachedRaw = localStorage.getItem('bcons_cached_system_data');
+        const cachedRaw = localStorage.getItem("bcons_cached_system_data");
         if (cachedRaw) {
             const cachedData = JSON.parse(cachedRaw);
             SYSTEM_DATA = cachedData;
             PRECOMPUTED_PL_DATA = null;
             pendingUsersList_PL = cachedData.pendingUsers || [];
 
-            if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
+            if (INITIALIZED_TABS["tab-plhd"] && typeof executeFilter_PL === "function") {
                 executeFilter_PL(false, false, true);
             }
-            if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
+            if (INITIALIZED_TABS["tab-plhd"] && typeof updateContractNo_PL === "function") {
                 updateContractNo_PL();
             }
 
             if (name) {
-                const bellContainer = document.getElementById('bellNotificationContainer');
+                const bellContainer = document.getElementById("bellNotificationContainer");
                 if (bellContainer) {
-                    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
+                    const currentRole = localStorage.getItem("bcons_staff_role") || "USER";
                     if (currentRole.toUpperCase() === "ADMIN") {
-                        bellContainer.style.setProperty('display', 'flex', 'important');
+                        bellContainer.style.setProperty("display", "flex", "important");
                     } else {
-                        bellContainer.style.setProperty('display', 'none', 'important');
+                        bellContainer.style.setProperty("display", "none", "important");
                     }
                 }
                 updateBellBadge();
@@ -233,46 +262,46 @@ async function loadSystemData(isSilent = false) {
 
         setTimeout(() => {
             loading.style.opacity = "0";
-            setTimeout(() => { 
-                loading.style.display = "none"; 
+            setTimeout(() => {
+                loading.style.display = "none";
             }, 350);
         }, 2500);
     }
 
     // Nếu đang ở Tab Drawing (ví dụ vừa đăng nhập xong tại tab này), kích hoạt tải dự án Drawing
-    if (activeTabId === 'tab-drawing' && typeof fetchActiveProjectsForDrawing === 'function') {
+    if (activeTabId === "tab-drawing" && typeof fetchActiveProjectsForDrawing === "function") {
         fetchActiveProjectsForDrawing();
     }
 
     // 3. TẢI DỮ LIỆU TƯƠI MỚI NGẦM TRONG NỀN TỪ MÁY CHỦ (ĐÃ ĐÍNH KÈM TOKEN)
     try {
-        const sysData = await callBackend('getSystemData');
+        const sysData = await callBackend("getSystemData");
         if (sysData) {
             SYSTEM_DATA = sysData;
             PRECOMPUTED_PL_DATA = null;
             pendingUsersList_PL = sysData.pendingUsers || [];
 
-            localStorage.setItem('bcons_cached_system_data', JSON.stringify(sysData));
+            localStorage.setItem("bcons_cached_system_data", JSON.stringify(sysData));
 
             if (sysData.currentUserRole) {
-                localStorage.setItem('bcons_staff_role', sysData.currentUserRole);
+                localStorage.setItem("bcons_staff_role", sysData.currentUserRole);
             }
 
-            if (INITIALIZED_TABS['tab-plhd'] && typeof executeFilter_PL === 'function') {
+            if (INITIALIZED_TABS["tab-plhd"] && typeof executeFilter_PL === "function") {
                 executeFilter_PL(false, false, true);
             }
-            if (INITIALIZED_TABS['tab-plhd'] && typeof updateContractNo_PL === 'function') {
+            if (INITIALIZED_TABS["tab-plhd"] && typeof updateContractNo_PL === "function") {
                 updateContractNo_PL();
             }
 
             if (name) {
-                const bellContainer = document.getElementById('bellNotificationContainer');
+                const bellContainer = document.getElementById("bellNotificationContainer");
                 if (bellContainer) {
-                    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
+                    const currentRole = localStorage.getItem("bcons_staff_role") || "USER";
                     if (currentRole.toUpperCase() === "ADMIN") {
-                        bellContainer.style.setProperty('display', 'flex', 'important');
+                        bellContainer.style.setProperty("display", "flex", "important");
                     } else {
-                        bellContainer.style.setProperty('display', 'none', 'important');
+                        bellContainer.style.setProperty("display", "none", "important");
                     }
                 }
                 updateBellBadge();
@@ -281,7 +310,7 @@ async function loadSystemData(isSilent = false) {
         }
     } catch (error) {
         console.error("Lỗi đồng bộ ngầm máy chủ:", error);
-        const hasCache = !!localStorage.getItem('bcons_cached_system_data');
+        const hasCache = !!localStorage.getItem("bcons_cached_system_data");
         if (!hasCache && (!error.message || !error.message.includes("UNAUTHORIZED"))) {
             showToast_PL("⚠️ Lỗi kết nối máy chủ, vui lòng kiểm tra mạng!", "error");
         }
@@ -291,69 +320,94 @@ async function loadSystemData(isSilent = false) {
 function showFieldSmoothly(id) {
     const el = document.getElementById(id);
     if (el) {
-        el.style.display = el.classList.contains('radio-container') ? 'flex' : 'block';
-        el.classList.remove('field-closing');
-        el.classList.add('field-opening');
+        el.style.display = el.classList.contains("radio-container") ? "flex" : "block";
+        el.classList.remove("field-closing");
+        el.classList.add("field-opening");
     }
 }
 
 function closeSmoothly(id) {
     const el = document.getElementById(id);
-    if (el && id !== 'dropdown-field0-pl' && el.style.display !== 'none') {
-        if (el.classList.contains('smooth-dropdown')) {
-            el.style.display = 'none'; 
+    if (el && id !== "dropdown-field0-pl" && el.style.display !== "none") {
+        if (el.classList.contains("smooth-dropdown")) {
+            el.style.display = "none";
         } else {
-            el.classList.remove('field-opening');
-            el.classList.add('field-closing');
-            setTimeout(() => { if(el.classList.contains('field-closing')) el.style.display = 'none'; }, 500); 
+            el.classList.remove("field-opening");
+            el.classList.add("field-closing");
+            setTimeout(() => {
+                if (el.classList.contains("field-closing")) el.style.display = "none";
+            }, 500);
         }
     }
 }
 
 function closeAllDropdowns() {
-    document.querySelectorAll('#tab-hdtcxd .smooth-dropdown, #tab-tbkq .smooth-dropdown').forEach(dd => {
-        dd.classList.remove('show');
-        dd.innerHTML = ""; 
+    document.querySelectorAll("#tab-hdtcxd .smooth-dropdown, #tab-tbkq .smooth-dropdown").forEach((dd) => {
+        dd.classList.remove("show");
+        dd.innerHTML = "";
     });
 }
 
 function showToast_PL(message, type) {
     let toast = document.getElementById("toastNotification-pl");
-    if (!toast) { 
-        toast = document.createElement("div"); toast.id = "toastNotification-pl"; 
+    if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "toastNotification-pl";
         toast.style.cssText = `position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #222831; color: white; padding: 12px 25px; border-radius: 8px; font-size: 14.5px; font-weight: 500; z-index: 100000005 !important; opacity: 0; visibility: hidden; transition: all 0.3s ease-in-out; text-align: center;`;
-        document.body.appendChild(toast); 
+        document.body.appendChild(toast);
     }
-    toast.innerHTML = message; 
-    if (type === 'success') { toast.style.border = "1px solid #2ECC71"; toast.style.boxShadow = "0 0 15px rgba(46, 204, 113, 0.3)"; }
-    else { toast.style.border = "1px solid #ff4d4d"; toast.style.boxShadow = "0 0 15px rgba(255, 77, 77, 0.3)"; }
-    setTimeout(() => { toast.style.opacity = "1"; toast.style.visibility = "visible"; toast.style.bottom = "50px"; }, 10);
-    setTimeout(() => { toast.style.opacity = "0"; toast.style.visibility = "hidden"; toast.style.bottom = "20px"; }, 5000);
+    toast.innerHTML = message;
+    if (type === "success") {
+        toast.style.border = "1px solid #2ECC71";
+        toast.style.boxShadow = "0 0 15px rgba(46, 204, 113, 0.3)";
+    } else {
+        toast.style.border = "1px solid #ff4d4d";
+        toast.style.boxShadow = "0 0 15px rgba(255, 77, 77, 0.3)";
+    }
+    clearTimeout(toast._showTimer);
+    clearTimeout(toast._hideTimer);
+    toast._showTimer = setTimeout(() => {
+        toast.style.opacity = "1";
+        toast.style.visibility = "visible";
+        toast.style.bottom = "50px";
+    }, 10);
+    toast._hideTimer = setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.visibility = "hidden";
+        toast.style.bottom = "20px";
+    }, 5000);
 }
 
 function showSearchGuide_PL() {
-    const modal = document.getElementById('infoModal-pl');
-    if (modal) { modal.style.display = 'flex'; setTimeout(() => modal.classList.add('show'), 10); }
+    const modal = document.getElementById("infoModal-pl");
+    if (modal) {
+        modal.style.display = "flex";
+        setTimeout(() => modal.classList.add("show"), 10);
+    }
 }
 
 function closeSearchGuide_PL() {
-    const modal = document.getElementById('infoModal-pl');
-    if (modal) { modal.classList.remove('show'); setTimeout(() => modal.style.display = 'none', 300); }
+    const modal = document.getElementById("infoModal-pl");
+    if (modal) {
+        modal.classList.remove("show");
+        setTimeout(() => (modal.style.display = "none"), 300);
+    }
 }
 
 function updateAppScrollState() {
     const activeTab = document.querySelector('.tab-content[style*="display: flex"]');
-    if (!activeTab || activeTab.id === 'tab-about') { 
-        document.body.style.overflowY = "hidden"; 
-        return; 
+    if (!activeTab || activeTab.id === "tab-about") {
+        document.body.style.overflowY = "hidden";
+        return;
     }
-    const form = activeTab.querySelector('.form-container');
+    const form = activeTab.querySelector(".form-container");
     if (form) {
-        const contentHeight = form.offsetHeight + 120; 
+        const uiZoom = parseFloat(window.getComputedStyle(activeTab).zoom) || 1;
+        const contentHeight = (form.offsetHeight + 120) * uiZoom;
         const viewportHeight = window.innerHeight;
-        
+
         // 🚀 THIẾT LẬP VÙNG ĐỆM TRỄ 25PX CHỐNG RUNG LẮC (HYSTERESIS)
-        const threshold = 25; 
+        const threshold = 25;
         const currentOverflow = document.body.style.overflowY;
 
         if (contentHeight > viewportHeight) {
@@ -361,7 +415,7 @@ function updateAppScrollState() {
             if (currentOverflow !== "auto") {
                 document.body.style.overflowY = "auto";
             }
-        } else if (contentHeight < (viewportHeight - threshold)) {
+        } else if (contentHeight < viewportHeight - threshold) {
             // Chỉ ẩn thanh cuộn nếu chiều cao Form hụt hẳn dưới màn hình quá 25px
             if (currentOverflow !== "hidden") {
                 document.body.style.overflowY = "hidden";
@@ -381,19 +435,16 @@ function updateAppScrollState() {
 /* --- public/JS_Core_API.js --- */
 
 // --- CẤU HÌNH LIÊN KẾT BACKEND API ---
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0kGCpcGHAX2WgC9qQ6Mdh6eCXA4hwzbHCfhkmphOf-uxYKg0/exec";
+const GAS_API_URL =
+    "https://script.google.com/macros/s/AKfycbxaJkfAEWLuPfw8n3J0kGCpcGHAX2WgC9qQ6Mdh6eCXA4hwzbHCfhkmphOf-uxYKg0/exec";
 
 /**
  * Thực thi gọi API đính kèm bảo mật Token
  */
 async function callBackend(action, data = {}, retries = 1) {
-    const token = localStorage.getItem('bcons_session_token');
+    const token = localStorage.getItem("bcons_session_token");
 
-    const publicActions = [
-        "loginUser",
-        "registerUser",
-        "forgotPassword"
-    ];
+    const publicActions = ["loginUser", "registerUser", "forgotPassword"];
 
     // Chỉ chặn ở Client nếu là hành động GHI mà chưa đăng nhập
     if (!token && !publicActions.includes(action)) {
@@ -402,52 +453,55 @@ async function callBackend(action, data = {}, retries = 1) {
     }
 
     const writeActions = [
-        "handleFullExportProcess_HD", 
+        "handleFullExportProcess_HD",
         "handleFullExportProcess_TB",
-        "writeToSheetAndExportDoc_PL", 
+        "writeToSheetAndExportDoc_PL",
         "exportToNewSpreadsheet_PL",
-        "uploadScanToDrive", 
-        "updateContractData_PL", 
+        "uploadScanToDrive",
+        "updateContractData_PL",
         "updateTransferStatus_PL",
-        "deleteContractRow_Backend", 
+        "deleteContractRow_Backend",
         "deleteScanFilePermanently",
-        "batchAddTasksBackend", 
-        "updateTasksOrderBackend", 
+        "batchAddTasksBackend",
+        "updateTasksOrderBackend",
         "renameAndRouteDrawingFile_Backend",
-        "deleteDrawingFileAndTasks_Backend", 
-        "approveUser_InApp", 
+        "deleteDrawingFileAndTasks_Backend",
+        "approveUser_InApp",
         "rejectUser_InApp",
-        "getDrawingUploadSession_Backend", 
+        "getDrawingUploadSession_Backend",
         "extractDataOnly",
         "extractDataFromImages",
         "forgotPassword",
         "callCloudVisionApiBatch",
         "saveDriveCacheFast",
         "overwritePdfFile_Backend",
-        "getPdfOverwriteSession_Backend",        
+        "getPdfOverwriteSession_Backend"
     ];
 
     if (writeActions.includes(action)) {
-        retries = 0; 
+        retries = 0;
     }
 
-    const timeoutDuration = (action === "extractDataFromImages" || action === "extractDataOnly" || action === "callCloudVisionApiBatch") 
-        ? 90000 
-        : (writeActions.includes(action) ? 60000 : 30000);
+    const timeoutDuration =
+        action === "extractDataFromImages" || action === "extractDataOnly" || action === "callCloudVisionApiBatch"
+            ? 90000
+            : writeActions.includes(action)
+              ? 60000
+              : 30000;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
         try {
-            const resp = await fetch(GAS_API_URL, { 
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                redirect: 'follow',
+            const resp = await fetch(GAS_API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                redirect: "follow",
                 body: JSON.stringify({ action, data, token }),
                 signal: controller.signal
             });
-            
+
             clearTimeout(timeoutId);
 
             const rawText = await resp.text();
@@ -457,30 +511,30 @@ async function callBackend(action, data = {}, retries = 1) {
             } catch (jsonErr) {
                 throw new Error("Máy chủ Google đang khởi động lại hoặc trả về phản hồi không hợp lệ.");
             }
-            
+
             if (res.status === "error") {
                 if (res.message && res.message.includes("UNAUTHORIZED")) {
-                    localStorage.removeItem('bcons_session_token');
-                    localStorage.removeItem('bcons_staff_identity');
-                    localStorage.removeItem('bcons_staff_role');
-                    localStorage.removeItem('bcons_cached_system_data');
-                    localStorage.removeItem('bcons_cached_drawing_projects');
+                    localStorage.removeItem("bcons_session_token");
+                    localStorage.removeItem("bcons_staff_identity");
+                    localStorage.removeItem("bcons_staff_role");
+                    localStorage.removeItem("bcons_cached_system_data");
+                    localStorage.removeItem("bcons_cached_drawing_projects");
                     showLoginUI();
                 }
                 throw new Error(res.message);
             }
             return res.data;
-            
         } catch (err) {
             clearTimeout(timeoutId);
 
-            const isAbort = err.name === 'AbortError';
+            const isAbort = err.name === "AbortError";
             const isUnauthorized = err.message && err.message.includes("UNAUTHORIZED");
-            const isServerLogicError = !err.message.includes("Máy chủ Google") && 
-                                       !err.message.includes("Failed to fetch") && 
-                                       !err.message.includes("NetworkError") && 
-                                       !isAbort;
-            
+            const isServerLogicError =
+                !err.message.includes("Máy chủ Google") &&
+                !err.message.includes("Failed to fetch") &&
+                !err.message.includes("NetworkError") &&
+                !isAbort;
+
             if (isUnauthorized || isServerLogicError || attempt === retries) {
                 if (isAbort) {
                     throw new Error(`Quá thời gian kết nối máy chủ (${timeoutDuration / 1000}s). Vui lòng thử lại!`);
@@ -488,7 +542,7 @@ async function callBackend(action, data = {}, retries = 1) {
                 throw err;
             }
 
-            await new Promise(r => setTimeout(r, 800 * Math.pow(1.5, attempt)));
+            await new Promise((r) => setTimeout(r, 800 * Math.pow(1.5, attempt)));
         }
     }
 }
@@ -497,22 +551,22 @@ async function callBackend(action, data = {}, retries = 1) {
  * Xử lý sự kiện nhấn nút SIGN IN (Đồng bộ tên và quyền lên Client)
  */
 function clearUnregisteredNotice() {
-    const notice = document.getElementById('unregisteredNotice');
-    if (notice) notice.style.display = 'none';
+    const notice = document.getElementById("unregisteredNotice");
+    if (notice) notice.style.display = "none";
 }
 
 async function performLogin() {
-    const mailEl = document.getElementById('loginEmail');
-    const passEl = document.getElementById('loginPassword');
+    const mailEl = document.getElementById("loginEmail");
+    const passEl = document.getElementById("loginPassword");
     const mail = mailEl ? mailEl.value.trim() : "";
     const password = passEl ? passEl.value : "";
-    
+
     if (!mail || !password) {
         alert("Sếp vui lòng điền đầy đủ thông tin đăng nhập!");
         return;
     }
 
-    const loginBtn = document.getElementById('loginSubmitBtn');
+    const loginBtn = document.getElementById("loginSubmitBtn");
     if (loginBtn) {
         loginBtn.disabled = true;
         loginBtn.textContent = "VERIFYING...";
@@ -521,24 +575,24 @@ async function performLogin() {
     try {
         const res = await callBackend("loginUser", { mail, password });
         if (res && res.token) {
-            localStorage.setItem('bcons_session_token', res.token);
-            localStorage.setItem('bcons_staff_identity', res.name);
-            localStorage.setItem('bcons_staff_role', res.role || "USER");
-            
-            const displayEl = document.getElementById('staffNameDisplay');
+            localStorage.setItem("bcons_session_token", res.token);
+            localStorage.setItem("bcons_staff_identity", res.name);
+            localStorage.setItem("bcons_staff_role", res.role || "USER");
+
+            const displayEl = document.getElementById("staffNameDisplay");
             if (displayEl) displayEl.textContent = res.name;
-            
-            document.getElementById('loginOverlay').style.setProperty('display', 'none', 'important');
+
+            document.getElementById("loginOverlay").style.setProperty("display", "none", "important");
             showToast_PL(`Chào sếp ${res.name}, đăng nhập thành công!`, "success");
-            
+
             loadSystemData();
         }
     } catch (err) {
         if (err.message && err.message.includes("chưa được đăng ký")) {
             if (!isRegisterMode) toggleLoginMode();
-            const notice = document.getElementById('unregisteredNotice');
-            if (notice) notice.style.display = 'block';
-            document.getElementById('registerName')?.focus();
+            const notice = document.getElementById("unregisteredNotice");
+            if (notice) notice.style.display = "block";
+            document.getElementById("registerName")?.focus();
         } else {
             alert(err.message || "Xác thực thất bại!");
         }
@@ -556,30 +610,29 @@ async function performLogin() {
  * Hiển thị khung đăng nhập chặn tương tác
  */
 function showLoginUI() {
-    const overlay = document.getElementById('loginOverlay');
+    const overlay = document.getElementById("loginOverlay");
     if (overlay) {
-        overlay.style.display = 'flex';
+        overlay.style.display = "flex";
         // Khắc phục xung đột CSS mặc định opacity: 0 của lớp .form-container
-        const formContainer = overlay.querySelector('.form-container');
+        const formContainer = overlay.querySelector(".form-container");
         if (formContainer) {
-            formContainer.style.setProperty('opacity', '1', 'important');
+            formContainer.style.setProperty("opacity", "1", "important");
         }
         // Tắt loading hệ thống nếu có để nhường không gian tương tác
-        const loader = document.getElementById('loadingSystem');
-        if (loader) loader.style.display = 'none';
+        const loader = document.getElementById("loadingSystem");
+        if (loader) loader.style.display = "none";
     }
 }
-
 
 /**
  * Xử lý sự kiện ĐĂNG XUẤT TÀI KHOẢN (LOG OUT)
  */
 function performLogout() {
-    localStorage.removeItem('bcons_session_token');
-    localStorage.removeItem('bcons_staff_identity');
-    localStorage.removeItem('bcons_staff_role');
-    localStorage.removeItem('bcons_cached_system_data');
-    localStorage.removeItem('bcons_cached_drawing_projects');
+    localStorage.removeItem("bcons_session_token");
+    localStorage.removeItem("bcons_staff_identity");
+    localStorage.removeItem("bcons_staff_role");
+    localStorage.removeItem("bcons_cached_system_data");
+    localStorage.removeItem("bcons_cached_drawing_projects");
     window.location.reload();
 }
 
@@ -594,20 +647,20 @@ function backToSignInMode() {
     clearNameWarning();
     clearUnregisteredNotice();
 
-    document.getElementById('loginTitle').textContent = "MEMBER SIGN IN";
-    document.getElementById('passwordFieldContainer').style.setProperty('display', 'flex', 'important');
-    document.getElementById('forgotPasswordLink').style.display = 'inline';
-    document.getElementById('passwordHintText').style.display = 'none';
-    document.getElementById('nameFieldContainer').style.setProperty('display', 'none', 'important');
-    document.getElementById('forgotPasswordNote').style.display = 'none';
+    document.getElementById("loginTitle").textContent = "MEMBER SIGN IN";
+    document.getElementById("passwordFieldContainer").style.setProperty("display", "flex", "important");
+    document.getElementById("forgotPasswordLink").style.display = "inline";
+    document.getElementById("passwordHintText").style.display = "none";
+    document.getElementById("nameFieldContainer").style.setProperty("display", "none", "important");
+    document.getElementById("forgotPasswordNote").style.display = "none";
 
-    const submitBtn = document.getElementById('loginSubmitBtn');
+    const submitBtn = document.getElementById("loginSubmitBtn");
     submitBtn.textContent = "SIGN IN";
-    submitBtn.setAttribute('onclick', 'performLogin()');
+    submitBtn.setAttribute("onclick", "performLogin()");
 
-    const toggleLink = document.getElementById('toggleLoginView');
+    const toggleLink = document.getElementById("toggleLoginView");
     toggleLink.textContent = "Chưa có tài khoản? Đăng ký ngay";
-    toggleLink.setAttribute('onclick', 'toggleLoginMode()');
+    toggleLink.setAttribute("onclick", "toggleLoginMode()");
 }
 
 function openForgotPasswordMode() {
@@ -616,20 +669,20 @@ function openForgotPasswordMode() {
     clearNameWarning();
     clearUnregisteredNotice();
 
-    document.getElementById('loginTitle').textContent = "RESET PASSWORD";
-    document.getElementById('passwordFieldContainer').style.setProperty('display', 'none', 'important');
-    document.getElementById('nameFieldContainer').style.setProperty('display', 'none', 'important');
-    document.getElementById('forgotPasswordNote').style.display = 'block';
+    document.getElementById("loginTitle").textContent = "RESET PASSWORD";
+    document.getElementById("passwordFieldContainer").style.setProperty("display", "none", "important");
+    document.getElementById("nameFieldContainer").style.setProperty("display", "none", "important");
+    document.getElementById("forgotPasswordNote").style.display = "block";
 
-    const submitBtn = document.getElementById('loginSubmitBtn');
+    const submitBtn = document.getElementById("loginSubmitBtn");
     submitBtn.textContent = "SEND NEW PASSWORD";
-    submitBtn.setAttribute('onclick', 'performForgotPassword()');
+    submitBtn.setAttribute("onclick", "performForgotPassword()");
 
-    const toggleLink = document.getElementById('toggleLoginView');
+    const toggleLink = document.getElementById("toggleLoginView");
     toggleLink.textContent = "Quay lại đăng nhập";
-    toggleLink.setAttribute('onclick', 'backToSignInMode()');
+    toggleLink.setAttribute("onclick", "backToSignInMode()");
 
-    document.getElementById('loginEmail')?.focus();
+    document.getElementById("loginEmail")?.focus();
 }
 
 function toggleLoginMode() {
@@ -643,25 +696,25 @@ function toggleLoginMode() {
     clearNameWarning();
     clearUnregisteredNotice();
 
-    document.getElementById('loginTitle').textContent = "CREATE AN ACCOUNT";
-    document.getElementById('passwordFieldContainer').style.setProperty('display', 'flex', 'important');
-    document.getElementById('forgotPasswordLink').style.display = 'none';
-    document.getElementById('passwordHintText').style.display = 'block';
-    document.getElementById('nameFieldContainer').style.setProperty('display', 'flex', 'important');
-    document.getElementById('forgotPasswordNote').style.display = 'none';
+    document.getElementById("loginTitle").textContent = "CREATE AN ACCOUNT";
+    document.getElementById("passwordFieldContainer").style.setProperty("display", "flex", "important");
+    document.getElementById("forgotPasswordLink").style.display = "none";
+    document.getElementById("passwordHintText").style.display = "block";
+    document.getElementById("nameFieldContainer").style.setProperty("display", "flex", "important");
+    document.getElementById("forgotPasswordNote").style.display = "none";
 
-    const submitBtn = document.getElementById('loginSubmitBtn');
+    const submitBtn = document.getElementById("loginSubmitBtn");
     submitBtn.textContent = "REGISTER";
-    submitBtn.setAttribute('onclick', 'performRegister()');
+    submitBtn.setAttribute("onclick", "performRegister()");
 
-    const toggleLink = document.getElementById('toggleLoginView');
+    const toggleLink = document.getElementById("toggleLoginView");
     toggleLink.textContent = "Đã có tài khoản? Đăng nhập ngay";
 }
 
 async function performRegister() {
-    const mail = document.getElementById('loginEmail').value.trim();
-    const name = document.getElementById('registerName').value.trim().toUpperCase();
-    const password = document.getElementById('loginPassword').value;
+    const mail = document.getElementById("loginEmail").value.trim();
+    const name = document.getElementById("registerName").value.trim().toUpperCase();
+    const password = document.getElementById("loginPassword").value;
 
     if (!mail || !name || !password) {
         alert("Sếp vui lòng điền đầy đủ Email, Name và Password!");
@@ -673,7 +726,7 @@ async function performRegister() {
         return;
     }
 
-    const registerBtn = document.getElementById('loginSubmitBtn');
+    const registerBtn = document.getElementById("loginSubmitBtn");
     registerBtn.disabled = true;
     registerBtn.textContent = "REGISTERING...";
 
@@ -681,8 +734,8 @@ async function performRegister() {
         const res = await callBackend("registerUser", { mail, name, password });
         if (res) {
             showToast_PL("🚀 Gửi yêu cầu đăng ký thành công! Hãy liên hệ với Admin để được duyệt!", "success");
-            document.getElementById('registerName').value = "";
-            document.getElementById('loginPassword').value = "";
+            document.getElementById("registerName").value = "";
+            document.getElementById("loginPassword").value = "";
             backToSignInMode();
         }
     } catch (err) {
@@ -700,22 +753,22 @@ async function performRegister() {
 }
 
 async function performForgotPassword() {
-    const mail = document.getElementById('loginEmail').value.trim();
+    const mail = document.getElementById("loginEmail").value.trim();
     if (!mail) {
         alert("Vui lòng nhập Email đã đăng ký!");
         return;
     }
 
-    const btn = document.getElementById('loginSubmitBtn');
+    const btn = document.getElementById("loginSubmitBtn");
     btn.disabled = true;
     btn.textContent = "SENDING...";
 
     try {
         await callBackend("forgotPassword", { mail });
         showToast_PL("📧 Mật khẩu mới đã được gửi về Email của bạn!", "success");
-        document.getElementById('loginPassword').value = "";
+        document.getElementById("loginPassword").value = "";
         backToSignInMode();
-        document.getElementById('loginPassword')?.focus();
+        document.getElementById("loginPassword")?.focus();
     } catch (err) {
         alert(err.message || "Không thể gửi yêu cầu cấp lại mật khẩu!");
     } finally {
@@ -730,14 +783,14 @@ async function performForgotPassword() {
  * Xử lý hiển thị cảnh báo trùng tên ngay dưới ô nhập và đổi màu viền input sang đỏ
  */
 function showNameWarning(name) {
-    const warningEl = document.getElementById('nameWarningText');
+    const warningEl = document.getElementById("nameWarningText");
     if (warningEl) {
         warningEl.textContent = `(Tên "${name}" đã được đăng ký, vui lòng chọn tên khác)`;
-        warningEl.style.display = 'block';
+        warningEl.style.display = "block";
     }
-    const inputEl = document.getElementById('registerName');
+    const inputEl = document.getElementById("registerName");
     if (inputEl) {
-        inputEl.style.setProperty('border-color', '#ff4d4d', 'important');
+        inputEl.style.setProperty("border-color", "#ff4d4d", "important");
     }
 }
 
@@ -745,79 +798,108 @@ function showNameWarning(name) {
  * Xóa bỏ cảnh báo đỏ và trả lại màu viền mặc định cho ô nhập
  */
 function clearNameWarning() {
-    const warningEl = document.getElementById('nameWarningText');
+    const warningEl = document.getElementById("nameWarningText");
     if (warningEl) {
-        warningEl.style.display = 'none';
-        warningEl.textContent = '';
+        warningEl.style.display = "none";
+        warningEl.textContent = "";
     }
-    const inputEl = document.getElementById('registerName');
+    const inputEl = document.getElementById("registerName");
     if (inputEl) {
-        inputEl.style.setProperty('border-color', 'rgba(255, 186, 8, 0.4)', 'important');
+        inputEl.style.setProperty("border-color", "rgba(255, 186, 8, 0.4)", "important");
     }
 }
 
 function submitData_HD() {
     const btn = document.getElementById("submitButton-hd");
     const loading = document.getElementById("contractLoading");
-    const f0 = document.getElementById("field0-hd").value; 
-    
+    const f0 = document.getElementById("field0-hd").value;
+
     if (!f0) {
         showToast_PL("⚠️ Sếp chưa chọn tên gói thầu!", "error");
         return;
     }
 
     const f2Raw = document.getElementById("field2-hd").value;
-    const f2 = f2Raw.includes(" | ") ? f2Raw.split(" | ")[0].trim() : f2Raw.trim(); 
-    const f1 = document.getElementById("field1-hd").value; 
+    const f2 = f2Raw.includes(" | ") ? f2Raw.split(" | ")[0].trim() : f2Raw.trim();
+    const f1 = document.getElementById("field1-hd").value;
     const f3Raw = document.getElementById("field3-hd").value;
-    const f3 = f3Raw.includes(" | ") ? f3Raw.split(" | ")[0].trim() : f3Raw.trim(); 
-    const f4Raw = document.getElementById("field4-hd").value; 
+    const f3 = f3Raw.includes(" | ") ? f3Raw.split(" | ")[0].trim() : f3Raw.trim();
+    const f4Raw = document.getElementById("field4-hd").value;
 
     if (f2 && f1 && f3 && f4Raw && SYSTEM_DATA.pl && SYSTEM_DATA.pl.field0) {
         const currentCategory = f1.trim().toUpperCase();
         const currentProj = f2.toUpperCase();
         const currentContractor = f3.toUpperCase();
-        const currentValClean = f4Raw.replace(/\D/g, ""); 
+        const currentValClean = f4Raw.replace(/\D/g, "");
 
-        const duplicateContract = SYSTEM_DATA.pl.field0.find(item => {
+        const duplicateContract = SYSTEM_DATA.pl.field0.find((item) => {
             const isMatchProj = item.maHD.toUpperCase().includes("HĐTCXD-" + currentProj);
             const isMatchCategory = (item.packageI || "").trim().toUpperCase() === currentCategory;
             const itemValClean = (item.valueK || item.c || "").toString().replace(/\D/g, "");
-            const isMatchValue = (itemValClean === currentValClean);
-            const isMatchContractor = item.maHD.toUpperCase().endsWith("-" + currentContractor) || 
-                                      item.maHD.toUpperCase().includes("-" + currentContractor + "/") ||
-                                      (item.searchK || "").toUpperCase().includes(currentContractor);
+            const isMatchValue = itemValClean === currentValClean;
+            const isMatchContractor =
+                item.maHD.toUpperCase().endsWith("-" + currentContractor) ||
+                item.maHD.toUpperCase().includes("-" + currentContractor + "/") ||
+                (item.searchK || "").toUpperCase().includes(currentContractor);
             return isMatchProj && isMatchCategory && isMatchValue && isMatchContractor;
         });
 
         if (duplicateContract) {
             showToast_PL("⚠️ Hợp đồng này đã được tạo trước đó, vui lòng kiểm tra lại DATA!", "error");
-            return; 
+            return;
         }
     }
 
-    btn.disabled = true; loading.style.display = "flex";
+    btn.disabled = true;
+    loading.style.display = "flex";
     const formData = {
         location: document.getElementById("locationDropdown-hd").value,
-        date: document.getElementById("draftContractCheckbox-hd").checked ? "ngày ... tháng ... năm ..." : document.getElementById("dateDisplay-hd").textContent,
-        field0: f0, field1: document.getElementById("field1-hd").value, field2: document.getElementById("field2-hd").value, field3: document.getElementById("field3-hd").value, field4: document.getElementById("field4-hd").value, field5: document.getElementById("field5-hd").value, field6: document.getElementById("field6-hd").value, field7: document.getElementById("field7-hd").value, field8: document.getElementById("field8-hd").value, draftContract: document.getElementById("draftContractCheckbox-hd").checked, radioOption: document.querySelector('input[name="option-hd"]:checked')?.value || "", radioOption2: document.querySelector('input[name="option2-hd"]:checked')?.value || "", pl01: document.getElementById("pl01Checkbox-hd").checked ? "PL01" : ""
+        date: document.getElementById("draftContractCheckbox-hd").checked
+            ? "ngày ... tháng ... năm ..."
+            : document.getElementById("dateDisplay-hd").textContent,
+        field0: f0,
+        field1: document.getElementById("field1-hd").value,
+        field2: document.getElementById("field2-hd").value,
+        field3: document.getElementById("field3-hd").value,
+        field4: document.getElementById("field4-hd").value,
+        field5: document.getElementById("field5-hd").value,
+        field6: document.getElementById("field6-hd").value,
+        field7: document.getElementById("field7-hd").value,
+        field8: document.getElementById("field8-hd").value,
+        draftContract: document.getElementById("draftContractCheckbox-hd").checked,
+        radioOption: document.querySelector('input[name="option-hd"]:checked')?.value || "",
+        radioOption2: document.querySelector('input[name="option2-hd"]:checked')?.value || "",
+        pl01: document.getElementById("pl01Checkbox-hd").checked ? "PL01" : ""
     };
-    callBackend("handleFullExportProcess_HD", formData).then(res => {
-        loading.style.display = "none"; btn.disabled = false;
-        if (res && res.link) window.open(res.link, "_blank");
-        if (!formData.draftContract) {
-            SYSTEM_DATA.pl.field0.unshift({ display: `${formData.field8} | ${formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0} | ${formData.field4}`, note: formData.field0, transferred: false, scanId: "", hasQ: (formData.field5 && formData.field5 !== "0"), hasR: (formData.radioOption === "BLTU"), hasS: (formData.radioOption === "BLHD") });
-            PRECOMPUTED_PL_DATA = null;
-            if (activeTabId === 'tab-plhd') executeFilter_PL();
-            
-            // Kích hoạt phát tin cập nhật ngay tại Client
-            publishAblyContractUpdate_Client("CREATE_HD", formData.field8);
-            
-            loadSystemData(true);
-        }
-    }).catch(err => {
-        loading.style.display = "none"; btn.disabled = false; alert(err.message || err);
-    });
+    callBackend("handleFullExportProcess_HD", formData)
+        .then((res) => {
+            loading.style.display = "none";
+            btn.disabled = false;
+            if (res && res.link) window.open(res.link, "_blank");
+            if (!formData.draftContract) {
+                SYSTEM_DATA.pl.field0.unshift({
+                    display: `${formData.field8} | ${formData.field0.includes("|") ? formData.field0.split("|")[1].trim() : formData.field0} | ${formData.field4}`,
+                    note: formData.field0,
+                    transferred: false,
+                    scanId: "",
+                    hasQ: formData.field5 && formData.field5 !== "0",
+                    hasR: formData.radioOption === "BLTU",
+                    hasS: formData.radioOption === "BLHD"
+                });
+                PRECOMPUTED_PL_DATA = null;
+                if (activeTabId === "tab-plhd") executeFilter_PL();
+
+                // Kích hoạt phát tin cập nhật ngay tại Client
+                publishAblyContractUpdate_Client("CREATE_HD", formData.field8);
+
+                loadSystemData(true);
+            }
+        })
+        .catch((err) => {
+            loading.style.display = "none";
+            btn.disabled = false;
+            alert(err.message || err);
+        });
 }
 
 function submitData_PL() {
@@ -825,54 +907,66 @@ function submitData_PL() {
     const f8 = document.getElementById("field8-pl")?.value;
     if (!f8) return alert("Sếp chưa chọn hợp đồng gốc!");
     loading.style.display = "flex";
-    const formData = { field0: document.getElementById("field0-pl")?.value || "", field2: document.getElementById("field2-pl")?.value || "", field8: f8, field9: document.getElementById("field9-pl")?.value || "", date: document.getElementById("dateDisplay-pl")?.innerText || "", selectedBF3: selectedAdjustmentLabels.map(label => label.replace(/điều chỉnh\s*/gi, "").trim()).join(" | "), adjustmentIds: selectedAdjustmentIds.join(", ") };
-    
-    callBackend("writeToSheetAndExportDoc_PL", formData).then(res => {
-        loading.style.display = "none"; 
-        if (res && res.link) window.open(res.link, "_blank"); 
+    const formData = {
+        field0: document.getElementById("field0-pl")?.value || "",
+        field2: document.getElementById("field2-pl")?.value || "",
+        field8: f8,
+        field9: document.getElementById("field9-pl")?.value || "",
+        date: document.getElementById("dateDisplay-pl")?.innerText || "",
+        selectedBF3: selectedAdjustmentLabels.map((label) => label.replace(/điều chỉnh\s*/gi, "").trim()).join(" | "),
+        adjustmentIds: selectedAdjustmentIds.join(", ")
+    };
 
-        // Kế thừa thông tin từ hợp đồng mẹ để PL mới luôn hiển thị đúng trong bộ lọc
-        const parentContract = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim().toUpperCase() === selectedContractMaHD_PL.toUpperCase());
+    callBackend("writeToSheetAndExportDoc_PL", formData)
+        .then((res) => {
+            loading.style.display = "none";
+            if (res && res.link) window.open(res.link, "_blank");
 
-        SYSTEM_DATA.pl.field0.unshift({ 
-            maHD: formData.field8,
-            display: `${formData.field8} | ${formData.selectedBF3 || 'Phụ lục'} | ${formData.field2 || formData.field9 || ''}`, 
-            note: formData.selectedBF3 || "Phụ lục", 
-            packageI: parentContract ? parentContract.packageI : (formData.selectedBF3 || ""),
-            searchK: parentContract ? parentContract.searchK : "",
-            searchM: parentContract ? parentContract.searchM : "",
-            dateH: formData.date || "",
-            valueK: formData.field2 || formData.field9 || "",
-            c: formData.field2 || "",
-            transferred: false, 
-            scanId: "", 
-            hasQ: (formData.field2 && formData.field2 !== "0" && formData.field2 !== ""), 
-            hasR: false, 
-            hasS: false 
-        }); 
+            // Kế thừa thông tin từ hợp đồng mẹ để PL mới luôn hiển thị đúng trong bộ lọc
+            const parentContract = SYSTEM_DATA.pl.field0.find(
+                (i) => (i.display || "").split(" | ")[0].trim().toUpperCase() === selectedContractMaHD_PL.toUpperCase()
+            );
 
-        PRECOMPUTED_PL_DATA = null; 
-        executeFilter_PL(false, false, true); 
-        
-        selectedAdjustmentIds = []; 
-        selectedAdjustmentLabels = []; 
-        const f5 = document.getElementById("field5-pl"); 
-        if (f5) f5.value = ""; 
-        renderAdjustmentOptions_PL(); 
-        ["label-field2-pl", "label-field9-pl", "label-field10-pl"].forEach(id => { 
-            const el = document.getElementById(id); 
-            if (el) el.style.display = "none"; 
-        }); 
-        updateContractNo_PL();
-        
-        // Kích hoạt phát tin cập nhật Ably
-        publishAblyContractUpdate_Client("CREATE_PL", formData.field8);
-        
-        loadSystemData(true);
-    }).catch(err => {
-        loading.style.display = "none"; 
-        alert("Lỗi xuất file: " + (err.message || err));
-    });
+            SYSTEM_DATA.pl.field0.unshift({
+                maHD: formData.field8,
+                display: `${formData.field8} | ${formData.selectedBF3 || "Phụ lục"} | ${formData.field2 || formData.field9 || ""}`,
+                note: formData.selectedBF3 || "Phụ lục",
+                packageI: parentContract ? parentContract.packageI : formData.selectedBF3 || "",
+                searchK: parentContract ? parentContract.searchK : "",
+                searchM: parentContract ? parentContract.searchM : "",
+                dateH: formData.date || "",
+                valueK: formData.field2 || formData.field9 || "",
+                c: formData.field2 || "",
+                transferred: false,
+                scanId: "",
+                hasQ: formData.field2 && formData.field2 !== "0" && formData.field2 !== "",
+                hasR: false,
+                hasS: false
+            });
+
+            PRECOMPUTED_PL_DATA = null;
+            executeFilter_PL(false, false, true);
+
+            selectedAdjustmentIds = [];
+            selectedAdjustmentLabels = [];
+            const f5 = document.getElementById("field5-pl");
+            if (f5) f5.value = "";
+            renderAdjustmentOptions_PL();
+            ["label-field2-pl", "label-field9-pl", "label-field10-pl"].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = "none";
+            });
+            updateContractNo_PL();
+
+            // Kích hoạt phát tin cập nhật Ably
+            publishAblyContractUpdate_Client("CREATE_PL", formData.field8);
+
+            loadSystemData(true);
+        })
+        .catch((err) => {
+            loading.style.display = "none";
+            alert("Lỗi xuất file: " + (err.message || err));
+        });
 }
 
 // Khai báo bộ nhớ tạm để khóa các yêu cầu bàn giao đang xử lý ngầm (Client-side Race Lock)
@@ -880,43 +974,45 @@ let activeTransferRequests_PL = new Set();
 
 function executeTransferScript_PL(docTypesString) {
     const { maHD, isTransferred } = currentTransferData_PL;
-    
+
     if (activeTransferRequests_PL.has(maHD)) {
         showToast_PL("⚠️ Hệ thống đang xử lý yêu cầu trước đó, vui lòng đợi trong giây lát!", "error");
         return;
     }
-    
-    activeTransferRequests_PL.add(maHD); 
+
+    activeTransferRequests_PL.add(maHD);
     const newStatus = !isTransferred;
-    const targetItem = SYSTEM_DATA.pl.field0.find(i => (i.display || "").split(" | ")[0].trim() === maHD);
-    
-    if (targetItem) { 
-        targetItem.transferred = newStatus; 
-        PRECOMPUTED_PL_DATA = null; 
-        executeFilter_PL(); 
-    }
-    
-    if (!newStatus) showToast_PL(`🔴 Đã hủy bàn giao: <b style="color:white">${maHD}</b>`, 'error'); 
-    else showToast_PL(`🟢 Đã bàn giao: <b style="color:#FFC000">${maHD}</b>`, 'success'); 
-    
-    callBackend("updateTransferStatus_PL", [maHD, newStatus, docTypesString]).then(res => {
-        activeTransferRequests_PL.delete(maHD); 
-        if (res !== true) { 
-            alert(`⚠️ LỖI DATA: Backend không tìm thấy mã [${maHD}]!`); 
-            if(targetItem) targetItem.transferred = isTransferred; 
-            PRECOMPUTED_PL_DATA = null; 
-            executeFilter_PL(); 
-        } else {
-            // Kích hoạt phát tin cập nhật ngay tại Client khi hoàn thành
-            publishAblyContractUpdate_Client("TRANSFER_STATUS", maHD);
-        }
-    }).catch(err => {
-        activeTransferRequests_PL.delete(maHD); 
-        alert("🚨 LỖI KẾT NỐI SERVER: " + (err.message || err)); 
-        if(targetItem) targetItem.transferred = isTransferred; 
-        PRECOMPUTED_PL_DATA = null; 
+    const targetItem = SYSTEM_DATA.pl.field0.find((i) => (i.display || "").split(" | ")[0].trim() === maHD);
+
+    if (targetItem) {
+        targetItem.transferred = newStatus;
+        PRECOMPUTED_PL_DATA = null;
         executeFilter_PL();
-    });
+    }
+
+    if (!newStatus) showToast_PL(`🔴 Đã hủy bàn giao: <b style="color:white">${maHD}</b>`, "error");
+    else showToast_PL(`🟢 Đã bàn giao: <b style="color:#FFC000">${maHD}</b>`, "success");
+
+    callBackend("updateTransferStatus_PL", [maHD, newStatus, docTypesString])
+        .then((res) => {
+            activeTransferRequests_PL.delete(maHD);
+            if (res !== true) {
+                alert(`⚠️ LỖI DATA: Backend không tìm thấy mã [${maHD}]!`);
+                if (targetItem) targetItem.transferred = isTransferred;
+                PRECOMPUTED_PL_DATA = null;
+                executeFilter_PL();
+            } else {
+                // Kích hoạt phát tin cập nhật ngay tại Client khi hoàn thành
+                publishAblyContractUpdate_Client("TRANSFER_STATUS", maHD);
+            }
+        })
+        .catch((err) => {
+            activeTransferRequests_PL.delete(maHD);
+            alert("🚨 LỖI KẾT NỐI SERVER: " + (err.message || err));
+            if (targetItem) targetItem.transferred = isTransferred;
+            PRECOMPUTED_PL_DATA = null;
+            executeFilter_PL();
+        });
 }
 
 function updateContractNo_TB() {
@@ -930,18 +1026,36 @@ function updateContractNo_TB() {
 }
 
 function submitData_TB() {
-    const f0 = document.getElementById("field0-tb").value; if (!f0) return alert("Sếp chưa nhập tên gói thầu!");
-    const btn = document.getElementById("submitButton-tb"); const loading = document.getElementById("contractLoading");
-    btn.disabled = true; loading.style.display = "flex";
-    const formData = { location: document.getElementById("locationDropdown-tb").value, date: document.getElementById("dateDisplay-tb").textContent, field0: f0, fieldPkgName: document.getElementById("field-pkg-name-tb").value, field1: document.getElementById("field1-tb").value, field2: document.getElementById("field2-tb").value, field3: document.getElementById("field3-tb").value, field4: document.getElementById("field4-tb").value, field5: document.getElementById("field5-tb").value, field6: document.getElementById("field6-tb").value };
-    callBackend("handleFullExportProcess_TB", formData).then(res => {
-        loading.style.display = "none"; btn.disabled = false; 
-        if (res && res.link) window.open(res.link, "_blank");
-    }).catch(err => {
-        loading.style.display = "none"; btn.disabled = false; alert(err.message || err);
-    });
+    const f0 = document.getElementById("field0-tb").value;
+    if (!f0) return alert("Sếp chưa nhập tên gói thầu!");
+    const btn = document.getElementById("submitButton-tb");
+    const loading = document.getElementById("contractLoading");
+    btn.disabled = true;
+    loading.style.display = "flex";
+    const formData = {
+        location: document.getElementById("locationDropdown-tb").value,
+        date: document.getElementById("dateDisplay-tb").textContent,
+        field0: f0,
+        fieldPkgName: document.getElementById("field-pkg-name-tb").value,
+        field1: document.getElementById("field1-tb").value,
+        field2: document.getElementById("field2-tb").value,
+        field3: document.getElementById("field3-tb").value,
+        field4: document.getElementById("field4-tb").value,
+        field5: document.getElementById("field5-tb").value,
+        field6: document.getElementById("field6-tb").value
+    };
+    callBackend("handleFullExportProcess_TB", formData)
+        .then((res) => {
+            loading.style.display = "none";
+            btn.disabled = false;
+            if (res && res.link) window.open(res.link, "_blank");
+        })
+        .catch((err) => {
+            loading.style.display = "none";
+            btn.disabled = false;
+            alert(err.message || err);
+        });
 }
-
 
 /**
  * Biến lưu trữ tạm thời danh sách mã cần xuất
@@ -982,7 +1096,7 @@ function updateExportSummary_PL() {
 
     const countEl = document.getElementById("export-row-count");
     const timeEl = document.getElementById("export-estimated-time");
-    if (countEl) countEl.textContent = targetCount.toLocaleString('vi-VN');
+    if (countEl) countEl.textContent = targetCount.toLocaleString("vi-VN");
     if (timeEl) timeEl.textContent = estimatedTime;
 }
 
@@ -997,15 +1111,15 @@ function exportFilteredToNewSheet_PL() {
         query = inputField.value.toLowerCase().trim();
     }
 
-    if (typeof precomputePLData === 'function') precomputePLData();
+    if (typeof precomputePLData === "function") precomputePLData();
 
     let finalData = [];
-    if (typeof filterAndSortData_PL === 'function') {
+    if (typeof filterAndSortData_PL === "function") {
         const result = filterAndSortData_PL(query);
         finalData = result.finalData || [];
     }
 
-    const filteredA = finalData.map(item => item.maHD).filter(Boolean);
+    const filteredA = finalData.map((item) => item.maHD).filter(Boolean);
 
     if (filteredA.length === 0) {
         showToast_PL("⚠️ Không có dữ liệu nào để xuất!", "error");
@@ -1014,7 +1128,7 @@ function exportFilteredToNewSheet_PL() {
 
     // Bóc tách danh sách HĐ gốc duy nhất
     const uniqueParentMap = new Map();
-    filteredA.forEach(code => {
+    filteredA.forEach((code) => {
         let parentCode = code.trim();
         const plMatch = parentCode.match(/^PL\d+\s*-\s*(.*)$/i);
         if (plMatch && plMatch[1]) {
@@ -1039,12 +1153,12 @@ function exportFilteredToNewSheet_PL() {
 
     updateExportSummary_PL();
 
-    modal.style.display = 'flex';
-    setTimeout(() => modal.classList.add('show'), 10);
+    modal.style.display = "flex";
+    setTimeout(() => modal.classList.add("show"), 10);
 
     window.cancelExport = () => {
-        modal.classList.remove('show');
-        setTimeout(() => modal.style.display = 'none', 300);
+        modal.classList.remove("show");
+        setTimeout(() => (modal.style.display = "none"), 300);
     };
 
     document.getElementById("confirmExportBtn").onclick = () => {
@@ -1055,7 +1169,7 @@ function exportFilteredToNewSheet_PL() {
         const loading = document.getElementById("contractLoading");
         if (loading) {
             loading.style.display = "flex";
-            loading.querySelector('p').textContent = "SYSTEM EXPORTING DATA SPREADSHEET...";
+            loading.querySelector("p").textContent = "SYSTEM EXPORTING DATA SPREADSHEET...";
         }
 
         callBackend("exportToNewSpreadsheet_PL", {
@@ -1063,14 +1177,14 @@ function exportFilteredToNewSheet_PL() {
             contractsOnly: isContractsOnly,
             groupByProject: isGroupByProject
         })
-        .then(url => {
-            if (loading) loading.style.display = "none";
-            if (url) window.open(url, "_blank");
-        })
-        .catch(err => {
-            if (loading) loading.style.display = "none";
-            showToast_PL("⚠️ Lỗi xuất dữ liệu: " + (err.message || err), "error");
-        });
+            .then((url) => {
+                if (loading) loading.style.display = "none";
+                if (url) window.open(url, "_blank");
+            })
+            .catch((err) => {
+                if (loading) loading.style.display = "none";
+                showToast_PL("⚠️ Lỗi xuất dữ liệu: " + (err.message || err), "error");
+            });
     };
 }
 
@@ -1087,54 +1201,75 @@ let isSwipeAllowed = false;
 function isBackgroundSwipeTarget(t) {
     if (!t || t.nodeType !== 1) return false;
     if (t === document.documentElement || t === document.body) return true;
-    if (t.classList.contains('tab-content')) return true;
-    if (t.id === 'drawing-inner-container' || t.classList.contains('drawing-main-layout')) return true;
-    if (t.classList.contains('form-container') && t.closest('#tab-about')) return true;
+    if (t.classList.contains("tab-content")) return true;
+    if (t.id === "drawing-inner-container" || t.classList.contains("drawing-main-layout")) return true;
+    if (t.classList.contains("form-container") && t.closest("#tab-about")) return true;
     return false;
 }
 
 function hasBlockingOverlayOpen() {
-    if (document.querySelector('.info-modal-overlay.show, #edit-panel-pl.active, #transfer-panel-pl.active, #scan-panel-pl.active, #customContextMenu-pl.active, .flatpickr-calendar.open')) {
+    if (
+        document.querySelector(
+            ".info-modal-overlay.show, #edit-panel-pl.active, #transfer-panel-pl.active, #scan-panel-pl.active, #customContextMenu-pl.active, .flatpickr-calendar.open"
+        )
+    ) {
         return true;
     }
     const overlayIds = [
-        'loginOverlay', 'loadingSystem', 'contractLoading',
-        'pl-dock-preview-panel', 'bellDropdown',
-        'drawing-delete-confirm-overlay', 'drawing-edit-confirm-overlay',
-        'data-delete-confirm-overlay', 'scan-delete-confirm-overlay',
-        'cancel-transfer-confirm-overlay'
+        "loginOverlay",
+        "loadingSystem",
+        "contractLoading",
+        "pl-dock-preview-panel",
+        "bellDropdown",
+        "drawing-delete-confirm-overlay",
+        "drawing-edit-confirm-overlay",
+        "data-delete-confirm-overlay",
+        "scan-delete-confirm-overlay",
+        "cancel-transfer-confirm-overlay"
     ];
-    return overlayIds.some(id => {
+    return overlayIds.some((id) => {
         const el = document.getElementById(id);
-        return el && window.getComputedStyle(el).display !== 'none';
+        return el && window.getComputedStyle(el).display !== "none";
     });
 }
 
-document.addEventListener('touchstart', function(e) {
-    if (!e.touches || e.touches.length !== 1 || hasBlockingOverlayOpen() || !isBackgroundSwipeTarget(e.target)) {
+document.addEventListener(
+    "touchstart",
+    function (e) {
+        if (!e.touches || e.touches.length !== 1 || hasBlockingOverlayOpen() || !isBackgroundSwipeTarget(e.target)) {
+            isSwipeAllowed = false;
+            return;
+        }
+
+        isSwipeAllowed = true;
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+        touchStartTime = Date.now();
+    },
+    { passive: true }
+);
+
+document.addEventListener(
+    "touchcancel",
+    function () {
         isSwipeAllowed = false;
-        return;
-    }
+    },
+    { passive: true }
+);
 
-    isSwipeAllowed = true;
-    touchStartX = e.changedTouches[0].screenX;
-    touchStartY = e.changedTouches[0].screenY;
-    touchStartTime = Date.now();
-}, {passive: true});
+document.addEventListener(
+    "touchend",
+    function (e) {
+        if (!isSwipeAllowed) return;
+        isSwipeAllowed = false;
+        if (!e.changedTouches || e.changedTouches.length !== 1) return;
 
-document.addEventListener('touchcancel', function() {
-    isSwipeAllowed = false;
-}, {passive: true});
-
-document.addEventListener('touchend', function(e) {
-    if (!isSwipeAllowed) return;
-    isSwipeAllowed = false;
-    if (!e.changedTouches || e.changedTouches.length !== 1) return;
-
-    touchEndX = e.changedTouches[0].screenX;
-    touchEndY = e.changedTouches[0].screenY;
-    handleMobileSwipe();
-}, {passive: true});
+        touchEndX = e.changedTouches[0].screenX;
+        touchEndY = e.changedTouches[0].screenY;
+        handleMobileSwipe();
+    },
+    { passive: true }
+);
 
 function handleMobileSwipe() {
     const diffX = touchEndX - touchStartX;
@@ -1146,12 +1281,12 @@ function handleMobileSwipe() {
 
     // Tránh lướt nhẹ / lướt chéo / giữ tay lâu: cần vuốt ngang rõ rệt và đủ dài
     if (absX >= minSwipeDist && absX > absY * 1.6 && absY < 90 && elapsed <= 650) {
-        const swipeSequence = ['tab-hdtcxd', 'tab-plhd', 'tab-tbkq', 'tab-drawing'];
+        const swipeSequence = ["tab-hdtcxd", "tab-plhd", "tab-tbkq", "tab-drawing"];
         let currentIndex = swipeSequence.indexOf(activeTabId);
 
         if (diffX < 0) {
-            if (activeTabId === 'tab-about') {
-                openTab('tab-hdtcxd');
+            if (activeTabId === "tab-about") {
+                openTab("tab-hdtcxd");
             } else if (currentIndex !== -1 && currentIndex < swipeSequence.length - 1) {
                 openTab(swipeSequence[currentIndex + 1]);
             }
@@ -1159,7 +1294,7 @@ function handleMobileSwipe() {
             if (currentIndex > 0) {
                 openTab(swipeSequence[currentIndex - 1]);
             } else if (currentIndex === 0) {
-                openTab('tab-about');
+                openTab("tab-about");
             }
         }
     }
@@ -1172,24 +1307,24 @@ const ABLY_CLIENT_KEY = "GNetjA.Fp7ryA:mZOogyAfJeLjEL-J3WN-893xuKX-_vZvj25jv0AR8
  * Trình dựng danh sách chờ duyệt (Chỉ hiện nút APPROVE/REJECT đối với quyền ADMIN)
  */
 function renderBellList() {
-    const listContainer = document.getElementById('bellListContent');
+    const listContainer = document.getElementById("bellListContent");
     if (!listContainer) return;
-    
+
     if (pendingUsersList_PL.length === 0) {
         listContainer.innerHTML = `<div style="color: #505966; font-size: 11px; font-style: italic; text-align: center; padding: 25px 0;">Không có yêu cầu chờ duyệt</div>`;
         return;
     }
-    
-    const currentRole = localStorage.getItem('bcons_staff_role') || "USER";
-    const isAdmin = (currentRole.toUpperCase() === "ADMIN");
+
+    const currentRole = localStorage.getItem("bcons_staff_role") || "USER";
+    const isAdmin = currentRole.toUpperCase() === "ADMIN";
 
     let html = "";
-    pendingUsersList_PL.forEach(u => {
-        const safeId = getSafeId_PL(u.mail); 
-        
+    pendingUsersList_PL.forEach((u) => {
+        const safeId = getSafeId_PL(u.mail);
+
         // Kiểm tra xem user này có đang nằm trong hàng chờ đếm ngược hay không
-        const queuedItem = pendingApprovalBatch_PL.find(item => item.mail === u.mail);
-        
+        const queuedItem = pendingApprovalBatch_PL.find((item) => item.mail === u.mail);
+
         let cardStyle = "background: rgba(255,255,255,0.02); border: 1px solid rgba(255,186,8,0.15);";
         let buttonHTML = "";
 
@@ -1198,7 +1333,7 @@ function renderBellList() {
             const borderCol = queuedItem.action === "APPROVE" ? "#2ECC71" : "#E74C3C";
             const actionText = queuedItem.action === "APPROVE" ? "Đang chờ Duyệt" : "Đang chờ Từ chối";
             cardStyle = `background: rgba(255,255,255,0.01); border: 1.5px solid ${borderCol}; opacity: 0.75;`;
-            
+
             buttonHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 4px;">
                     <span class="batch-status-text" style="color: ${borderCol}; font-size: 11px; font-style: italic; font-weight: bold;">${actionText} (3s)...</span>
@@ -1240,16 +1375,16 @@ function renderBellList() {
  */
 function toggleBellDropdown(event) {
     if (event) event.stopPropagation();
-    const dropdown = document.getElementById('bellDropdown');
-    const isShowing = dropdown.style.display === 'flex';
-    
+    const dropdown = document.getElementById("bellDropdown");
+    const isShowing = dropdown.style.display === "flex";
+
     // Đóng toàn bộ menu dropdown khác
-    document.querySelectorAll('.smooth-dropdown').forEach(d => d.classList.remove('show'));
-    
+    document.querySelectorAll(".smooth-dropdown").forEach((d) => d.classList.remove("show"));
+
     if (isShowing) {
-        dropdown.style.display = 'none';
+        dropdown.style.display = "none";
     } else {
-        dropdown.style.display = 'flex';
+        dropdown.style.display = "flex";
         renderBellList();
     }
 }
@@ -1258,26 +1393,27 @@ function toggleBellDropdown(event) {
  * Cập nhật số đỏ hiển thị trên quả chuông báo
  */
 function updateBellBadge() {
-    const badge = document.getElementById('bellBadge');
+    const badge = document.getElementById("bellBadge");
     const count = pendingUsersList_PL.length;
-    
+
     if (count > 0) {
         badge.textContent = count;
-        badge.style.display = 'block';
+        badge.style.display = "block";
         // Tạo hiệu ứng lắc nhẹ quả chuông để sếp chú ý
-        const icon = document.getElementById('bellIcon');
+        const icon = document.getElementById("bellIcon");
         if (icon) {
-            icon.style.transform = 'scale(1.2) rotate(15deg)';
-            setTimeout(() => { icon.style.transform = 'scale(1) rotate(0deg)'; }, 300);
+            icon.style.transform = "scale(1.2) rotate(15deg)";
+            setTimeout(() => {
+                icon.style.transform = "scale(1) rotate(0deg)";
+            }, 300);
         }
     } else {
-        badge.style.display = 'none';
+        badge.style.display = "none";
     }
 
     // 🚀 THÊM MỚI: Tự động cập nhật thông báo lên Tiêu đề Tab & Favicon
     updateTabNotification(count);
 }
-
 
 /**
  * Thêm hành động duyệt/từ chối vào hàng chờ đếm ngược 3 giây
@@ -1286,7 +1422,7 @@ function queueBatchAction_PL(mail, name, action) {
     const safeId = getSafeId_PL(mail);
 
     // 1. Thêm hành động hoặc cập nhật nếu đã tồn tại trong hàng chờ
-    const existingIndex = pendingApprovalBatch_PL.findIndex(item => item.mail === mail);
+    const existingIndex = pendingApprovalBatch_PL.findIndex((item) => item.mail === mail);
     if (existingIndex > -1) {
         pendingApprovalBatch_PL[existingIndex].action = action;
     } else {
@@ -1308,10 +1444,10 @@ function queueBatchAction_PL(mail, name, action) {
         countdownSeconds_PL--;
         if (countdownSeconds_PL > 0) {
             // Duyệt qua toàn bộ hàng chờ để giảm giây hiển thị trên màn hình
-            pendingApprovalBatch_PL.forEach(item => {
+            pendingApprovalBatch_PL.forEach((item) => {
                 const card = document.getElementById(`user-card-${item.safeId}`);
                 if (card) {
-                    const statusText = card.querySelector('.batch-status-text');
+                    const statusText = card.querySelector(".batch-status-text");
                     if (statusText) {
                         const actionLabel = item.action === "APPROVE" ? "Đang chờ Duyệt" : "Đang chờ Từ chối";
                         statusText.textContent = `${actionLabel} (${countdownSeconds_PL}s)...`;
@@ -1334,8 +1470,8 @@ function queueBatchAction_PL(mail, name, action) {
  */
 function undoBatchAction_PL(mail) {
     // Xóa khỏi hàng chờ
-    pendingApprovalBatch_PL = pendingApprovalBatch_PL.filter(item => item.mail !== mail);
-    
+    pendingApprovalBatch_PL = pendingApprovalBatch_PL.filter((item) => item.mail !== mail);
+
     // Khôi phục lại giao diện mặc định
     renderBellList();
 
@@ -1359,14 +1495,14 @@ async function commitApprovalBatch_PL() {
     // Sao lưu lại mảng hàng chờ và danh sách gốc để đề phòng lỗi mạng cần phục hồi (Rollback)
     const currentBatch = [...pendingApprovalBatch_PL];
     const originalPendingUsers = [...pendingUsersList_PL];
-    
+
     pendingApprovalBatch_PL = []; // Dọn sạch hàng chờ toàn cục ngay để sẵn sàng nhận đợt mới
 
     // 1. XÓA GIẢ ĐỊNH CÁC THẺ CARD TRÊN UI NGAY LẬP TỨC (0-DELAY)
-    currentBatch.forEach(item => {
+    currentBatch.forEach((item) => {
         // Xóa khỏi danh sách bộ nhớ tạm thời của máy khách
-        pendingUsersList_PL = pendingUsersList_PL.filter(u => u.mail !== item.mail);
-        
+        pendingUsersList_PL = pendingUsersList_PL.filter((u) => u.mail !== item.mail);
+
         // Kích hoạt hoạt ảnh bay thẻ mượt mà sang 2 bên màn hình
         const safeId = getSafeId_PL(item.mail);
         const card = document.getElementById(`user-card-${safeId}`);
@@ -1383,8 +1519,8 @@ async function commitApprovalBatch_PL() {
     setTimeout(() => {
         renderBellList();
         if (pendingUsersList_PL.length === 0) {
-            const bellDropdown = document.getElementById('bellDropdown');
-            if (bellDropdown) bellDropdown.style.display = 'none';
+            const bellDropdown = document.getElementById("bellDropdown");
+            if (bellDropdown) bellDropdown.style.display = "none";
         }
     }, 300);
 
@@ -1395,20 +1531,19 @@ async function commitApprovalBatch_PL() {
     try {
         for (const item of currentBatch) {
             const action = item.action === "APPROVE" ? "approveUser_InApp" : "rejectUser_InApp";
-            
+
             const success = await callBackend(action, item.mail);
             if (!success) {
                 throw new Error(`Duyệt tài khoản ${item.mail} thất bại!`);
             }
         }
-        
+
         // Đồng bộ lặng lẽ danh sách sau cùng trong nền
         loadSystemData(true);
-
     } catch (e) {
         console.error("Lỗi xử lý duyệt lô ngầm:", e);
         showToast_PL("⚠️ Gặp lỗi khi duyệt tài khoản ngầm! Đang khôi phục lại dữ liệu...", "error");
-        
+
         // ROLLBACK: Khôi phục lại danh sách cũ nếu xảy ra lỗi mạng thực tế
         pendingUsersList_PL = originalPendingUsers;
         updateBellBadge();
@@ -1418,29 +1553,29 @@ async function commitApprovalBatch_PL() {
 }
 
 // Lắng nghe sự kiện click ngoài màn hình để tự động đóng dropdown Quả chuông báo
-document.addEventListener('click', () => {
-    const dropdown = document.getElementById('bellDropdown');
-    if (dropdown) dropdown.style.display = 'none';
+document.addEventListener("click", () => {
+    const dropdown = document.getElementById("bellDropdown");
+    if (dropdown) dropdown.style.display = "none";
 });
 
 function initAblyRealtimeConnection() {
     try {
-        if (typeof Ably === 'undefined') return;
+        if (typeof Ably === "undefined") return;
         if (ablyRealtime) return; // Đã kết nối, không khởi tạo lại
 
         ablyRealtime = new Ably.Realtime(ABLY_CLIENT_KEY);
-        ablyChannel = ablyRealtime.channels.get('bcons_notification');
-        
+        ablyChannel = ablyRealtime.channels.get("bcons_notification");
+
         // 1. Đăng ký nhận thông báo Đăng ký Nhân viên mới
-        ablyChannel.subscribe('new_registration', (message) => {
+        ablyChannel.subscribe("new_registration", (message) => {
             const newUser = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
             if (newUser && newUser.mail) {
-                const exists = pendingUsersList_PL.some(u => u.mail === newUser.mail);
+                const exists = pendingUsersList_PL.some((u) => u.mail === newUser.mail);
                 if (!exists) {
                     pendingUsersList_PL.push(newUser);
                     updateBellBadge();
-                    const dropdown = document.getElementById('bellDropdown');
-                    if (dropdown && dropdown.style.display === 'flex') {
+                    const dropdown = document.getElementById("bellDropdown");
+                    if (dropdown && dropdown.style.display === "flex") {
                         renderBellList();
                     }
                     showToast_PL(`🔔 <b>${newUser.name}</b> vừa đăng ký tài khoản mới!`, "success");
@@ -1449,27 +1584,36 @@ function initAblyRealtimeConnection() {
         });
 
         // 2. Đăng ký nhận thông báo Cập nhật Hợp đồng / Phụ lục Realtime
-        ablyChannel.subscribe('contract_update', (message) => {
+        ablyChannel.subscribe("contract_update", (message) => {
             const updateInfo = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
-            const localStaffName = localStorage.getItem('bcons_staff_identity');
-            
+            const localStaffName = localStorage.getItem("bcons_staff_identity");
+
             // Chỉ xử lý nếu hành động này được thực thi bởi một user khác
             if (updateInfo && updateInfo.staffName !== localStaffName) {
                 loadSystemData(true); // tải ngầm dữ liệu
-                if (window.BconsViewer && window.BconsViewer.pl01Index && typeof window.BconsViewer.pl01Index.sync === "function") {
+                if (
+                    window.BconsViewer &&
+                    window.BconsViewer.pl01Index &&
+                    typeof window.BconsViewer.pl01Index.sync === "function"
+                ) {
                     window.BconsViewer.pl01Index.sync(false);
                 }
-                
+
                 let actionText = "cập nhật";
                 if (updateInfo.actionType === "CREATE_HD") actionText = "tạo";
                 else if (updateInfo.actionType === "CREATE_PL") actionText = "tạo";
                 else if (updateInfo.actionType === "DELETE_DATA") actionText = "xóa";
                 else if (updateInfo.actionType === "TRANSFER_STATUS") actionText = "thay đổi trạng thái bàn giao";
+                else if (updateInfo.actionType === "UPLOAD_FILE") actionText = "tải lên file cho";
+                else if (updateInfo.actionType === "DELETE_FILE") actionText = "xóa file của";
 
-                showToast_PL(`📢 <b>${updateInfo.staffName}</b> vừa <b>${actionText}</b> hồ sơ <b>${updateInfo.contractNo}</b>.`, "success");
+                showToast_PL(
+                    `📢 <b>${updateInfo.staffName}</b> vừa <b>${actionText}</b> hồ sơ <b>${updateInfo.contractNo}</b>.`,
+                    "success"
+                );
             }
         });
-        
+
         console.log("⚡ [Realtime] Cổng kết nối WebSockets Ably đã sẵn sàng!");
     } catch (e) {
         console.error("[Realtime Error] Lỗi kết nối hệ thống thời gian thực Ably: " + e.message);
@@ -1481,11 +1625,11 @@ function initAblyRealtimeConnection() {
  */
 function publishAblyContractUpdate_Client(actionType, contractNo) {
     if (ablyChannel) {
-        const staffName = localStorage.getItem('bcons_staff_identity') || "UNKNOWN";
-        ablyChannel.publish('contract_update', {
-            "actionType": actionType,
-            "contractNo": contractNo,
-            "staffName": staffName
+        const staffName = localStorage.getItem("bcons_staff_identity") || "UNKNOWN";
+        ablyChannel.publish("contract_update", {
+            actionType: actionType,
+            contractNo: contractNo,
+            staffName: staffName
         });
         console.log(`[Ably-Client] Broadcasted ${actionType} for ${contractNo}`);
     }
@@ -1496,7 +1640,7 @@ function publishAblyContractUpdate_Client(actionType, contractNo) {
  */
 function updateTabNotification(count) {
     const baseTitle = "KEN";
-    
+
     // 1. CẬP NHẬT TIÊU ĐỀ TAB DẠNG (Count) KEN
     if (count > 0) {
         document.title = `(${count}) ${baseTitle}`;
@@ -1516,29 +1660,29 @@ function updateTabNotification(count) {
     }
 
     try {
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         canvas.width = 32;
         canvas.height = 32;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
 
         const img = new Image();
         img.crossOrigin = "anonymous"; // Cho phép tải ảnh an toàn nếu máy chủ hỗ trợ CORS
         img.src = originalSrc;
 
-        img.onload = function() {
+        img.onload = function () {
             try {
                 // Vẽ logo gốc
                 ctx.drawImage(img, 0, 0, 32, 32);
                 // Vẽ thêm chấm đỏ thông báo
                 drawFaviconBadge(ctx, count);
                 // Cập nhật lại liên kết Icon
-                favicon.href = canvas.toDataURL('image/png');
+                favicon.href = canvas.toDataURL("image/png");
             } catch (err) {
                 // Dự phòng vẽ tay hoàn toàn bằng Canvas nếu dính lỗi bảo mật CORS từ nhà cung cấp ảnh
                 drawFallbackFavicon(favicon, count);
             }
         };
-        img.onerror = function() {
+        img.onerror = function () {
             drawFallbackFavicon(favicon, count);
         };
     } catch (e) {
@@ -1552,43 +1696,43 @@ function updateTabNotification(count) {
 function drawFaviconBadge(ctx, count) {
     ctx.beginPath();
     ctx.arc(24, 8, 7, 0, 2 * Math.PI);
-    ctx.fillStyle = '#ff4d4d'; // Màu đỏ thông báo chuẩn
+    ctx.fillStyle = "#ff4d4d"; // Màu đỏ thông báo chuẩn
     ctx.fill();
 
-    ctx.font = 'bold 9px Arial';
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(count > 9 ? '9+' : count, 24, 8);
+    ctx.font = "bold 9px Arial";
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(count > 9 ? "9+" : count, 24, 8);
 }
 
 /**
  * Hàm vẽ favicon dự phòng (Vẽ tay trực tiếp, không sử dụng tài nguyên ảnh ngoài)
  */
 function drawFallbackFavicon(favicon, count) {
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     canvas.width = 32;
     canvas.height = 32;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
 
     // Vẽ hình tròn nền tối màu của hệ thống
-    ctx.fillStyle = '#031c35';
+    ctx.fillStyle = "#031c35";
     ctx.beginPath();
     ctx.arc(16, 16, 15, 0, 2 * Math.PI);
     ctx.fill();
-    ctx.strokeStyle = '#FFBA08';
+    ctx.strokeStyle = "#FFBA08";
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
     // Vẽ chữ K màu vàng đại diện thương hiệu
-    ctx.font = 'bold 15px Arial';
-    ctx.fillStyle = '#FFBA08';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('K', 15, 16);
+    ctx.font = "bold 15px Arial";
+    ctx.fillStyle = "#FFBA08";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("K", 15, 16);
 
     // Vẽ chấm đỏ thông báo
     drawFaviconBadge(ctx, count);
 
-    favicon.href = canvas.toDataURL('image/png');
+    favicon.href = canvas.toDataURL("image/png");
 }

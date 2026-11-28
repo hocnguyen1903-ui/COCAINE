@@ -49,11 +49,11 @@
 .submit-button:hover:not(:disabled),
 .btn-primary-luxury:hover:not(:disabled),
 .btn-yes:hover:not(:disabled) {
-    box-shadow: 0 4px 10px rgba(255, 186, 8, 0.4) !important;
+    box-shadow: 0 3px 8px rgba(255, 186, 8, 0.8) !important;
 }
 
 .btn-danger-luxury:hover:not(:disabled) {
-    box-shadow: 0 4px 10px rgba(255, 77, 77, 0.4) !important;
+    box-shadow: 0 3px 8px rgba(255, 77, 77, 0.8) !important;
 }
 
 .clear-button,
@@ -112,7 +112,7 @@ button:disabled {
     border-color: #ffba08 !important;
     color: #ffba08 !important;
     transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.8);
 }
 .btn-info-luxury:active:not(:disabled) {
     transform: scale(0.95) !important;
@@ -136,7 +136,7 @@ button:disabled {
 .btn-close-info:hover:not(:disabled) {
     filter: brightness(1.1);
     transform: translateY(-2px) scale(1.02);
-    box-shadow: 0 4px 10px rgba(255, 186, 8, 0.3);
+    box-shadow: 0 3px 8px rgba(255, 186, 8, 0.8);
 }
 .btn-close-info:active:not(:disabled) {
     transform: scale(0.95);
@@ -207,7 +207,7 @@ button:disabled {
     transform: translateX(-50%);
     background: rgba(1, 15, 28, 0.96);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8);
     padding: 4px 10px;
     border-radius: 4px;
     font-size: 10.5px;
@@ -301,10 +301,10 @@ button:disabled {
 /* --- 3. SYSTEM LOADERS, PROGRESS BARS & DROP ZONES --- */
 .luxury-loader {
     position: fixed;
-    top: calc(65px * 0.8) !important;
+    top: calc(65px * var(--prv-zoom, 1)) !important;
     left: 0 !important;
     width: 100vw !important;
-    height: calc(100vh - (65px * 0.8)) !important;
+    height: calc(100vh - (65px * var(--prv-zoom, 1))) !important;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -396,28 +396,39 @@ button:disabled {
     gap: 8px;
 }
 
-.scan-queue-badge {
+.scan-queue-badge,
+.scan-status-pill {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 22px;
+    padding: 0 7px;
     font-size: 9.5px;
     font-weight: 700;
-    letter-spacing: 0.8px;
+    letter-spacing: 0.5px;
+    line-height: 1;
     text-transform: uppercase;
-    color: #2ecc71;
-    background: rgba(46, 204, 113, 0.12);
-    border: 1px solid rgba(46, 204, 113, 0.35);
-    padding: 2px 7px;
     border-radius: 4px;
+    white-space: nowrap;
+}
+
+.scan-queue-badge {
+    color: #2ecc71;
+    background: rgba(46, 204, 113, 0.14);
+    border: 1px solid rgba(46, 204, 113, 0.35);
 }
 
 .scan-queue-badge.is-warn {
     color: #ffba08;
-    background: rgba(255, 186, 8, 0.12);
-    border-color: rgba(255, 186, 8, 0.4);
+    background: rgba(255, 186, 8, 0.14);
+    border-color: rgba(255, 186, 8, 0.45);
 }
 
 .scan-queue-badge.is-error {
     color: #ff4d4d;
-    background: rgba(255, 77, 77, 0.12);
-    border-color: rgba(255, 77, 77, 0.4);
+    background: rgba(255, 77, 77, 0.14);
+    border-color: rgba(255, 77, 77, 0.45);
 }
 
 .scan-queue-total {
@@ -611,19 +622,6 @@ button:disabled {
     flex-shrink: 0;
 }
 
-.scan-status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 9.5px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    padding: 3px 7px;
-    border-radius: 4px;
-    white-space: nowrap;
-}
-
 .scan-status-pill.is-ok {
     color: #2ecc71;
     background: rgba(46, 204, 113, 0.14);
@@ -743,7 +741,7 @@ button:disabled {
     border-radius: 12px;
     padding: 20px;
     width: 450px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.8);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8);
 }
 
 #edit-panel-pl.active,
@@ -880,7 +878,7 @@ button:disabled {
     border: 1px solid #ffc000;
     border-radius: 12px;
     padding: 20px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.8);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8);
     color: white;
 }
 #checklistModal-pl {
@@ -1080,7 +1078,7 @@ button:disabled {
     padding: 0 !important;
     width: 230px !important;
     border-radius: 8px !important;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8);
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
     overflow: hidden;
     opacity: 0;
@@ -1205,7 +1203,7 @@ button:disabled {
 
 .ctx-shadow-success,
 .ctx-shadow-danger {
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8) !important;
     border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
@@ -1287,30 +1285,33 @@ button:disabled {
     background: #ff4d4d !important;
     color: #fff;
     border: none;
-    box-shadow: 0 4px 10px rgba(255, 77, 77, 0.3);
+    box-shadow: 0 3px 8px rgba(255, 77, 77, 0.8);
 }
 
 .global-tooltip-bcons {
     position: fixed !important;
     z-index: 2000000 !important;
-    min-width: 220px;
-    max-width: 380px;
+    min-width: calc(275px * var(--prv-zoom, 1));
+    max-width: calc(475px * var(--prv-zoom, 1));
     width: auto;
     background-color: #031c35;
     color: #ffba08;
     text-align: left;
-    border: 1px solid #ffba08;
-    border-radius: 6px;
-    padding: 6px 9px;
-    font-size: 8px;
+    border: 0.5px solid rgba(255, 186, 8, 0.75);
+    border-radius: calc(7.5px * var(--prv-zoom, 1));
+    padding: calc(7.5px * var(--prv-zoom, 1)) calc(11.25px * var(--prv-zoom, 1));
+    font-size: calc(10px * var(--prv-zoom, 1));
     line-height: 1.4;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8) !important;
     pointer-events: none;
     white-space: normal;
     opacity: 0;
     visibility: hidden;
     transform: translate(-50%, calc(-100% + 10px)) scale(0.95);
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+        opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        visibility 0.2s;
 }
 
 .global-tooltip-bcons.tooltip-compact {
@@ -1318,15 +1319,15 @@ button:disabled {
     max-width: unset !important;
     width: max-content !important;
     white-space: nowrap !important;
-    padding: 3.5px 8px !important;
-    border-radius: 3px !important;
+    padding: calc(4.5px * var(--prv-zoom, 1)) calc(10px * var(--prv-zoom, 1)) !important;
+    border-radius: calc(4px * var(--prv-zoom, 1)) !important;
     background: rgba(1, 15, 28, 0.96) !important;
     border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8) !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 3px !important;
-    font-size: 8.5px !important;
+    gap: calc(4px * var(--prv-zoom, 1)) !important;
+    font-size: calc(10.5px * var(--prv-zoom, 1)) !important;
     letter-spacing: 0.3px !important;
     transform: translate(-50%, -100%) !important;
     transition: opacity 0.15s ease !important;
@@ -1341,11 +1342,11 @@ button:disabled {
 }
 
 .global-tooltip-bcons b {
-    font-size: 8.5px;
+    font-size: calc(10.5px * var(--prv-zoom, 1));
     color: white;
-    border-bottom: 1px solid #ffba08;
-    padding-bottom: 3px;
-    margin-bottom: 4px;
+    border-bottom: 0.5px solid rgba(255, 186, 8, 0.5);
+    padding-bottom: calc(4.5px * var(--prv-zoom, 1));
+    margin-bottom: calc(6px * var(--prv-zoom, 1));
     display: block;
 }
 
@@ -1361,13 +1362,13 @@ button:disabled {
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
-    border-width: 7px;
+    border-width: calc(6px * var(--prv-zoom, 1));
     border-style: solid;
     border-color: #ffba08 transparent transparent transparent;
 }
 
 .global-tooltip-bcons.tooltip-compact::after {
-    border-width: 4px;
+    border-width: calc(5px * var(--prv-zoom, 1));
     border-color: rgba(255, 186, 8, 0.4) transparent transparent transparent;
 }
 
@@ -1397,7 +1398,7 @@ button:disabled {
 .btn-bell-approve:hover {
     background-color: #27ae60 !important;
     transform: translateY(-1.5px);
-    box-shadow: 0 4px 10px rgba(46, 204, 113, 0.4);
+    box-shadow: 0 3px 8px rgba(46, 204, 113, 0.8);
 }
 .btn-bell-approve:active {
     transform: translateY(0.5px) scale(0.97);
@@ -1406,7 +1407,7 @@ button:disabled {
 .btn-bell-reject:hover {
     background-color: #c0392b !important;
     transform: translateY(-1.5px);
-    box-shadow: 0 4px 10px rgba(231, 76, 60, 0.4);
+    box-shadow: 0 3px 8px rgba(231, 76, 60, 0.8);
 }
 .btn-bell-reject:active {
     transform: translateY(0.5px) scale(0.97);

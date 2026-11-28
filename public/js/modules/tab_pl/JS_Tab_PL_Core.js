@@ -131,6 +131,9 @@ function precomputePLData() {
             parts[parts.length - 1]?.trim().replace(/\./g, "").replace(/đ/g, "").replace(/VND/gi, "") || "0";
         if (/^-?\d+$/.test(lastPart)) numericValue = parseInt(lastPart, 10);
 
+        const staffStr = normalizeText_PL(nhanSuM).replace(/\s*\.\s*/g, ".");
+        const staffTokens = staffStr ? staffStr.split(/[\s,;/&|+()]+/).filter(Boolean) : [];
+
         return {
             ...item,
             originalIndex: index,
@@ -138,7 +141,8 @@ function precomputePLData() {
             parentCode: isPL ? plMatch[2].trim() : ma,
             plNo: isPL ? parseInt(plMatch[1], 10) : 0,
             searchStr: normalizeText_PL(`${ma} ${goiThau} ${nhaThauK}`),
-            staffStr: normalizeText_PL(nhanSuM),
+            staffStr: staffStr,
+            staffTokens: staffTokens,
             numericValue: numericValue,
             maHD: ma,
             rightParts: parts.slice(1).filter((p) => p.trim() !== "")
@@ -284,11 +288,14 @@ function mergePl01Matches_PL(branchMatches, allHashTermsOrder, idxApi) {
     const matchedByNorm = new Map();
     let primaryMatch = null;
     let bestPct = 0;
+    let bestScorePct = 0;
     let totalScore = 0;
 
     branchMatches.forEach((m) => {
         if (!m) return;
+        const mScorePct = Number(m.bestScorePct) || m.bestPct;
         if (m.bestPct > bestPct) bestPct = m.bestPct;
+        if (mScorePct > bestScorePct) bestScorePct = mScorePct;
         totalScore += m.totalScore;
         const nk = normTerm(m.rawQuery);
         if (nk && !matchedByNorm.has(nk)) {
@@ -297,7 +304,11 @@ function mergePl01Matches_PL(branchMatches, allHashTermsOrder, idxApi) {
         if (
             !primaryMatch ||
             m.bestPct > primaryMatch.bestPct ||
-            (m.bestPct === primaryMatch.bestPct && m.totalScore > primaryMatch.totalScore)
+            (m.bestPct === primaryMatch.bestPct &&
+                mScorePct > (Number(primaryMatch.bestScorePct) || primaryMatch.bestPct)) ||
+            (m.bestPct === primaryMatch.bestPct &&
+                mScorePct === (Number(primaryMatch.bestScorePct) || primaryMatch.bestPct) &&
+                m.totalScore > primaryMatch.totalScore)
         ) {
             primaryMatch = m;
         }
@@ -333,6 +344,7 @@ function mergePl01Matches_PL(branchMatches, allHashTermsOrder, idxApi) {
                 query: matched.rawQuery || rawTerm,
                 matched: true,
                 bestPct: matched.bestPct,
+                bestScorePct: Number(matched.bestScorePct) || matched.bestPct,
                 totalScore: matched.totalScore || 0,
                 origIdx: origIdx,
                 rawGroups: matched.groups || []
@@ -342,6 +354,7 @@ function mergePl01Matches_PL(branchMatches, allHashTermsOrder, idxApi) {
                 query: rawTerm,
                 matched: false,
                 bestPct: 0,
+                bestScorePct: 0,
                 totalScore: 0,
                 origIdx: origIdx,
                 rawGroups: []
@@ -354,6 +367,7 @@ function mergePl01Matches_PL(branchMatches, allHashTermsOrder, idxApi) {
         if (a.matched !== b.matched) return a.matched ? -1 : 1;
         if (a.matched) {
             if (b.bestPct !== a.bestPct) return b.bestPct - a.bestPct;
+            if (b.bestScorePct !== a.bestScorePct) return b.bestScorePct - a.bestScorePct;
             if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
         }
         return a.origIdx - b.origIdx;
@@ -363,6 +377,7 @@ function mergePl01Matches_PL(branchMatches, allHashTermsOrder, idxApi) {
         query: sec.query,
         matched: sec.matched,
         bestPct: sec.bestPct,
+        bestScorePct: sec.bestScorePct,
         totalScore: sec.totalScore,
         groups: sec.rawGroups.map((g) => ({ ...g, sectionIdx: sIdx }))
     }));
@@ -382,6 +397,7 @@ function mergePl01Matches_PL(branchMatches, allHashTermsOrder, idxApi) {
         apStart: primaryMatch.apStart,
         rawQuery: primaryMatch.rawQuery,
         bestPct: bestPct,
+        bestScorePct: bestScorePct,
         bestCount: bestCount,
         hasLowerTier: hasLowerTier,
         totalMatches: allGroups.reduce((acc, g) => acc + (g.count || 0), 0),
@@ -424,7 +440,7 @@ function filterAndSortData_PL(query) {
                             if (hq && !firstRawHashQuery) firstRawHashQuery = hq;
                             hashTerms.push(hq);
                         } else if (kw.startsWith("'")) {
-                            staffTerms.push(normalizeText_PL(kw.substring(1)));
+                            staffTerms.push(normalizeText_PL(kw.substring(1)).replace(/\s*\.\s*/g, "."));
                         } else {
                             normalTerms.push(normalizeText_PL(kw));
                         }
@@ -452,7 +468,9 @@ function filterAndSortData_PL(query) {
                         const pg = parsedGroups[gIdx];
                         if (pg.hashTerms.length > 1) continue;
 
-                        const staffOk = pg.staffTerms.every((sq) => sq === "" || item.staffStr.includes(sq));
+                        const staffOk = pg.staffTerms.every(
+                            (sq) => sq === "" || item.staffTokens.some((tok) => tok.startsWith(sq))
+                        );
                         if (!staffOk) continue;
                         const normOk = pg.normalTerms.every((nq) => nq === "" || item.searchStr.includes(nq));
                         if (!normOk) continue;
@@ -540,6 +558,8 @@ function filterAndSortData_PL(query) {
                 if (secDiff !== 0) return secDiff;
                 const tierDiff = mB.bestPct - mA.bestPct;
                 if (tierDiff !== 0) return tierDiff;
+                const rawPctDiff = (mB.bestScorePct || 0) - (mA.bestScorePct || 0);
+                if (rawPctDiff !== 0) return rawPctDiff;
                 const scoreDiff = mB.totalScore - mA.totalScore;
                 if (scoreDiff !== 0) return scoreDiff;
                 const cntDiff = mB.bestCount - mA.bestCount;
@@ -570,19 +590,19 @@ function buildHeaderHTML_PL(sumHDPL, sumPL) {
     const getFltStyle = (type) =>
         `cursor: pointer; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; color: ${currentFilterState_PL === type ? "#FFBA08" : "#031c35"}; background: ${currentFilterState_PL === type ? "#031c35" : "transparent"}; border: ${currentFilterState_PL === type ? "1px solid #031c35" : "1px solid rgba(3, 28, 53, 0.3)"}; transition: all 0.2s;`;
 
-    return `<section class="disable-hover" style="position: sticky; top: 0; background: #FFBA08; color: #031c35; padding: 6px 12px; z-index: 50; border-bottom: 1.5px solid rgba(0, 0, 0, 0.2); display: flex; justify-content: space-between; align-items: center; font-size: 13px; transform: translateZ(0);">
-        <span style="display: flex; gap: 15px; align-items: center;">
-            <span style="display: flex; align-items: center; gap: 6px;">
-                <i class="bi bi-currency-exchange" style="font-size: 17px;"></i>
-                <span><b>Total Value: </b> <b style="color: #d32f2f; font-size: 14px;">${formatMoney(sumHDPL)}</b></span>
+    return `<section class="disable-hover" style="position: sticky; top: 0; background: #FFBA08; color: #031c35; padding: 6px 12px; z-index: 50; border-bottom: 1.5px solid rgba(0, 0, 0, 0.2); display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; font-size: 13px; transform: translateZ(0);">
+        <span style="display: flex; gap: 15px; align-items: center; white-space: nowrap; flex-shrink: 0;">
+            <span style="display: flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0;">
+                <i class="bi bi-currency-exchange" style="font-size: 17px; flex-shrink: 0;"></i>
+                <span style="white-space: nowrap;"><b>Total Value: </b> <b style="color: #d32f2f; font-size: 14px;">${formatMoney(sumHDPL)}</b></span>
             </span>
-            <span style="opacity: 0.3;">|</span>
-            <span style="display: flex; align-items: center; gap: 6px;">
-                <i class="bi bi-file-earmark-plus-fill" style="font-size: 16px;"></i>
-                <span><b>Add: </b> <b style="color: #d32f2f; font-size: 14px;">${formatMoney(sumPL)}</b></span>
+            <span style="opacity: 0.3; flex-shrink: 0;">|</span>
+            <span style="display: flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0;">
+                <i class="bi bi-file-earmark-plus-fill" style="font-size: 16px; flex-shrink: 0;"></i>
+                <span style="white-space: nowrap;"><b>Add: </b> <b style="color: #d32f2f; font-size: 14px;">${formatMoney(sumPL)}</b></span>
             </span>
         </span>
-        <span style="display: flex; gap: 6px; align-items: center;">
+        <span style="display: flex; gap: 6px; align-items: center; white-space: nowrap; flex-shrink: 0;">
             <span style="${getFltStyle("ALL")}" onmousedown="setFilterState_PL('ALL', event)">All</span>
             <span style="${getFltStyle("DONE")}" onmousedown="setFilterState_PL('DONE', event)">Sent</span>
             <span style="${getFltStyle("PENDING")}" onmousedown="setFilterState_PL('PENDING', event)">Pending</span>
@@ -590,6 +610,57 @@ function buildHeaderHTML_PL(sumHDPL, sumPL) {
         </span>
     </section>`;
 }
+
+window.copyText_PL = async function (rawText, event, toastLabel = "Copied") {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    const text = (rawText || "").toString().trim();
+    if (!text) return;
+
+    if (window.getSelection) {
+        try {
+            window.getSelection().removeAllRanges();
+        } catch (_) {}
+    }
+
+    let copied = false;
+    if (navigator.clipboard && window.isSecureContext) {
+        try {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+        } catch (_) {}
+    }
+
+    if (!copied) {
+        try {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0;";
+            document.body.appendChild(ta);
+            ta.select();
+            ta.setSelectionRange(0, ta.value.length);
+            copied = document.execCommand("copy");
+            document.body.removeChild(ta);
+        } catch (_) {}
+    }
+
+    if (copied && typeof showToast_PL === "function") {
+        const safeLabel = (toastLabel || "Copied")
+            .toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+        const safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        showToast_PL(`📋 ${safeLabel}: <b style="color:#FFBA08;">${safeText}</b>`, "success");
+    }
+};
+
+window.copyContractNumber_PL = function (contractNo, event) {
+    return window.copyText_PL(contractNo, event, "Copied ID");
+};
 
 /**
  * Mở trực tiếp file Scan H hoặc G từ badge (Đưa ra ngoài phạm vi vòng lặp)
@@ -653,7 +724,9 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
         let xx = fmt(xxRaw);
         let yy = fmt(yyRaw);
         let yyStyle = i.isPL ? "color: #7A828E; font-style: italic;" : "color: #FFBA08;";
-        giaTriHTML = `<span style="display: inline-block; width: 90px; text-align: right; color: white; font-weight: 400;">${xx}</span><span style="display: inline-block; width: 35px; text-align: center; color: #505966;">|</span><span style="display: inline-block; width: 90px; text-align: right; ${yyStyle} font-weight: 400;">${yy}</span>`;
+        const xxDbl = xx ? ` ondblclick="copyText_PL('${escapeStr(xx)}', event, 'Copied')"` : "";
+        const yyDbl = yy ? ` ondblclick="copyText_PL('${escapeStr(yy)}', event, 'Copied')"` : "";
+        giaTriHTML = `<span style="display: inline-block; width: 90px; text-align: right; color: white; font-weight: 400;"${xxDbl}>${xx}</span><span style="display: inline-block; width: 35px; text-align: center; color: #505966;">|</span><span style="display: inline-block; width: 90px; text-align: right; ${yyStyle} font-weight: 400;"${yyDbl}>${yy}</span>`;
     }
 
     // ========================================================================
@@ -786,7 +859,8 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
         const badgeClick = targetMatchFileId
             ? `onmousedown="openDirectFile_PL('${escapeStr(targetMatchFileId)}', event);"`
             : "";
-        matchBadgeHTML = `<span class="pl01-match-badge" ${badgeClick} style="color: ${badgeColor}; background: ${badgeBg};">${m.bestPct}% ×${m.bestCount}${m.hasLowerTier ? " +" : ""}</span>`;
+        const scoreTitle = m.bestScorePct ? `title="Độ khớp: ${m.bestScorePct}%"` : "";
+        matchBadgeHTML = `<span class="pl01-match-badge" ${scoreTitle} ${badgeClick} style="color: ${badgeColor}; background: ${badgeBg};">${m.bestPct}% ×${m.bestCount}${m.hasLowerTier ? " +" : ""}</span>`;
     }
 
     return `<div class="${isTransferredClass} ${animationClass} ${selectedClass} ${previewClass} ${plRowClass} hoc-tooltip" 
@@ -800,7 +874,7 @@ function buildSingleItemHTML_PL(i, index, currentInputVal, allowAnim) {
                  ontouchmove="handleTouchEnd_Mobile()">
                 <div style="display: flex; align-items: center; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px;">
                     ${icon} 
-                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${formattedMa}</span>
+                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" ondblclick="copyContractNumber_PL('${escapeStr(i.maHD)}', event)">${formattedMa}</span>
                     ${matchBadgeHTML}
                 </div>
                 <div class="money-column-container" style="display: flex; align-items: center; justify-content: flex-end;">

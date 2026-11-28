@@ -5,14 +5,16 @@
 
 :root {
     --master-panel-width: 1040px;
-    --metallic-gold: #D1A054;
-    --peak-gold: #FFBA08;
+    --prv-zoom: 1;
+    --metallic-gold: #d1a054;
+    --peak-gold: #ffba08;
     --metallic-glow: rgba(209, 160, 84, 0.15);
     --peak-glow: rgba(255, 192, 0, 0.35);
     --badge-radius: 4px;
 }
 
-html, body {
+html,
+body {
     -webkit-text-size-adjust: 100%;
     -moz-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -20,9 +22,13 @@ html, body {
 
 body {
     font-family: "Poppins", Arial, sans-serif;
-    margin: 0; padding: 0;
-    width: 100%; height: 100vh;
-    display: flex; justify-content: center; align-items: center;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     position: relative;
     overflow: hidden !important;
     scroll-behavior: smooth;
@@ -30,8 +36,11 @@ body {
 
 body::before {
     content: "";
-    position: fixed; top: 0; left: 0;
-    width: 100%; height: 100%;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     background: url(https://i.postimg.cc/yxPDnjWg/123456789.jpg) center/cover no-repeat;
     z-index: -1;
 }
@@ -41,7 +50,7 @@ body::-webkit-scrollbar,
     display: none;
 }
 
-/* 1. THU NHỎ 80% CHO CÁC KHUNG GIAO DIỆN CHÍNH */
+/* 1. TỶ LỆ 1:1 CHO CÁC KHUNG GIAO DIỆN CHÍNH (ĐỒNG BỘ SHOW PREVIEW ZOOM) */
 .header,
 #pl-dock-preview-panel,
 #customContextMenu-pl,
@@ -50,15 +59,15 @@ body::-webkit-scrollbar,
 #loginOverlay .form-container,
 .info-modal-content,
 .scan-delete-dialog {
-    zoom: 0.8;
+    zoom: var(--prv-zoom, 1);
 }
 
 /* 2. LỚP PHỦ NỀN MỜ CHO LOADER & LOGIN OVERLAY */
 .luxury-loader {
-    top: calc(65px * 0.8) !important;
+    top: calc(65px * var(--prv-zoom, 1)) !important;
     left: 0 !important;
     width: 100vw !important;
-    height: calc(100vh - (65px * 0.8)) !important;
+    height: calc(100vh - (65px * var(--prv-zoom, 1))) !important;
 }
 
 #loginOverlay {
@@ -71,7 +80,7 @@ body::-webkit-scrollbar,
 /* 3. ĐỒNG BỘ CHIỀU CAO SƠ ĐỒ MINDMAP TAB DRAWING */
 @media screen and (min-width: 1025px) {
     .drawing-main-layout {
-        height: calc(82vh / 0.8) !important;
+        height: calc(82vh / var(--prv-zoom, 1)) !important;
     }
 }
 
@@ -79,7 +88,7 @@ body::-webkit-scrollbar,
 .tab-content {
     width: 100%;
     height: 100%;
-    zoom: 0.8;
+    zoom: var(--prv-zoom, 1);
     display: none;
     flex-direction: column !important;
     align-items: center !important;
@@ -88,7 +97,10 @@ body::-webkit-scrollbar,
     box-sizing: border-box;
     position: relative;
 }
-#tab-about { position: relative; top: 0; }
+#tab-about {
+    position: relative;
+    top: 0;
+}
 
 .tab-content[style*="display: block"],
 .tab-content[style*="display: flex"] {
@@ -104,7 +116,7 @@ body::-webkit-scrollbar,
     -webkit-backdrop-filter: blur(60px);
     padding: 12px 30px 15px 30px;
     border-radius: 10px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8) !important;
     width: calc(100% - 30px);
     max-width: var(--master-panel-width, 1040px);
     margin: 0 auto !important;
@@ -116,7 +128,9 @@ body::-webkit-scrollbar,
     backface-visibility: hidden;
 }
 
-#tab-hdtcxd label { position: relative; }
+#tab-hdtcxd label {
+    position: relative;
+}
 
 .location-date-container {
     position: absolute;
@@ -130,7 +144,7 @@ body::-webkit-scrollbar,
     padding: 6px;
     border-radius: 30px;
     border: 1px solid #4d545e;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8);
     width: 95px;
     overflow: hidden;
     white-space: nowrap;
@@ -146,8 +160,8 @@ body::-webkit-scrollbar,
 
 .location-date-container:hover,
 .location-date-container.calendar-open {
-    border-color: #FFC000;
-    box-shadow: 0 4px 10px rgba(255, 192, 0, 0.25);
+    border-color: #ffc000;
+    box-shadow: 0 5px 12px rgba(255, 192, 0, 0.8);
 }
 
 .button-container {
@@ -160,7 +174,7 @@ body::-webkit-scrollbar,
 
 h1 {
     text-align: center !important;
-    color: #FFC000 !important;
+    color: #ffc000 !important;
     margin-top: 20px !important;
     margin-bottom: 20px !important;
     font-size: 30px !important;
@@ -186,12 +200,12 @@ h1 {
     padding: 0 40px;
     z-index: 1000000;
     box-sizing: border-box;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8);
 }
 
 .logo:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(255, 255, 255, 0.25);
+    box-shadow: 0 3px 8px rgba(255, 255, 255, 0.8);
     filter: brightness(1.02);
 }
 
@@ -217,20 +231,23 @@ h1 {
     text-transform: uppercase;
     letter-spacing: 1.1px;
     text-indent: 1.1px;
-    transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.3s ease;
+    transition:
+        transform 0.3s ease,
+        opacity 0.3s ease,
+        background-color 0.3s ease;
     will-change: transform, opacity;
     display: inline-block;
 }
 
 .menu a::after {
-    content: '';
+    content: "";
     position: absolute;
     bottom: 0px;
     left: 50%;
     width: 0%;
     height: 2.5px;
-    background-color: #FFBA08;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background-color: #ffba08;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     transform: translateX(-50%);
     box-shadow: 0 0 12px rgba(255, 186, 8, 0.8);
     border-radius: 2px;
@@ -247,7 +264,7 @@ h1 {
 }
 
 .menu a.active {
-    color: #FFBA08;
+    color: #ffba08;
     font-weight: 700;
     text-shadow: 0 0 15px rgba(255, 186, 8, 0.4);
 }
@@ -267,16 +284,19 @@ h1 {
     min-width: 80px;
     background: rgba(22, 27, 34, 0.95);
     border: 1px solid rgba(255, 186, 8, 0.3);
-    border-top: 2px solid #FFBA08;
+    border-top: 2px solid #ffba08;
     border-radius: 0 0 10px 10px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.8);
     display: flex;
     flex-direction: column;
     padding: 10px 0;
     opacity: 0;
     visibility: hidden;
     transform: translateX(-50%) translateY(15px);
-    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    transition:
+        opacity 0.35s cubic-bezier(0.23, 1, 0.32, 1),
+        transform 0.4s cubic-bezier(0.23, 1, 0.32, 1),
+        visibility 0.35s;
     z-index: 1000001;
 }
 
@@ -292,7 +312,9 @@ h1 {
     letter-spacing: 2px !important;
     color: rgba(255, 255, 255, 0.7) !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    transition: all 0.3s ease !important;
+    transition:
+        color 0.25s ease,
+        background-color 0.25s ease !important;
     text-align: center !important;
     white-space: nowrap;
 }
@@ -340,9 +362,17 @@ h1 {
 .tab-content.instant-fade .form-container {
     animation: simpleFadeIn 0.5s ease forwards;
 }
+.tab-content.tab-anim-done .form-container {
+    opacity: 1;
+    animation: none;
+}
 
-.field-opening { animation: fieldFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards !important; }
-.field-closing { animation: fieldFadeOut 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards !important; }
+.field-opening {
+    animation: fieldFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+}
+.field-closing {
+    animation: fieldFadeOut 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+}
 
 .pl-item-appear {
     animation: itemAppearElite 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -350,33 +380,74 @@ h1 {
 }
 
 @keyframes simpleFadeIn {
-    0% { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
-    100% { opacity: 1; backdrop-filter: blur(60px); -webkit-backdrop-filter: blur(60px); }
+    0% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
 }
 @keyframes slideInFromRight {
-    0% { opacity: 0; transform: translate3d(600px, 0, 0); backdrop-filter: blur(0px); }
-    100% { opacity: 1; transform: translate3d(0, 0, 0); backdrop-filter: blur(60px); }
+    0% {
+        opacity: 0;
+        transform: translate3d(600px, 0, 0);
+    }
+    100% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
 }
 @keyframes slideInFromLeft {
-    0% { opacity: 0; transform: translate3d(-600px, 0, 0); backdrop-filter: blur(0px); }
-    100% { opacity: 1; transform: translate3d(0, 0, 0); backdrop-filter: blur(60px); }
+    0% {
+        opacity: 0;
+        transform: translate3d(-600px, 0, 0);
+    }
+    100% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
 }
 @keyframes slideOutToLeft {
-    0% { opacity: 1; transform: translate3d(0, 0, 0); }
-    30% { opacity: 0.1; }
-    100% { opacity: 0; transform: translate3d(-600px, 0, 0); }
+    0% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+    30% {
+        opacity: 0.1;
+    }
+    100% {
+        opacity: 0;
+        transform: translate3d(-600px, 0, 0);
+    }
 }
 @keyframes slideOutToRight {
-    0% { opacity: 1; transform: translate3d(0, 0, 0); }
-    30% { opacity: 0.1; }
-    100% { opacity: 0; transform: translate3d(600px, 0, 0); }
+    0% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+    30% {
+        opacity: 0.1;
+    }
+    100% {
+        opacity: 0;
+        transform: translate3d(600px, 0, 0);
+    }
 }
 @keyframes logoSlowAppear {
-    0% { opacity: 0; filter: blur(12px); transform: scale(0.97); }
-    100% { opacity: 1; filter: blur(0); transform: scale(1); }
+    0% {
+        opacity: 0;
+        filter: blur(12px);
+        transform: scale(0.97);
+    }
+    100% {
+        opacity: 1;
+        filter: blur(0);
+        transform: scale(1);
+    }
 }
 @keyframes luxuryLogoBreathe {
-    0%, 100% {
+    0%,
+    100% {
         transform: scale(0.98);
         filter: drop-shadow(0 0 5px var(--metallic-glow)) brightness(0.95);
     }
@@ -386,43 +457,151 @@ h1 {
     }
 }
 @keyframes textFadeColorPulse {
-    0%, 100% { color: var(--metallic-gold) !important; opacity: 0.25; }
-    50% { color: var(--peak-gold) !important; opacity: 0.7; }
+    0%,
+    100% {
+        color: var(--metallic-gold) !important;
+        opacity: 0.25;
+    }
+    50% {
+        color: var(--peak-gold) !important;
+        opacity: 0.7;
+    }
 }
 @keyframes luxuryBgPulse {
-    0%, 100% { background: rgba(10, 10, 12, 0.7); }
-    50% { background: rgba(10, 10, 12, 0.8); }
+    0%,
+    100% {
+        background: rgba(10, 10, 12, 0.7);
+    }
+    50% {
+        background: rgba(10, 10, 12, 0.8);
+    }
 }
-@keyframes shimmerSlide { 0% { left: -120%; } 100% { left: 120%; } }
+@keyframes shimmerSlide {
+    0% {
+        left: -120%;
+    }
+    100% {
+        left: 120%;
+    }
+}
 @keyframes popIn_PL {
-    0% { transform: scale(0.9); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
+    0% {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
 @keyframes planeFullSequence {
-    0% { transform: translate(0, 0) rotate(0deg) scale(1.1); opacity: 1; }
-    20% { transform: translate(-3px, 3px) rotate(-10deg) scale(1.1); opacity: 1; }
-    45% { transform: translate(35px, -30px) rotate(15deg) scale(1.3); opacity: 0; }
-    47% { transform: translate(-15px, 15px) rotate(-15deg) scale(0); opacity: 0; }
-    100% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+    0% {
+        transform: translate(0, 0) rotate(0deg) scale(1.1);
+        opacity: 1;
+    }
+    20% {
+        transform: translate(-3px, 3px) rotate(-10deg) scale(1.1);
+        opacity: 1;
+    }
+    45% {
+        transform: translate(35px, -30px) rotate(15deg) scale(1.3);
+        opacity: 0;
+    }
+    47% {
+        transform: translate(-15px, 15px) rotate(-15deg) scale(0);
+        opacity: 0;
+    }
+    100% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+        opacity: 1;
+    }
 }
 @keyframes iconShake {
-    0%, 100% { transform: rotate(0deg) scale(1.2); }
-    25% { transform: rotate(-15deg) scale(1.2); }
-    75% { transform: rotate(15deg) scale(1.2); }
+    0%,
+    100% {
+        transform: rotate(0deg) scale(1.2);
+    }
+    25% {
+        transform: rotate(-15deg) scale(1.2);
+    }
+    75% {
+        transform: rotate(15deg) scale(1.2);
+    }
 }
-@keyframes barShine { 0% { left: -100%; } 100% { left: 150%; } }
-@keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-@keyframes HocLoadingSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@keyframes HocPulse { 0%, 100% { opacity: 0.3; transform: scale(0.98); } 50% { opacity: 1; transform: scale(1.02); } }
+@keyframes barShine {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 150%;
+    }
+}
+@keyframes rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+@keyframes HocLoadingSpin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+@keyframes HocPulse {
+    0%,
+    100% {
+        opacity: 0.3;
+        transform: scale(0.98);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.02);
+    }
+}
 @keyframes fieldFadeIn {
-    0% { opacity: 0; max-height: 0px; overflow: hidden; margin-top: 0px; margin-bottom: 0px; }
-    100% { opacity: 1; max-height: 75px; overflow: visible; margin-top: 5px; margin-bottom: 5px; }
+    0% {
+        opacity: 0;
+        max-height: 0px;
+        overflow: hidden;
+        margin-top: 0px;
+        margin-bottom: 0px;
+    }
+    100% {
+        opacity: 1;
+        max-height: 75px;
+        overflow: visible;
+        margin-top: 5px;
+        margin-bottom: 5px;
+    }
 }
 @keyframes fieldFadeOut {
-    0% { opacity: 1; max-height: 75px; overflow: hidden; margin-top: 5px; margin-bottom: 5px; }
-    100% { opacity: 0; max-height: 0px; overflow: hidden; margin-top: 0px; margin-bottom: 0px; }
+    0% {
+        opacity: 1;
+        max-height: 75px;
+        overflow: hidden;
+        margin-top: 5px;
+        margin-bottom: 5px;
+    }
+    100% {
+        opacity: 0;
+        max-height: 0px;
+        overflow: hidden;
+        margin-top: 0px;
+        margin-bottom: 0px;
+    }
 }
 @keyframes itemAppearElite {
-    from { opacity: 0.15; transform: translateY(2px); }
-    to { opacity: 1; transform: none !important; }
+    from {
+        opacity: 0.15;
+        transform: translateY(2px);
+    }
+    to {
+        opacity: 1;
+        transform: none !important;
+    }
 }

@@ -90,7 +90,7 @@ function openBatchScanPanel_PL(droppedFiles) {
     if (title) {
         title.innerHTML = `
             <span style="color: #95A1AF; font-size: 10px; font-weight: 500; letter-spacing: 0.5px;">BATCH UPLOAD (CONTRACT ONLY):</span><br>
-            <span style="color: #FFBA08; font-size: 13px; font-weight: 700;">AUTO-UPLOAD FILE</span>
+            <span style="color: #FFBA08; font-size: 13px; font-weight: 700;">DROP & AUTO-SORT</span>
         `;
     }
 
@@ -222,7 +222,62 @@ let currentPreviewFileId_PL = "";
 let activePanelTransitionCancel_PL = null;
 let closePreviewTimer_PL = null;
 
-const UI_BASE_ZOOM = 0.8;
+const UI_BASE_ZOOM = 1;
+
+function getUiBaseZoom_PL() {
+    const raw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--prv-zoom"));
+    return isNaN(raw) || raw <= 0 ? UI_BASE_ZOOM : raw;
+}
+
+let cachedZoomBehavior_PL = null;
+
+function getZoomBehavior_PL() {
+    if (cachedZoomBehavior_PL) return cachedZoomBehavior_PL;
+    const probe = document.createElement("div");
+    probe.style.cssText =
+        "position:fixed;top:0;left:100px;width:100px;height:10px;zoom:2;visibility:hidden;pointer-events:none;margin:0;padding:0;border:0;";
+    document.body.appendChild(probe);
+    const r = probe.getBoundingClientRect();
+    document.body.removeChild(probe);
+    cachedZoomBehavior_PL = {
+        rectScaledByZoom: Math.abs(r.width - 200) < Math.abs(r.width - 100)
+    };
+    return cachedZoomBehavior_PL;
+}
+
+function getFormBoxMetrics_PL(formContainer, uiZoom) {
+    const fcRect = formContainer.getBoundingClientRect();
+    if (fcRect.height > 0) {
+        if (getZoomBehavior_PL().rectScaledByZoom) {
+            return {
+                top: Math.round(fcRect.top / uiZoom),
+                height: Math.round(fcRect.height / uiZoom)
+            };
+        }
+        return {
+            top: Math.round(fcRect.top),
+            height: Math.round(fcRect.height)
+        };
+    }
+    return {
+        top: formContainer.offsetTop,
+        height: formContainer.offsetHeight
+    };
+}
+
+function getViewportRect_PL(el) {
+    const raw = el.getBoundingClientRect();
+    if (getZoomBehavior_PL().rectScaledByZoom) return raw;
+    const uiZoom = getUiBaseZoom_PL();
+    return {
+        top: raw.top * uiZoom,
+        left: raw.left * uiZoom,
+        bottom: raw.bottom * uiZoom,
+        right: raw.right * uiZoom,
+        width: raw.width * uiZoom,
+        height: raw.height * uiZoom
+    };
+}
 
 function getMasterPanelWidth_PL() {
     const raw = getComputedStyle(document.documentElement).getPropertyValue("--master-panel-width").trim();
@@ -241,13 +296,20 @@ function syncPrvSplitLayout_PL(skipViewerRefresh = false, prepareHiddenState = f
     const formContainer = tabPL ? tabPL.querySelector(".form-container") : null;
     if (!tabPL || !panel || !formContainer) return;
 
-    const screenW = Math.round(window.innerWidth / UI_BASE_ZOOM);
+    const uiZoom = getUiBaseZoom_PL();
+    const screenW = Math.round(window.innerWidth / uiZoom);
     const masterW = getMasterPanelWidth_PL();
-    const isVerticalOrMobile = window.innerWidth <= 960 || window.innerWidth < window.innerHeight;
+    const minDashW = 760;
+    const minPanelW = 420;
+    const minGap = 20;
+    const isVerticalOrMobile =
+        window.innerWidth <= 960 ||
+        window.innerWidth < window.innerHeight ||
+        screenW < minDashW + minPanelW + 3 * minGap;
 
     // TRƯỜNG HỢP 1: MÀN HÌNH DỌC / ĐIỆN THOẠI
     if (isVerticalOrMobile) {
-        const screenH = Math.round(window.innerHeight / UI_BASE_ZOOM);
+        const screenH = Math.round(window.innerHeight / uiZoom);
         const singleW = Math.min(masterW, Math.max(360, screenW - 30));
         const singleRight = Math.max(15, Math.round((screenW - singleW) / 2));
         const singleTop = 85;
@@ -260,12 +322,14 @@ function syncPrvSplitLayout_PL(skipViewerRefresh = false, prepareHiddenState = f
         panel.style.setProperty("right", `${singleRight}px`, "important");
 
         if (prepareHiddenState) {
+            panel.style.setProperty("transition", "none", "important");
             panel.style.setProperty("transform", "translate3d(520px, 0, 0)", "important");
             panel.style.setProperty("opacity", "0", "important");
             panel.style.setProperty("pointer-events", "none", "important");
             return;
         }
 
+        panel.style.removeProperty("transition");
         formContainer.style.setProperty("width", `${singleW}px`, "important");
         formContainer.style.setProperty("max-width", `${singleW}px`, "important");
         formContainer.style.setProperty("opacity", "0", "important");
@@ -282,27 +346,27 @@ function syncPrvSplitLayout_PL(skipViewerRefresh = false, prepareHiddenState = f
     }
 
     // TRƯỜNG HỢP 2: MÀN HÌNH NGANG RỘNG
-    const minGap = 20;
-    const equalW = Math.min(masterW, Math.max(420, Math.floor((screenW - 3 * minGap) / 2)));
-    const G = Math.max(12, Math.floor((screenW - 2 * equalW) / 3));
+    const halfW = Math.floor((screenW - 3 * minGap) / 2);
+    const dashW = Math.min(masterW, Math.max(minDashW, halfW));
+    const panelW = Math.min(masterW, Math.max(minPanelW, screenW - 3 * minGap - dashW));
+    const G = Math.max(12, Math.floor((screenW - dashW - panelW) / 3));
 
     if (prepareHiddenState) {
         const startW = formContainer.offsetWidth;
         const startLeft = formContainer.offsetLeft;
-        const fcTop = formContainer.offsetTop;
-        const fcHeight = formContainer.offsetHeight;
+        const { top: fcTop, height: fcHeight } = getFormBoxMetrics_PL(formContainer, uiZoom);
 
         formContainer.style.setProperty("animation", "none", "important");
         formContainer.style.setProperty("opacity", "1", "important");
         formContainer.style.setProperty("pointer-events", "auto", "important");
         formContainer.style.setProperty("transition", "none", "important");
 
-        if (Math.abs(startW - equalW) <= 1) {
+        if (Math.abs(startW - dashW) <= 1) {
             formContainer.dataset.splitAnimMode = "gpu";
             formContainer.style.setProperty("margin-left", `${G}px`, "important");
             formContainer.style.setProperty("margin-right", "auto", "important");
-            formContainer.style.setProperty("width", `${equalW}px`, "important");
-            formContainer.style.setProperty("max-width", `${equalW}px`, "important");
+            formContainer.style.setProperty("width", `${dashW}px`, "important");
+            formContainer.style.setProperty("max-width", `${dashW}px`, "important");
             formContainer.style.setProperty(
                 "transform",
                 `translate3d(${Math.round(startLeft - G)}px, 0, 0)`,
@@ -314,14 +378,15 @@ function syncPrvSplitLayout_PL(skipViewerRefresh = false, prepareHiddenState = f
             formContainer.style.setProperty("margin-left", `${startLeft}px`, "important");
             formContainer.style.setProperty("margin-right", "auto", "important");
             formContainer.style.setProperty("width", `${startW}px`, "important");
-            formContainer.style.setProperty("max-width", `${Math.max(startW, equalW)}px`, "important");
+            formContainer.style.setProperty("max-width", `${Math.max(startW, dashW)}px`, "important");
         }
 
         panel.style.setProperty("min-width", "420px", "important");
         panel.style.setProperty("top", `${fcTop}px`, "important");
         panel.style.setProperty("height", `${fcHeight}px`, "important");
-        panel.style.setProperty("width", `${equalW}px`, "important");
+        panel.style.setProperty("width", `${panelW}px`, "important");
         panel.style.setProperty("right", `${G}px`, "important");
+        panel.style.setProperty("transition", "none", "important");
         panel.style.setProperty("transform", "translate3d(520px, 0, 0)", "important");
         panel.style.setProperty("opacity", "0", "important");
         panel.style.setProperty("pointer-events", "none", "important");
@@ -333,6 +398,7 @@ function syncPrvSplitLayout_PL(skipViewerRefresh = false, prepareHiddenState = f
     if (isOpeningPlay) {
         const mode = formContainer.dataset.splitAnimMode;
         delete formContainer.dataset.splitAnimMode;
+        panel.style.removeProperty("transition");
 
         if (mode === "gpu") {
             formContainer.style.setProperty(
@@ -347,7 +413,7 @@ function syncPrvSplitLayout_PL(skipViewerRefresh = false, prepareHiddenState = f
                 "width 0.45s cubic-bezier(0.22, 1, 0.36, 1), margin-left 0.45s cubic-bezier(0.22, 1, 0.36, 1)",
                 "important"
             );
-            formContainer.style.setProperty("width", `${equalW}px`, "important");
+            formContainer.style.setProperty("width", `${dashW}px`, "important");
             formContainer.style.setProperty("margin-left", `${G}px`, "important");
         }
 
@@ -357,8 +423,7 @@ function syncPrvSplitLayout_PL(skipViewerRefresh = false, prepareHiddenState = f
         return;
     }
 
-    const fcTop = formContainer.offsetTop;
-    const fcHeight = formContainer.offsetHeight;
+    const { top: fcTop, height: fcHeight } = getFormBoxMetrics_PL(formContainer, uiZoom);
 
     formContainer.style.setProperty("animation", "none", "important");
     formContainer.style.setProperty("opacity", "1", "important");
@@ -366,14 +431,15 @@ function syncPrvSplitLayout_PL(skipViewerRefresh = false, prepareHiddenState = f
     formContainer.style.setProperty("transform", "translate3d(0, 0, 0)", "important");
     formContainer.style.setProperty("margin-left", `${G}px`, "important");
     formContainer.style.setProperty("margin-right", "auto", "important");
-    formContainer.style.setProperty("width", `${equalW}px`, "important");
-    formContainer.style.setProperty("max-width", `${equalW}px`, "important");
+    formContainer.style.setProperty("width", `${dashW}px`, "important");
+    formContainer.style.setProperty("max-width", `${dashW}px`, "important");
 
     panel.style.setProperty("min-width", "420px", "important");
     panel.style.setProperty("top", `${fcTop}px`, "important");
     panel.style.setProperty("height", `${fcHeight}px`, "important");
-    panel.style.setProperty("width", `${equalW}px`, "important");
+    panel.style.setProperty("width", `${panelW}px`, "important");
     panel.style.setProperty("right", `${G}px`, "important");
+    panel.style.removeProperty("transition");
     panel.style.setProperty("transform", "translate3d(0, 0, 0)", "important");
     panel.style.setProperty("opacity", "1", "important");
     panel.style.setProperty("pointer-events", "auto", "important");
@@ -531,7 +597,10 @@ function closePreviewModal_PL(isInstant = false) {
         document
             .querySelectorAll("#dropdown-field0-pl .hoc-tooltip")
             .forEach((r) => r.classList.remove("is-previewing-row"));
-        if (tabPL) tabPL.classList.remove("split-preview-active");
+        if (tabPL) {
+            tabPL.classList.remove("split-preview-active", "slide-in-right", "slide-in-left", "instant-fade");
+            tabPL.classList.add("tab-anim-done");
+        }
         if (window.BconsViewer && typeof window.BconsViewer.abortActiveTasks === "function") {
             window.BconsViewer.abortActiveTasks();
         }
@@ -601,6 +670,10 @@ function closePreviewModal_PL(isInstant = false) {
             panel.style.removeProperty("height");
             panel.style.removeProperty("right");
             panel.style.removeProperty("width");
+            panel.style.removeProperty("transform");
+            panel.style.removeProperty("opacity");
+            panel.style.removeProperty("pointer-events");
+            panel.style.removeProperty("transition");
         }
         if (formContainer) {
             delete formContainer.dataset.splitAnimMode;
@@ -615,7 +688,10 @@ function closePreviewModal_PL(isInstant = false) {
             formContainer.style.removeProperty("transform");
             formContainer.style.removeProperty("transform-origin");
         }
-        if (tabPL) tabPL.classList.remove("split-preview-active");
+        if (tabPL) {
+            tabPL.classList.remove("split-preview-active", "slide-in-right", "slide-in-left", "instant-fade");
+            tabPL.classList.add("tab-anim-done");
+        }
 
         setTimeout(() => {
             if (window.BconsViewer) window.BconsViewer.close();
@@ -635,7 +711,7 @@ function closePreviewModal_PL(isInstant = false) {
     if (formContainer && wasOpen && !isVerticalOrMobile) {
         const curW = formContainer.offsetWidth;
         const curLeft = formContainer.offsetLeft;
-        const screenW = Math.round(window.innerWidth / UI_BASE_ZOOM);
+        const screenW = Math.round(window.innerWidth / getUiBaseZoom_PL());
         const masterW = getMasterPanelWidth_PL();
         const targetW = Math.min(masterW, screenW - 30);
         const targetLeft = Math.max(15, Math.round((screenW - targetW) / 2));
@@ -711,6 +787,10 @@ function closePreviewModal_PL(isInstant = false) {
         if (window.BconsViewer) window.BconsViewer.close();
 
         if (formContainer) {
+            if (tabPL) {
+                tabPL.classList.remove("slide-in-right", "slide-in-left", "instant-fade");
+                tabPL.classList.add("tab-anim-done");
+            }
             formContainer.style.setProperty("transition", "none", "important");
             formContainer.style.removeProperty("width");
             formContainer.style.removeProperty("max-width");
@@ -718,6 +798,9 @@ function closePreviewModal_PL(isInstant = false) {
             formContainer.style.removeProperty("margin-right");
             formContainer.style.removeProperty("transform");
             formContainer.style.removeProperty("transform-origin");
+            formContainer.style.removeProperty("animation");
+            formContainer.style.removeProperty("opacity");
+            formContainer.style.removeProperty("pointer-events");
             void formContainer.offsetWidth;
             formContainer.style.removeProperty("transition");
         }
@@ -1246,6 +1329,7 @@ async function startUploadScan_PL() {
 
     let digitizedCount = 0;
     let uploadedCount = 0;
+    const uploadedContracts = new Set();
 
     try {
         for (let i = 0; i < filesToUpload.length; i++) {
@@ -1324,6 +1408,7 @@ async function startUploadScan_PL() {
                 }
 
                 uploadedCount++;
+                if (targetMaHD) uploadedContracts.add(targetMaHD);
                 const qIdx = currentScanFiles.indexOf(entry);
                 if (qIdx !== -1) currentScanFiles.splice(qIdx, 1);
             } else {
@@ -1353,6 +1438,11 @@ async function startUploadScan_PL() {
         alert(`Upload Error: ${e.message || e}`);
     } finally {
         releaseKeepAlive("pl_scan_upload");
+        if (uploadedContracts.size > 0 && typeof publishAblyContractUpdate_Client === "function") {
+            const list = Array.from(uploadedContracts);
+            const summary = list.length <= 2 ? list.join(", ") : `${list.slice(0, 2).join(", ")} (+${list.length - 2})`;
+            publishAblyContractUpdate_Client("UPLOAD_FILE", summary);
+        }
         if (currentScanFiles.length > 0) {
             updateScanQueueUI();
         } else if (btn) {
@@ -1539,6 +1629,9 @@ function executeActualDelete_PL() {
         .then(() => callBackend("deleteScanFilePermanently", [targetMaHD, targetFileId]))
         .then((res) => {
             if (res && res.success) {
+                if (typeof publishAblyContractUpdate_Client === "function") {
+                    publishAblyContractUpdate_Client("DELETE_FILE", targetMaHD);
+                }
                 if (window.BconsViewer && typeof window.BconsViewer.purgeLocalCacheForFile === "function") {
                     window.BconsViewer.purgeLocalCacheForFile(targetFileId);
                 }
@@ -1639,7 +1732,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         <span style="color: ${descColor}; font-weight: 500;">${dotDesc}</span>
                     `;
 
-                        const rect = fileDot.getBoundingClientRect();
+                        const rect = getViewportRect_PL(fileDot);
                         const halfW = (globalTooltip.offsetWidth || 120) / 2;
                         const safeLeft = Math.min(window.innerWidth - halfW - 10, rect.left + rect.width / 2);
 
@@ -1658,7 +1751,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     ${hoverText}
                 `;
 
-                    const rect = row.getBoundingClientRect();
+                    const rect = getViewportRect_PL(row);
                     globalTooltip.style.top = rect.top - 8 + "px";
                     globalTooltip.style.left = rect.left + rect.width / 2 + "px";
                     globalTooltip.classList.add("show-tooltip");
